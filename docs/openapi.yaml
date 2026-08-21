@@ -1,0 +1,3135 @@
+openapi: 3.0.3
+info:
+  title: Purple Squad API
+  version: v1
+  description: API for the Purple Squad home services platform.
+paths:
+  /api/v1/addresses/:
+    get:
+      operationId: api_v1_addresses_list
+      description: Returns active saved addresses belonging to the authenticated customer.
+      summary: List customer addresses
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAddressList'
+          description: ''
+    post:
+      operationId: api_v1_addresses_create
+      description: Creates a saved address for the authenticated customer. Core persistence
+        does not call Google Maps.
+      summary: Create customer address
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AddressRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+          description: ''
+  /api/v1/addresses/{id}/:
+    get:
+      operationId: api_v1_addresses_retrieve
+      description: Returns one active address owned by the authenticated customer.
+      summary: Get customer address
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+          description: ''
+    patch:
+      operationId: api_v1_addresses_partial_update
+      description: Partially updates one active address owned by the authenticated
+        customer.
+      summary: Update customer address
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAddressRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAddressRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAddressRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Address'
+          description: ''
+    delete:
+      operationId: api_v1_addresses_destroy
+      description: Soft-deletes an address by marking it inactive.
+      summary: Deactivate customer address
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/admin/bookings/{booking_id}/assign-technician/:
+    post:
+      operationId: api_v1_admin_bookings_assign_technician_create
+      description: Admin-only manual technician assignment. Records assignment history,
+        supports reassignment, updates booking.assigned_technician, and moves booking
+        status to TECHNICIAN_ASSIGNED.
+      summary: Assign technician to booking
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssignTechnicianRequestRequest'
+            examples:
+              AssignTechnicianRequest:
+                value:
+                  technician_id: 67d9bd9d-31af-4c75-b443-04377885242e
+                  notes: Manual dispatch.
+                summary: Assign technician request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AssignTechnicianRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AssignTechnicianRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/bookings/{booking_id}/cancel/:
+    post:
+      operationId: api_v1_admin_bookings_cancel_create
+      summary: Run admin booking operation
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/bookings/{booking_id}/complete/:
+    post:
+      operationId: api_v1_admin_bookings_complete_create
+      summary: Run admin booking operation
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/bookings/{booking_id}/record-balance/:
+    post:
+      operationId: api_v1_admin_bookings_record_balance_create
+      summary: Record offline booking balance
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BalanceCollectionRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BalanceCollectionRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BalanceCollectionRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/bookings/{booking_id}/start/:
+    post:
+      operationId: api_v1_admin_bookings_start_create
+      summary: Run admin booking operation
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/service-categories/:
+    get:
+      operationId: api_v1_admin_service_categories_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - Admin - Categories
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminServiceCategoryList'
+          description: ''
+    post:
+      operationId: api_v1_admin_service_categories_create
+      tags:
+      - Admin - Categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminServiceCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminServiceCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminServiceCategoryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceCategory'
+          description: ''
+  /api/v1/admin/service-categories/{id}/:
+    get:
+      operationId: api_v1_admin_service_categories_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Categories
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceCategory'
+          description: ''
+    put:
+      operationId: api_v1_admin_service_categories_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminServiceCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminServiceCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminServiceCategoryRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceCategory'
+          description: ''
+    patch:
+      operationId: api_v1_admin_service_categories_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Categories
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceCategoryRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceCategoryRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceCategoryRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceCategory'
+          description: ''
+    delete:
+      operationId: api_v1_admin_service_categories_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Categories
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/admin/services/:
+    get:
+      operationId: api_v1_admin_services_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - Admin - Catalogue
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminServiceList'
+          description: ''
+    post:
+      operationId: api_v1_admin_services_create
+      tags:
+      - Admin - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminServiceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminService'
+          description: ''
+  /api/v1/admin/services/{id}/:
+    get:
+      operationId: api_v1_admin_services_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Catalogue
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminService'
+          description: ''
+    put:
+      operationId: api_v1_admin_services_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminServiceRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminService'
+          description: ''
+    patch:
+      operationId: api_v1_admin_services_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Catalogue
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminService'
+          description: ''
+    delete:
+      operationId: api_v1_admin_services_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Catalogue
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/admin/services/{service_id}/images/:
+    get:
+      operationId: api_v1_admin_services_images_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin - Service Images
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedServiceImageList'
+          description: ''
+    post:
+      operationId: api_v1_admin_services_images_create
+      parameters:
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin - Service Images
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ServiceImageRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ServiceImageRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceImage'
+          description: ''
+  /api/v1/admin/services/{service_id}/images/{image_id}/:
+    get:
+      operationId: api_v1_admin_services_images_retrieve
+      parameters:
+      - in: path
+        name: image_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin - Service Images
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceImage'
+          description: ''
+    patch:
+      operationId: api_v1_admin_services_images_partial_update
+      parameters:
+      - in: path
+        name: image_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin - Service Images
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedServiceImageRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedServiceImageRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceImage'
+          description: ''
+    delete:
+      operationId: api_v1_admin_services_images_destroy
+      parameters:
+      - in: path
+        name: image_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Admin - Service Images
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/dev-phone/:
+    post:
+      operationId: api_v1_auth_dev_phone_create
+      description: Debug-only temporary login for local development while Firebase
+        Phone Auth is unavailable.
+      summary: Development phone login
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DevPhoneLoginRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DevPhoneLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DevPhoneLoginRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+          description: ''
+  /api/v1/auth/firebase/:
+    post:
+      operationId: api_v1_auth_firebase_create
+      description: Verifies a Firebase ID token server-side, extracts the verified
+        phone number, creates or retrieves the Purple Squad user, and returns backend
+        JWT credentials.
+      summary: Authenticate with Firebase phone token
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+            examples:
+              LoginRequest:
+                value:
+                  id_token: firebase-id-token
+                summary: Login request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+              examples:
+                LoginResponse:
+                  value:
+                    user:
+                      id: 67d9bd9d-31af-4c75-b443-04377885242e
+                      phone_number: '+919876543210'
+                      email: null
+                      first_name: ''
+                      last_name: ''
+                      role: CUSTOMER
+                      is_verified: true
+                      customer_profile:
+                        id: 406f0389-df33-4a09-aed7-1fcb66f85321
+                        display_name: ''
+                        alternate_phone: ''
+                      created_at: '2026-08-18T12:00:00+05:30'
+                      updated_at: '2026-08-18T12:00:00+05:30'
+                    tokens:
+                      access: jwt-access-token
+                      refresh: jwt-refresh-token
+                      token_type: Bearer
+                    created: true
+                  summary: Login response
+          description: ''
+  /api/v1/auth/logout/:
+    post:
+      operationId: api_v1_auth_logout_create
+      description: Blacklists the supplied refresh token. The access token naturally
+        expires.
+      summary: Logout
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh:
+                  type: string
+              required:
+              - refresh
+            examples:
+              LogoutRequest:
+                value:
+                  refresh: jwt-refresh-token
+                summary: Logout request
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/auth/me/:
+    get:
+      operationId: api_v1_auth_me_retrieve
+      description: Returns the authenticated Purple Squad user profile.
+      summary: Get current user
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+    patch:
+      operationId: api_v1_auth_me_partial_update
+      description: Updates editable customer profile fields for the authenticated
+        user.
+      summary: Update current user profile
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedUserProfileUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedUserProfileUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedUserProfileUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+          description: ''
+  /api/v1/auth/otp/send/:
+    post:
+      operationId: api_v1_auth_otp_send_create
+      description: Sends a login OTP through the configured backend OTP provider.
+      summary: Send phone OTP
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OtpSendRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OtpSendResponse'
+          description: ''
+  /api/v1/auth/otp/verify/:
+    post:
+      operationId: api_v1_auth_otp_verify_create
+      description: Verifies a phone OTP and returns Purple Squad JWT credentials.
+      summary: Verify phone OTP
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/OtpVerifyRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: api_v1_auth_refresh_create
+      description: Returns a new access token for a valid refresh token.
+      summary: Refresh JWT access token
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/bookings/:
+    get:
+      operationId: api_v1_bookings_list
+      description: Returns bookings belonging to the authenticated customer.
+      summary: List customer bookings
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBookingList'
+          description: ''
+    post:
+      operationId: api_v1_bookings_create
+      description: Creates a PENDING_PAYMENT booking for the authenticated customer.
+        The backend validates service, address ownership, service area, slot availability,
+        locks the slot transactionally, snapshots address and price values, and writes
+        status history.
+      summary: Create booking
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+            examples:
+              CreateBookingRequest:
+                value:
+                  service_id: 67d9bd9d-31af-4c75-b443-04377885242e
+                  address_id: 406f0389-df33-4a09-aed7-1fcb66f85321
+                  slot_id: d4206031-f805-4303-9d8a-e7d465e06794
+                  problem_description: AC is not cooling properly.
+                  customer_notes: Please call before arriving.
+                summary: Create booking request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/bookings/{booking_id}/payments/order/:
+    post:
+      operationId: api_v1_bookings_payments_order_create
+      description: Creates or reuses a Razorpay order for the booking advance. The
+        backend determines the amount.
+      summary: Create Razorpay advance order
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentOrderResponse'
+          description: ''
+  /api/v1/bookings/{booking_id}/review/:
+    post:
+      operationId: api_v1_bookings_review_create
+      description: Creates one review for an authenticated customer's completed booking.
+      summary: Create booking review
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+            examples:
+              ReviewRequest:
+                value:
+                  rating: 5
+                  comment: Technician was punctual and fixed the issue.
+                summary: Review request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReviewCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+          description: ''
+  /api/v1/bookings/{id}/:
+    get:
+      operationId: api_v1_bookings_retrieve
+      description: Returns one booking belonging to the authenticated customer.
+      summary: Get customer booking
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/bookings/{id}/cancel/:
+    post:
+      operationId: api_v1_bookings_cancel_create
+      description: Cancels an authenticated customer's booking when policy and status
+        allow it.
+      summary: Cancel customer booking
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/bookings/{id}/reschedule/:
+    post:
+      operationId: api_v1_bookings_reschedule_create
+      description: Moves an authenticated customer's booking to another available
+        slot when policy allows it.
+      summary: Reschedule customer booking
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRescheduleRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingRescheduleRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingRescheduleRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/health/:
+    get:
+      operationId: api_v1_health_retrieve
+      description: Returns a lightweight health response for uptime probes.
+      summary: Health check
+      tags:
+      - api
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                Healthy:
+                  value:
+                    status: ok
+          description: ''
+  /api/v1/payments/verify/:
+    post:
+      operationId: api_v1_payments_verify_create
+      description: Verifies Razorpay checkout signature and confirms the booking when
+        the advance succeeds.
+      summary: Verify Razorpay payment
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentVerifyRequestRequest'
+            examples:
+              VerifyRequest:
+                value:
+                  razorpay_order_id: order_123
+                  razorpay_payment_id: pay_123
+                  razorpay_signature: hmac-signature
+                summary: Verify request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PaymentVerifyRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PaymentVerifyRequestRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentVerifyResponse'
+          description: ''
+  /api/v1/payments/webhooks/razorpay/:
+    post:
+      operationId: api_v1_payments_webhooks_razorpay_create
+      description: Processes Razorpay webhooks idempotently after validating the webhook
+        signature.
+      summary: Razorpay webhook
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookResponse'
+          description: ''
+  /api/v1/service-areas/check/:
+    get:
+      operationId: api_v1_service_areas_check_retrieve
+      description: Checks whether Purple Squad currently supports a postal code.
+      summary: Check service area support
+      parameters:
+      - in: query
+        name: postal_code
+        schema:
+          type: string
+        description: Postal code to check.
+        required: true
+      tags:
+      - api
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceAreaCheckResponse'
+              examples:
+                SupportedPostalCode:
+                  value:
+                    postal_code: '635601'
+                    is_supported: true
+                    service_area:
+                      id: 67d9bd9d-31af-4c75-b443-04377885242e
+                      name: Tirupattur Central
+                      city: Tirupattur
+                      state: Tamil Nadu
+                      country: India
+                      postal_code: '635601'
+                  summary: Supported postal code
+          description: ''
+  /api/v1/service-categories/:
+    get:
+      operationId: api_v1_service_categories_list
+      description: Returns active service categories ordered for public display.
+      summary: List service categories
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceCategory'
+              examples:
+                Categories:
+                  value:
+                  - id: 67d9bd9d-31af-4c75-b443-04377885242e
+                    name: AC Service
+                    slug: ac-service
+                    description: Routine AC inspection and cleaning.
+                    image_url: https://example.com/ac-service.jpg
+                    display_order: 1
+          description: ''
+  /api/v1/services/:
+    get:
+      operationId: api_v1_services_list
+      description: Returns active public services with optional category, featured,
+        and name search filters.
+      summary: List services
+      parameters:
+      - in: query
+        name: category
+        schema:
+          type: string
+        description: Filter by category slug.
+      - in: query
+        name: featured
+        schema:
+          type: boolean
+        description: Filter featured services.
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: search
+        schema:
+          type: string
+        description: Search by service name.
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedServiceListList'
+              examples:
+                ServiceListItem:
+                  value:
+                    count: 123
+                    next: http://api.example.org/accounts/?page=4
+                    previous: http://api.example.org/accounts/?page=2
+                    results:
+                    - id: 67d9bd9d-31af-4c75-b443-04377885242e
+                      category:
+                        id: 406f0389-df33-4a09-aed7-1fcb66f85321
+                        name: AC Service
+                        slug: ac-service
+                        description: Routine AC services.
+                        image_url: ''
+                        display_order: 1
+                      name: AC General Service
+                      slug: ac-general-service
+                      short_description: Cleaning and inspection for split AC units.
+                      base_price: '1499.00'
+                      advance_amount: '299.00'
+                      estimated_duration_minutes: 90
+                      is_featured: true
+                  summary: Service list item
+          description: ''
+  /api/v1/services/{service_id}/reviews/:
+    get:
+      operationId: api_v1_services_reviews_list
+      description: Returns visible reviews for a service.
+      summary: List service reviews
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReviewList'
+          description: ''
+  /api/v1/services/{slug}/:
+    get:
+      operationId: api_v1_services_retrieve
+      description: Returns one active public service by slug.
+      summary: Get service detail
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceDetail'
+              examples:
+                ServiceDetail:
+                  value:
+                    id: 67d9bd9d-31af-4c75-b443-04377885242e
+                    category:
+                      id: 406f0389-df33-4a09-aed7-1fcb66f85321
+                      name: AC Service
+                      slug: ac-service
+                      description: Routine AC services.
+                      image_url: ''
+                      display_order: 1
+                    name: AC General Service
+                    slug: ac-general-service
+                    short_description: Cleaning and inspection for split AC units.
+                    base_price: '1499.00'
+                    advance_amount: '299.00'
+                    estimated_duration_minutes: 90
+                    is_featured: true
+                    description: Includes filter cleaning, coil inspection, and drainage
+                      check.
+                  summary: Service detail
+          description: ''
+  /api/v1/slots/:
+    get:
+      operationId: api_v1_slots_list
+      description: Returns active, future, capacity-available slots for a service,
+        date, and supported postal code. The frontend availability check is advisory;
+        final booking reservation must still lock the slot.
+      summary: List available slots
+      parameters:
+      - in: query
+        name: date
+        schema:
+          type: string
+        description: Service date in YYYY-MM-DD format.
+        required: true
+      - in: query
+        name: postal_code
+        schema:
+          type: string
+        description: Customer postal code.
+        required: true
+      - in: query
+        name: service_id
+        schema:
+          type: string
+        description: Service UUID.
+        required: true
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TimeSlot'
+              examples:
+                AvailableSlot:
+                  value:
+                  - id: 67d9bd9d-31af-4c75-b443-04377885242e
+                    service_area: 406f0389-df33-4a09-aed7-1fcb66f85321
+                    date: '2026-08-21'
+                    start_time: '10:00:00'
+                    end_time: '12:00:00'
+                    capacity: 2
+                    available_capacity: 2
+                  summary: Available slot
+          description: ''
+components:
+  schemas:
+    Address:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        label:
+          type: string
+          maxLength: 80
+        recipient_name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 16
+        address_line_1:
+          type: string
+          maxLength: 255
+        address_line_2:
+          type: string
+          maxLength: 255
+        landmark:
+          type: string
+          maxLength: 150
+        locality:
+          type: string
+          maxLength: 150
+        city:
+          type: string
+          maxLength: 100
+        state:
+          type: string
+          maxLength: 100
+        postal_code:
+          type: string
+          maxLength: 20
+        country:
+          type: string
+          maxLength: 100
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        is_default:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - address_line_1
+      - city
+      - created_at
+      - id
+      - label
+      - phone
+      - postal_code
+      - recipient_name
+      - state
+      - updated_at
+    AddressRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+        recipient_name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        phone:
+          type: string
+          minLength: 1
+          maxLength: 16
+        address_line_1:
+          type: string
+          minLength: 1
+          maxLength: 255
+        address_line_2:
+          type: string
+          maxLength: 255
+        landmark:
+          type: string
+          maxLength: 150
+        locality:
+          type: string
+          maxLength: 150
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        state:
+          type: string
+          minLength: 1
+          maxLength: 100
+        postal_code:
+          type: string
+          minLength: 1
+          maxLength: 20
+        country:
+          type: string
+          minLength: 1
+          maxLength: 100
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        is_default:
+          type: boolean
+      required:
+      - address_line_1
+      - city
+      - label
+      - phone
+      - postal_code
+      - recipient_name
+      - state
+    AdminService:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+          format: uuid
+        category_detail:
+          allOf:
+          - $ref: '#/components/schemas/ServiceCategory'
+          readOnly: true
+        name:
+          type: string
+          maxLength: 180
+        slug:
+          type: string
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        whats_included:
+          type: string
+        whats_excluded:
+          type: string
+        important_notes:
+          type: string
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        effective_price:
+          type: number
+          format: double
+          readOnly: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        estimated_duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        cover_image:
+          type: string
+          format: uri
+        images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceImage'
+          readOnly: true
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        is_active:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - advance_amount
+      - base_price
+      - category
+      - category_detail
+      - created_at
+      - effective_price
+      - estimated_duration_minutes
+      - id
+      - images
+      - name
+      - slug
+      - updated_at
+    AdminServiceCategory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        slug:
+          type: string
+          maxLength: 180
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          maxLength: 200
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - name
+      - slug
+      - updated_at
+    AdminServiceCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 180
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          maxLength: 200
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        is_active:
+          type: boolean
+      required:
+      - name
+      - slug
+    AdminServiceRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        whats_included:
+          type: string
+        whats_excluded:
+          type: string
+        important_notes:
+          type: string
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        estimated_duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        cover_image:
+          type: string
+          format: binary
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        is_active:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - base_price
+      - category
+      - estimated_duration_minutes
+      - name
+      - slug
+    AdvancePaymentTypeEnum:
+      enum:
+      - FIXED
+      - PERCENTAGE
+      type: string
+      description: |-
+        * `FIXED` - Fixed amount
+        * `PERCENTAGE` - Percentage
+    AssignTechnicianRequestRequest:
+      type: object
+      properties:
+        technician_id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+      required:
+      - technician_id
+    AuthLoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+        created:
+          type: boolean
+      required:
+      - created
+      - tokens
+      - user
+    BalanceCollectionRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        method:
+          $ref: '#/components/schemas/MethodEnum'
+        notes:
+          type: string
+      required:
+      - amount
+      - method
+    Booking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        booking_number:
+          type: string
+          maxLength: 32
+        service:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        address_snapshot: {}
+        service_date:
+          type: string
+          format: date
+        time_slot:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        problem_description:
+          type: string
+        subtotal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        discount_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        tax_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        advance_required:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        advance_paid:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        balance_due:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        balance_collected:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        payment_status:
+          $ref: '#/components/schemas/PaymentStatusEnum'
+        booking_status:
+          $ref: '#/components/schemas/BookingStatusEnum'
+        customer_notes:
+          type: string
+        admin_notes:
+          type: string
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingStatusHistory'
+          readOnly: true
+      required:
+      - address_snapshot
+      - advance_required
+      - balance_due
+      - booking_number
+      - created_at
+      - id
+      - problem_description
+      - service
+      - service_date
+      - status_history
+      - subtotal
+      - time_slot
+      - total_amount
+      - updated_at
+    BookingCreateRequest:
+      type: object
+      properties:
+        service_id:
+          type: string
+          format: uuid
+        address_id:
+          type: string
+          format: uuid
+        slot_id:
+          type: string
+          format: uuid
+        problem_description:
+          type: string
+          minLength: 1
+        customer_notes:
+          type: string
+      required:
+      - address_id
+      - problem_description
+      - service_id
+      - slot_id
+    BookingOperationRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+    BookingRescheduleRequest:
+      type: object
+      properties:
+        slot_id:
+          type: string
+          format: uuid
+        notes:
+          type: string
+      required:
+      - slot_id
+    BookingStatusEnum:
+      enum:
+      - PENDING_PAYMENT
+      - PAYMENT_FAILED
+      - CONFIRMED
+      - TECHNICIAN_ASSIGNED
+      - TECHNICIAN_EN_ROUTE
+      - IN_PROGRESS
+      - COMPLETED
+      - CANCELLED
+      - REFUND_PENDING
+      - REFUNDED
+      type: string
+      description: |-
+        * `PENDING_PAYMENT` - Pending payment
+        * `PAYMENT_FAILED` - Payment failed
+        * `CONFIRMED` - Confirmed
+        * `TECHNICIAN_ASSIGNED` - Technician assigned
+        * `TECHNICIAN_EN_ROUTE` - Technician en route
+        * `IN_PROGRESS` - In progress
+        * `COMPLETED` - Completed
+        * `CANCELLED` - Cancelled
+        * `REFUND_PENDING` - Refund pending
+        * `REFUNDED` - Refunded
+    BookingStatusHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        from_status:
+          type: string
+          maxLength: 32
+        to_status:
+          type: string
+          maxLength: 32
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - to_status
+    CustomerProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        display_name:
+          type: string
+          maxLength: 255
+        alternate_phone:
+          type: string
+          maxLength: 16
+      required:
+      - id
+    DevPhoneLoginRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+      required:
+      - phone_number
+    FirebaseLoginRequestRequest:
+      type: object
+      properties:
+        id_token:
+          type: string
+          minLength: 1
+      required:
+      - id_token
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+      - status
+    MethodEnum:
+      enum:
+      - CASH
+      - UPI
+      - CARD_OFFLINE
+      - OTHER
+      type: string
+      description: |-
+        * `CASH` - Cash
+        * `UPI` - UPI
+        * `CARD_OFFLINE` - Card offline
+        * `OTHER` - Other
+    OtpSendRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+      required:
+      - phone_number
+    OtpSendResponse:
+      type: object
+      properties:
+        phone_number:
+          type: string
+        request_id:
+          type: string
+      required:
+      - phone_number
+      - request_id
+    OtpVerifyRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+        otp:
+          type: string
+          minLength: 1
+          pattern: ^\d{4,8}$
+      required:
+      - otp
+      - phone_number
+    PaginatedAddressList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+    PaginatedAdminServiceCategoryList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceCategory'
+    PaginatedAdminServiceList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminService'
+    PaginatedBookingList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+    PaginatedReviewList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Review'
+    PaginatedServiceImageList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceImage'
+    PaginatedServiceListList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceList'
+    PatchedAddressRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 80
+        recipient_name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        phone:
+          type: string
+          minLength: 1
+          maxLength: 16
+        address_line_1:
+          type: string
+          minLength: 1
+          maxLength: 255
+        address_line_2:
+          type: string
+          maxLength: 255
+        landmark:
+          type: string
+          maxLength: 150
+        locality:
+          type: string
+          maxLength: 150
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        state:
+          type: string
+          minLength: 1
+          maxLength: 100
+        postal_code:
+          type: string
+          minLength: 1
+          maxLength: 20
+        country:
+          type: string
+          minLength: 1
+          maxLength: 100
+        latitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        longitude:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
+          nullable: true
+        is_default:
+          type: boolean
+    PatchedAdminServiceCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 180
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          maxLength: 200
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        is_active:
+          type: boolean
+    PatchedAdminServiceRequest:
+      type: object
+      properties:
+        category:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        whats_included:
+          type: string
+        whats_excluded:
+          type: string
+        important_notes:
+          type: string
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        estimated_duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        cover_image:
+          type: string
+          format: binary
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        is_active:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+    PatchedServiceImageRequest:
+      type: object
+      properties:
+        image:
+          type: string
+          format: binary
+        alt_text:
+          type: string
+          maxLength: 255
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        is_active:
+          type: boolean
+    PatchedUserProfileUpdateRequest:
+      type: object
+      properties:
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          nullable: true
+        display_name:
+          type: string
+          maxLength: 255
+        alternate_phone:
+          type: string
+          maxLength: 16
+    PaymentOrderResponse:
+      type: object
+      properties:
+        payment_id:
+          type: string
+          format: uuid
+        booking_id:
+          type: string
+          format: uuid
+        provider_order_id:
+          type: string
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        amount_paise:
+          type: integer
+        currency:
+          type: string
+        key_id:
+          type: string
+      required:
+      - amount
+      - amount_paise
+      - booking_id
+      - currency
+      - key_id
+      - payment_id
+      - provider_order_id
+    PaymentStatusEnum:
+      enum:
+      - UNPAID
+      - PARTIALLY_PAID
+      - PAID
+      - FAILED
+      - REFUNDED
+      type: string
+      description: |-
+        * `UNPAID` - Unpaid
+        * `PARTIALLY_PAID` - Partially paid
+        * `PAID` - Paid
+        * `FAILED` - Failed
+        * `REFUNDED` - Refunded
+    PaymentVerifyRequestRequest:
+      type: object
+      properties:
+        razorpay_order_id:
+          type: string
+          minLength: 1
+        razorpay_payment_id:
+          type: string
+          minLength: 1
+        razorpay_signature:
+          type: string
+          minLength: 1
+      required:
+      - razorpay_order_id
+      - razorpay_payment_id
+      - razorpay_signature
+    PaymentVerifyResponse:
+      type: object
+      properties:
+        payment_id:
+          type: string
+          format: uuid
+        booking_id:
+          type: string
+          format: uuid
+        payment_status:
+          type: string
+        booking_status:
+          type: string
+      required:
+      - booking_id
+      - booking_status
+      - payment_id
+      - payment_status
+    Review:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        booking:
+          type: string
+          format: uuid
+          readOnly: true
+        customer:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        technician:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        rating:
+          type: integer
+          readOnly: true
+        comment:
+          type: string
+          readOnly: true
+        is_visible:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - booking
+      - comment
+      - created_at
+      - customer
+      - id
+      - is_visible
+      - rating
+      - technician
+      - updated_at
+    ReviewCreateRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+        comment:
+          type: string
+          minLength: 1
+      required:
+      - comment
+      - rating
+    RoleEnum:
+      enum:
+      - CUSTOMER
+      - TECHNICIAN
+      - ADMIN
+      - SUPER_ADMIN
+      type: string
+      description: |-
+        * `CUSTOMER` - Customer
+        * `TECHNICIAN` - Technician
+        * `ADMIN` - Admin
+        * `SUPER_ADMIN` - Super Admin
+    ServiceAreaCheckResponse:
+      type: object
+      properties:
+        postal_code:
+          type: string
+        is_supported:
+          type: boolean
+        service_area:
+          type: object
+          additionalProperties: {}
+          nullable: true
+      required:
+      - is_supported
+      - postal_code
+      - service_area
+    ServiceCategory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        slug:
+          type: string
+          maxLength: 180
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          maxLength: 200
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - id
+      - name
+      - slug
+    ServiceCategoryRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 180
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        image_url:
+          type: string
+          format: uri
+          maxLength: 200
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - name
+      - slug
+    ServiceDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/ServiceCategory'
+          readOnly: true
+        name:
+          type: string
+          maxLength: 180
+        slug:
+          type: string
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        effective_price:
+          type: number
+          format: double
+          readOnly: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        estimated_duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        cover_image:
+          type: string
+          format: uri
+          readOnly: true
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        description:
+          type: string
+        whats_included:
+          type: string
+        whats_excluded:
+          type: string
+        important_notes:
+          type: string
+      required:
+      - advance_amount
+      - base_price
+      - category
+      - cover_image
+      - effective_price
+      - estimated_duration_minutes
+      - id
+      - name
+      - slug
+    ServiceImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        service:
+          type: string
+          format: uuid
+          readOnly: true
+        image:
+          type: string
+          format: uri
+        alt_text:
+          type: string
+          maxLength: 255
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - id
+      - image
+      - service
+      - updated_at
+    ServiceImageRequest:
+      type: object
+      properties:
+        image:
+          type: string
+          format: binary
+        alt_text:
+          type: string
+          maxLength: 255
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        is_active:
+          type: boolean
+      required:
+      - image
+    ServiceList:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          allOf:
+          - $ref: '#/components/schemas/ServiceCategory'
+          readOnly: true
+        name:
+          type: string
+          maxLength: 180
+        slug:
+          type: string
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        effective_price:
+          type: number
+          format: double
+          readOnly: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        estimated_duration_minutes:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        cover_image:
+          type: string
+          format: uri
+          readOnly: true
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+      required:
+      - advance_amount
+      - base_price
+      - category
+      - cover_image
+      - effective_price
+      - estimated_duration_minutes
+      - id
+      - name
+      - slug
+    TimeSlot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        service_area:
+          type: string
+          format: uuid
+          readOnly: true
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        capacity:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        available_capacity:
+          type: integer
+          readOnly: true
+      required:
+      - available_capacity
+      - capacity
+      - date
+      - end_time
+      - id
+      - service_area
+      - start_time
+    TokenPair:
+      type: object
+      properties:
+        access:
+          type: string
+        refresh:
+          type: string
+        token_type:
+          type: string
+      required:
+      - access
+      - refresh
+      - token_type
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+      required:
+      - access
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - refresh
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        phone_number:
+          type: string
+          readOnly: true
+        email:
+          type: string
+          format: email
+          readOnly: true
+          nullable: true
+        first_name:
+          type: string
+          readOnly: true
+        last_name:
+          type: string
+          readOnly: true
+        role:
+          allOf:
+          - $ref: '#/components/schemas/RoleEnum'
+          readOnly: true
+        is_verified:
+          type: boolean
+          readOnly: true
+        customer_profile:
+          allOf:
+          - $ref: '#/components/schemas/CustomerProfile'
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - customer_profile
+      - email
+      - first_name
+      - id
+      - is_verified
+      - last_name
+      - phone_number
+      - role
+      - updated_at
+    WebhookResponse:
+      type: object
+      properties:
+        processed:
+          type: boolean
+        event:
+          type: string
+      required:
+      - processed
+  securitySchemes:
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

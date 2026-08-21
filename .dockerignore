@@ -1,0 +1,13 @@
+.coverage
+.env
+.git
+.pytest_cache
+.venv
+__pycache__/
+*.pyc
+db.sqlite3
+dev.sqlite3
+test.sqlite3
+media/
+staticfiles/
+deploy-check.sqlite3

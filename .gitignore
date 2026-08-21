@@ -1,0 +1,17 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+test.sqlite3
+dev.sqlite3
+deploy-check.sqlite3
+staticfiles/
+media/
+customer-frontend/
+firebase-service-account*.json
+*service-account*.json
+*.private-key.json

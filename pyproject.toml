@@ -1,0 +1,44 @@
+[project]
+name = "purple-squad-backend"
+version = "0.1.0"
+description = "Purple Squad home services backend"
+requires-python = ">=3.12"
+dependencies = [
+    "Django>=5.2,<5.3",
+    "djangorestframework>=3.15,<3.16",
+    "djangorestframework-simplejwt>=5.3,<5.4",
+    "drf-spectacular>=0.27,<0.28",
+    "django-environ>=0.11,<0.12",
+    "django-cors-headers>=4.4,<4.5",
+    "whitenoise>=6.7,<6.8",
+    "psycopg[binary]>=3.2,<3.3",
+    "gunicorn>=22,<23",
+    "razorpay>=2.0,<3",
+    "Pillow>=10,<12",
+    "firebase-admin>=6.5,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<8.4",
+    "pytest-django>=4.9,<4.10",
+    "pytest-cov>=5,<6",
+]
+
+[tool.setuptools.packages.find]
+include = ["apps*", "common*", "config*"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.test"
+python_files = ["test_*.py", "*_tests.py"]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["apps", "config", "common"]
+omit = ["*/migrations/*", "manage.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
