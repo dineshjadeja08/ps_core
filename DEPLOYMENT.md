@@ -71,9 +71,11 @@ Uploaded media uses Django filesystem storage at `MEDIA_ROOT=/app/media`. The Re
 9. Deploy.
 10. Confirm `/api/v1/health/` returns `200`.
 11. Run `python manage.py migrate --noinput`.
-12. Create a staging superuser.
-13. Run the backend acceptance flow with test payments.
-14. Confirm duplicate webhook handling and audit logs.
+12. Run `python manage.py seed_service_areas` for Chennai, Bangalore, and Coimbatore launch coverage.
+13. Run `python manage.py seed_catalogue` for the Purple Squad service catalogue.
+14. Create a staging superuser.
+15. Run the backend acceptance flow with test payments.
+16. Confirm duplicate webhook handling and audit logs.
 
 ## Production Checklist
 
@@ -84,11 +86,12 @@ Uploaded media uses Django filesystem storage at `MEDIA_ROOT=/app/media`. The Re
 5. Set Razorpay live keys only after test mode has passed.
 6. Confirm `SHOW_API_DOCS=false`.
 7. Run Render pre-deploy command successfully.
-8. Create production superuser.
-9. Verify admin login at `/admin/`.
-10. Verify health endpoint.
-11. Run acceptance flow with a controlled live payment.
-12. Enable monitoring and backup alerts.
+8. Run `python manage.py seed_service_areas` and `python manage.py seed_catalogue`.
+9. Create production superuser.
+10. Verify admin login at `/admin/`.
+11. Verify health endpoint.
+12. Run acceptance flow with a controlled live payment.
+13. Enable monitoring and backup alerts.
 
 ## Superuser Creation
 
