@@ -19,6 +19,50 @@ from apps.bookings.serializers import (
 from apps.bookings.services import cancel_booking, complete_booking, start_booking
 
 
+class AdminBookingViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = BookingSerializer
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self):
+        queryset = (
+            Booking.objects.select_related("customer", "service", "time_slot", "assigned_technician")
+            .prefetch_related("status_history")
+            .order_by("-created_at")
+        )
+
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(booking_status=status_filter)
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(booking_number__icontains=search.strip())
+
+        return queryset
+
+    @extend_schema(
+        summary="List all bookings for admin",
+        description="Returns all customer bookings for admin operations with optional status and booking number search.",
+        responses={status.HTTP_200_OK: BookingSerializer(many=True)},
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Get any booking for admin",
+        description="Returns one booking by id for admin operations.",
+        responses={status.HTTP_200_OK: BookingSerializer},
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+
 class BookingViewSet(
     mixins.CreateModelMixin,
     mixins.ListModelMixin,

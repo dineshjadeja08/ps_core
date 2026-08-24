@@ -1,10 +1,11 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from apps.bookings.views import AdminBookingBalanceCollectionView, AdminBookingOperationView, BookingViewSet
+from apps.bookings.views import AdminBookingBalanceCollectionView, AdminBookingOperationView, AdminBookingViewSet, BookingViewSet
 
 router = SimpleRouter()
 router.register("bookings", BookingViewSet, basename="booking")
+router.register("admin/bookings", AdminBookingViewSet, basename="admin-booking")
 
 urlpatterns = [
     path(

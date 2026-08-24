@@ -1,6 +1,6 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,8 +9,31 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.serializers import BookingSerializer
-from apps.technicians.serializers import AssignTechnicianRequestSerializer
+from apps.technicians.models import TechnicianProfile
+from apps.technicians.serializers import AssignTechnicianRequestSerializer, TechnicianProfileSerializer
 from apps.technicians.services import assign_technician
+
+
+class AdminTechnicianListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = TechnicianProfileSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return (
+            TechnicianProfile.objects.select_related("user")
+            .prefetch_related("skills", "service_areas")
+            .filter(is_active=True)
+            .order_by("display_name")
+        )
+
+    @extend_schema(
+        summary="List active technicians for admin",
+        description="Returns active technician profiles for booking assignment.",
+        responses={status.HTTP_200_OK: TechnicianProfileSerializer(many=True)},
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
 
 
 class AssignTechnicianView(APIView):

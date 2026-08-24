@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 
 from apps.technicians.models import TechnicianAssignment, TechnicianProfile, TechnicianSkill
 
@@ -27,6 +29,7 @@ class TechnicianProfileSerializer(serializers.ModelSerializer):
             "joined_at",
         )
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
     def get_service_areas(self, obj):
         return [
             {
