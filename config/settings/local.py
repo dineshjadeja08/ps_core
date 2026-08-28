@@ -1,6 +1,6 @@
 from .base import *  # noqa: F403
 
-DEBUG = env("DJANGO_DEBUG", default=True)  # noqa: F405
+DEBUG = bool_env("DJANGO_DEBUG", "DEBUG", default=True)  # noqa: F405
 
 if not ALLOWED_HOSTS:  # noqa: F405
     ALLOWED_HOSTS = ["localhost", "127.0.0.1"]  # noqa: F405

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 import environ
@@ -6,15 +7,47 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 env = environ.Env(
     DEBUG=(bool, False),
-    DJANGO_ALLOWED_HOSTS=(list, []),
-    CORS_ALLOWED_ORIGINS=(list, []),
-    CSRF_TRUSTED_ORIGINS=(list, []),
 )
 environ.Env.read_env(BASE_DIR / ".env")
 
-SECRET_KEY = env("DJANGO_SECRET_KEY", default="unsafe-local-development-key")
-DEBUG = env("DJANGO_DEBUG", default=False)
-ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS", default=[])
+def csv_env(*names, default=None, strip_trailing_slash=False):
+    for name in names:
+        raw_value = os.environ.get(name)
+        if raw_value is not None:
+            values = [item.strip() for item in raw_value.split(",") if item.strip()]
+            if strip_trailing_slash:
+                return [value.rstrip("/") for value in values]
+            return values
+    return default or []
+
+
+def bool_env(*names, default=False):
+    truthy = {"1", "true", "t", "yes", "y", "on"}
+    falsy = {"0", "false", "f", "no", "n", "off"}
+    for name in names:
+        raw_value = os.environ.get(name)
+        if raw_value is None:
+            continue
+        normalized = raw_value.strip().lower()
+        if normalized in truthy:
+            return True
+        if normalized in falsy:
+            return False
+        raise RuntimeError(f"{name} must be a boolean value.")
+    return default
+
+
+def string_env(*names, default=""):
+    for name in names:
+        raw_value = os.environ.get(name)
+        if raw_value is not None:
+            return raw_value.strip()
+    return default
+
+
+SECRET_KEY = string_env("DJANGO_SECRET_KEY", "SECRET_KEY", default="unsafe-local-development-key")
+DEBUG = bool_env("DJANGO_DEBUG", "DEBUG", default=False)
+ALLOWED_HOSTS = csv_env("DJANGO_ALLOWED_HOSTS", "ALLOWED_HOSTS")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -75,7 +108,7 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {
     "default": env.db(
         "DATABASE_URL",
-        default="postgres://purple_squad:purple_squad@localhost:5432/purple_squad",
+        default=f"sqlite:///{BASE_DIR / 'dev.sqlite3'}",
     )
 }
 
@@ -107,8 +140,8 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.User"
 
-CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS", default=[])
-CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS", default=[])
+CORS_ALLOWED_ORIGINS = csv_env("CORS_ALLOWED_ORIGINS", strip_trailing_slash=True)
+CSRF_TRUSTED_ORIGINS = csv_env("CSRF_TRUSTED_ORIGINS", strip_trailing_slash=True)
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

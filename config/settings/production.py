@@ -2,7 +2,23 @@ from .base import *  # noqa: F403
 
 import os
 
-DEBUG = False
+import dj_database_url
+
+DEBUG = bool_env("DJANGO_DEBUG", "DEBUG", default=False)  # noqa: F405
+
+if DEBUG:
+    raise RuntimeError("DEBUG must be false in production.")
+
+if not os.environ.get("DATABASE_URL"):
+    raise RuntimeError("DATABASE_URL must be set in production.")
+
+DATABASES = {
+    "default": dj_database_url.config(
+        default=os.environ["DATABASE_URL"],
+        conn_max_age=600,
+        conn_health_checks=True,
+    )
+}
 
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
@@ -22,10 +38,7 @@ if SECRET_KEY == "unsafe-local-development-key":  # noqa: F405
     raise RuntimeError("DJANGO_SECRET_KEY must be set in production.")
 
 if not ALLOWED_HOSTS:  # noqa: F405
-    raise RuntimeError("DJANGO_ALLOWED_HOSTS must be set in production.")
-
-if not DATABASES["default"].get("NAME"):  # noqa: F405
-    raise RuntimeError("DATABASE_URL must be set in production.")
+    raise RuntimeError("ALLOWED_HOSTS must be set in production.")
 
 if not CORS_ALLOWED_ORIGINS:  # noqa: F405
     raise RuntimeError("CORS_ALLOWED_ORIGINS must be set in production.")

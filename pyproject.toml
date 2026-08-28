@@ -9,6 +9,7 @@ dependencies = [
     "djangorestframework-simplejwt>=5.3,<5.4",
     "drf-spectacular>=0.27,<0.28",
     "django-environ>=0.11,<0.12",
+    "dj-database-url>=2.3,<3",
     "django-cors-headers>=4.4,<4.5",
     "whitenoise>=6.7,<6.8",
     "psycopg[binary]>=3.2,<3.3",
