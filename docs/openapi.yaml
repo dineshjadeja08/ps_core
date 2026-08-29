@@ -136,6 +136,36 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/admin/bookings/:
+    get:
+      operationId: api_v1_admin_bookings_list
+      description: Returns all customer bookings for admin operations with optional
+        status and booking number search.
+      summary: List all bookings for admin
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedBookingList'
+          description: ''
   /api/v1/admin/bookings/{booking_id}/assign-technician/:
     post:
       operationId: api_v1_admin_bookings_assign_technician_create
@@ -303,6 +333,29 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/BookingOperationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/bookings/{id}/:
+    get:
+      operationId: api_v1_admin_bookings_retrieve
+      description: Returns one booking by id for admin operations.
+      summary: Get any booking for admin
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
       security:
       - jwtAuth: []
       responses:
@@ -761,6 +814,24 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/admin/technicians/:
+    get:
+      operationId: api_v1_admin_technicians_list
+      description: Returns active technician profiles for booking assignment.
+      summary: List active technicians for admin
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TechnicianProfile'
+          description: ''
   /api/v1/auth/dev-phone/:
     post:
       operationId: api_v1_auth_dev_phone_create
@@ -3002,6 +3073,61 @@ components:
       - id
       - name
       - slug
+    TechnicianProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        employee_code:
+          type: string
+          maxLength: 40
+        display_name:
+          type: string
+          maxLength: 150
+        phone:
+          type: string
+          maxLength: 16
+        skills:
+          type: array
+          items:
+            $ref: '#/components/schemas/TechnicianSkill'
+          readOnly: true
+        service_areas:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        is_available:
+          type: boolean
+        is_active:
+          type: boolean
+        joined_at:
+          type: string
+          format: date
+          nullable: true
+      required:
+      - display_name
+      - employee_code
+      - id
+      - phone
+      - service_areas
+      - skills
+    TechnicianSkill:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 120
+        description:
+          type: string
+      required:
+      - id
+      - name
     TimeSlot:
       type: object
       properties:

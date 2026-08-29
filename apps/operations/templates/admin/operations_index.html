@@ -1,0 +1,103 @@
+{% extends "admin/index.html" %}
+{% load i18n %}
+
+{% block content %}
+  {% if operations_dashboard %}
+    <div class="module" style="margin-bottom: 24px;">
+      <h2>Operations Dashboard</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;padding:12px;">
+        {% for card in operations_dashboard.cards %}
+          <a href="{{ card.url }}" style="display:block;border:1px solid var(--hairline-color);border-radius:8px;padding:14px;text-decoration:none;background:var(--body-bg);">
+            <span style="display:block;color:var(--body-quiet-color);font-size:12px;text-transform:uppercase;font-weight:700;">{{ card.label }}</span>
+            <strong style="display:block;margin-top:8px;font-size:24px;color:var(--body-fg);">{{ card.value }}</strong>
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="module" style="margin-bottom: 24px;">
+      <h2>Quick Actions</h2>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;padding:12px;">
+        {% for label, url in operations_dashboard.quick_actions %}
+          <a class="button" href="{{ url }}">{{ label }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:24px;">
+      <div class="module">
+        <h2>Recent Leads</h2>
+        <table>
+          <tbody>
+            {% for lead in operations_dashboard.recent_leads %}
+              <tr><th><a href="{% url 'admin:operations_lead_change' lead.id %}">{{ lead.customer_name }}</a></th><td>{{ lead.primary_mobile }}</td><td>{{ lead.get_status_display }}</td></tr>
+            {% empty %}
+              <tr><td>No recent leads.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="module">
+        <h2>Recent Bookings</h2>
+        <table>
+          <tbody>
+            {% for booking in operations_dashboard.recent_bookings %}
+              <tr><th><a href="{% url 'admin:bookings_booking_change' booking.id %}">{{ booking.booking_number }}</a></th><td>{{ booking.service.name }}</td><td>{{ booking.get_booking_status_display }}</td></tr>
+            {% empty %}
+              <tr><td>No recent bookings.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="module">
+        <h2>Payment-Pending Bookings</h2>
+        <table>
+          <tbody>
+            {% for booking in operations_dashboard.payment_pending_bookings %}
+              <tr><th><a href="{% url 'admin:bookings_booking_change' booking.id %}">{{ booking.booking_number }}</a></th><td>{{ booking.customer.phone_number }}</td><td>{{ booking.advance_required }}</td></tr>
+            {% empty %}
+              <tr><td>No payment-pending bookings.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="module">
+        <h2>Follow-Ups Due</h2>
+        <table>
+          <tbody>
+            {% for lead in operations_dashboard.followups_due %}
+              <tr><th><a href="{% url 'admin:operations_lead_change' lead.id %}">{{ lead.customer_name }}</a></th><td>{{ lead.primary_mobile }}</td><td>{{ lead.follow_up_at }}</td></tr>
+            {% empty %}
+              <tr><td>No follow-ups due.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="module">
+        <h2>Unassigned Bookings</h2>
+        <table>
+          <tbody>
+            {% for booking in operations_dashboard.unassigned_bookings %}
+              <tr><th><a href="{% url 'admin:bookings_booking_change' booking.id %}">{{ booking.booking_number }}</a></th><td>{{ booking.service.name }}</td><td>{{ booking.service_date }}</td></tr>
+            {% empty %}
+              <tr><td>No unassigned bookings.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="module">
+        <h2>Failed Notifications</h2>
+        <table>
+          <tbody>
+            {% for notification in operations_dashboard.failed_notifications %}
+              <tr><th><a href="{% url 'admin:notifications_notification_change' notification.id %}">{{ notification.event }}</a></th><td>{{ notification.channel }}</td><td>{{ notification.created_at }}</td></tr>
+            {% empty %}
+              <tr><td>No failed notifications.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

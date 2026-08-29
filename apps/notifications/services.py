@@ -39,13 +39,14 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
 
 def send_notification(notification):
     provider = get_notification_provider()
+    notification.send_attempts += 1
     try:
         result = provider.send(notification)
     except Exception as exc:
         notification.status = NotificationStatus.FAILED
         notification.provider = getattr(provider, "provider_name", "")
         notification.error_message = str(exc)
-        notification.save(update_fields=["status", "provider", "error_message", "updated_at"])
+        notification.save(update_fields=["status", "provider", "send_attempts", "error_message", "updated_at"])
         logger.exception("notification_send_failed notification_id=%s", notification.id)
         return notification
 
@@ -53,7 +54,8 @@ def send_notification(notification):
     notification.provider = result.provider
     notification.provider_message_id = result.provider_message_id
     notification.sent_at = timezone.now()
-    notification.save(update_fields=["status", "provider", "provider_message_id", "sent_at", "updated_at"])
+    notification.error_message = ""
+    notification.save(update_fields=["status", "provider", "provider_message_id", "send_attempts", "error_message", "sent_at", "updated_at"])
     return notification
 
 
@@ -64,7 +66,11 @@ def get_notification_provider():
 
 def _title_for_event(event):
     titles = {
+        NotificationEvent.BOOKING_RECEIVED: "Booking received",
+        NotificationEvent.PAYMENT_PENDING: "Payment pending",
+        NotificationEvent.PAYMENT_SUCCESSFUL: "Payment successful",
         NotificationEvent.BOOKING_CONFIRMED: "Booking confirmed",
+        NotificationEvent.BOOKING_RESCHEDULED: "Booking rescheduled",
         NotificationEvent.TECHNICIAN_ASSIGNED: "Technician assigned",
         NotificationEvent.BOOKING_CANCELLED: "Booking cancelled",
         NotificationEvent.SERVICE_COMPLETED: "Service completed",
@@ -75,7 +81,11 @@ def _title_for_event(event):
 def _message_for_event(event, booking):
     booking_number = booking.booking_number if booking else "your booking"
     messages = {
+        NotificationEvent.BOOKING_RECEIVED: "Your booking has been received. Our Purple Squad team will contact you within 10 minutes to confirm the service and technician details.",
+        NotificationEvent.PAYMENT_PENDING: f"{booking_number} is awaiting advance payment.",
+        NotificationEvent.PAYMENT_SUCCESSFUL: f"Payment for {booking_number} was received.",
         NotificationEvent.BOOKING_CONFIRMED: f"{booking_number} is confirmed.",
+        NotificationEvent.BOOKING_RESCHEDULED: f"{booking_number} has been rescheduled.",
         NotificationEvent.TECHNICIAN_ASSIGNED: f"A technician has been assigned to {booking_number}.",
         NotificationEvent.BOOKING_CANCELLED: f"{booking_number} has been cancelled.",
         NotificationEvent.SERVICE_COMPLETED: f"{booking_number} has been completed.",

@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "apps.technicians",
     "apps.reviews",
     "apps.notifications",
+    "apps.operations",
     "apps.audit",
     "common",
 ]

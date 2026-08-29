@@ -21,6 +21,15 @@ class AuditAction(models.TextChoices):
     CATEGORY_CREATED = "CATEGORY_CREATED", "Category created"
     CATEGORY_UPDATED = "CATEGORY_UPDATED", "Category updated"
     CATEGORY_DEACTIVATED = "CATEGORY_DEACTIVATED", "Category deactivated"
+    LEAD_CREATED = "LEAD_CREATED", "Lead created"
+    LEAD_UPDATED = "LEAD_UPDATED", "Lead updated"
+    LEAD_STATUS_CHANGED = "LEAD_STATUS_CHANGED", "Lead status changed"
+    LEAD_CONVERTED = "LEAD_CONVERTED", "Lead converted"
+    BANNER_CREATED = "BANNER_CREATED", "Banner created"
+    BANNER_UPDATED = "BANNER_UPDATED", "Banner updated"
+    BANNER_PUBLICATION_CHANGED = "BANNER_PUBLICATION_CHANGED", "Banner publication changed"
+    FAQ_CREATED = "FAQ_CREATED", "FAQ created"
+    FAQ_UPDATED = "FAQ_UPDATED", "FAQ updated"
 
 
 class AuditLog(BaseModel):
