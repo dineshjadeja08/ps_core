@@ -70,3 +70,24 @@ class CustomerProfile(BaseModel):
 
     def __str__(self):
         return self.display_name or self.user.phone_number
+
+
+class CustomerSupportNote(BaseModel):
+    customer = models.ForeignKey(User, on_delete=models.CASCADE, related_name="support_notes")
+    note = models.TextField()
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="customer_support_notes_created",
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["customer", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"Support note for {self.customer.phone_number}"

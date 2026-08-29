@@ -9,6 +9,7 @@ class AuditAction(models.TextChoices):
     ADMIN_BOOKING_COMPLETE = "ADMIN_BOOKING_COMPLETE", "Admin booking complete"
     ADMIN_BOOKING_CANCEL = "ADMIN_BOOKING_CANCEL", "Admin booking cancel"
     ADMIN_RECORD_BALANCE = "ADMIN_RECORD_BALANCE", "Admin record balance"
+    ADMIN_PAYMENT_LINK_CREATED = "ADMIN_PAYMENT_LINK_CREATED", "Admin payment link created"
     TECHNICIAN_ASSIGN = "TECHNICIAN_ASSIGN", "Technician assign"
     TECHNICIAN_CREATED = "TECHNICIAN_CREATED", "Technician created"
     TECHNICIAN_UPDATED = "TECHNICIAN_UPDATED", "Technician updated"
@@ -36,6 +37,7 @@ class AuditAction(models.TextChoices):
     BANNER_PUBLICATION_CHANGED = "BANNER_PUBLICATION_CHANGED", "Banner publication changed"
     FAQ_CREATED = "FAQ_CREATED", "FAQ created"
     FAQ_UPDATED = "FAQ_UPDATED", "FAQ updated"
+    CUSTOMER_SUPPORT_NOTE_CREATED = "CUSTOMER_SUPPORT_NOTE_CREATED", "Customer support note created"
 
 
 class AuditLog(BaseModel):

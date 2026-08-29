@@ -1,5 +1,34 @@
 from rest_framework import serializers
 
+from apps.payments.models import Payment
+
+
+class PaymentSerializer(serializers.ModelSerializer):
+    booking_number = serializers.CharField(source="booking.booking_number", read_only=True)
+    customer_phone = serializers.CharField(source="booking.customer.phone_number", read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = (
+            "id",
+            "booking",
+            "booking_number",
+            "customer_phone",
+            "provider",
+            "provider_order_id",
+            "provider_payment_id",
+            "amount",
+            "currency",
+            "payment_type",
+            "status",
+            "signature_verified",
+            "idempotency_key",
+            "paid_at",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
 
 class PaymentOrderResponseSerializer(serializers.Serializer):
     payment_id = serializers.UUIDField()

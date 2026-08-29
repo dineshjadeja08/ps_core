@@ -180,6 +180,13 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    "ENUM_NAME_OVERRIDES": {
+        "BookingStatusEnum": "apps.bookings.models.BookingStatus.choices",
+        "PaymentStatusEnum": "apps.bookings.models.PaymentStatus.choices",
+        "PaymentRecordStatusEnum": "apps.payments.models.PaymentRecordStatus.choices",
+        "NotificationStatusEnum": "apps.notifications.models.NotificationStatus.choices",
+        "LeadStatusEnum": "apps.operations.models.LeadStatus.choices",
+    },
 }
 
 SIMPLE_JWT = {

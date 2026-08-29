@@ -1,5 +1,8 @@
 from drf_spectacular.utils import OpenApiExample, extend_schema
+from django.db.models import Count, Max, Q, Sum
 from rest_framework import status
+from rest_framework import mixins, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -9,6 +12,9 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from apps.accounts.serializers import (
+    AdminCustomerHistorySerializer,
+    AdminCustomerSerializer,
+    CustomerSupportNoteSerializer,
     DevPhoneLoginRequestSerializer,
     FirebaseLoginRequestSerializer,
     AuthLoginResponseSerializer,
@@ -18,6 +24,10 @@ from apps.accounts.serializers import (
     UserSerializer,
     UserProfileUpdateSerializer,
 )
+from apps.accounts.models import CustomerSupportNote, User, UserRole
+from apps.accounts.permissions import IsAdminRole
+from apps.audit.models import AuditAction
+from apps.audit.services import audit_event
 from apps.accounts.services import authenticate_dev_phone, authenticate_with_firebase, authenticate_with_otp, send_login_otp
 from django.conf import settings
 
@@ -234,3 +244,71 @@ class RefreshView(TokenRefreshView):
     )
     def post(self, request, *args, **kwargs):
         return super().post(request, *args, **kwargs)
+
+
+class AdminCustomerViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return AdminCustomerHistorySerializer
+        return AdminCustomerSerializer
+
+    def get_queryset(self):
+        queryset = (
+            User.objects.filter(role=UserRole.CUSTOMER)
+            .select_related("customer_profile")
+            .prefetch_related("addresses", "bookings", "bookings__payments", "notifications", "reviews", "support_notes")
+            .annotate(
+                total_bookings=Count("bookings", distinct=True),
+                total_amount_spent=Sum("bookings__total_amount"),
+                last_booking_at=Max("bookings__created_at"),
+            )
+            .order_by("-created_at")
+        )
+        search = self.request.query_params.get("search")
+        if search:
+            term = search.strip()
+            queryset = queryset.filter(
+                Q(phone_number__icontains=term) | Q(first_name__icontains=term) | Q(last_name__icontains=term)
+            )
+        return queryset
+
+    @extend_schema(summary="List customers for admin", responses={status.HTTP_200_OK: AdminCustomerSerializer(many=True)})
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Get customer history for admin", responses={status.HTTP_200_OK: AdminCustomerHistorySerializer})
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Add customer support note",
+        request=CustomerSupportNoteSerializer,
+        responses={status.HTTP_201_CREATED: CustomerSupportNoteSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="support-notes")
+    def add_support_note(self, request, *args, **kwargs):
+        customer = self.get_object()
+        serializer = CustomerSupportNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        note = CustomerSupportNote.objects.create(
+            customer=customer,
+            note=serializer.validated_data["note"],
+            created_by=request.user,
+        )
+        audit_event(
+            action=AuditAction.CUSTOMER_SUPPORT_NOTE_CREATED,
+            actor=request.user,
+            request=request,
+            resource_type="customer",
+            resource_id=customer.id,
+            metadata={"note_id": str(note.id)},
+        )
+        return Response(CustomerSupportNoteSerializer(note).data, status=status.HTTP_201_CREATED)

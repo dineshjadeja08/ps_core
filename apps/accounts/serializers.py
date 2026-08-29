@@ -1,6 +1,8 @@
 from rest_framework import serializers
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 
-from apps.accounts.models import CustomerProfile, User
+from apps.accounts.models import CustomerProfile, CustomerSupportNote, User
 
 
 class FirebaseLoginRequestSerializer(serializers.Serializer):
@@ -92,3 +94,135 @@ class AuthLoginResponseSerializer(serializers.Serializer):
     user = UserSerializer()
     tokens = TokenPairSerializer()
     created = serializers.BooleanField()
+
+
+class CustomerSupportNoteSerializer(serializers.ModelSerializer):
+    created_by_phone = serializers.CharField(source="created_by.phone_number", read_only=True)
+
+    class Meta:
+        model = CustomerSupportNote
+        fields = ("id", "customer", "note", "created_by", "created_by_phone", "created_at", "updated_at")
+        read_only_fields = ("id", "customer", "created_by", "created_by_phone", "created_at", "updated_at")
+
+
+class AdminCustomerSerializer(UserSerializer):
+    total_bookings = serializers.IntegerField(read_only=True)
+    total_amount_spent = serializers.DecimalField(max_digits=12, decimal_places=2, read_only=True)
+    last_booking_at = serializers.DateTimeField(read_only=True)
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + (
+            "is_active",
+            "total_bookings",
+            "total_amount_spent",
+            "last_booking_at",
+        )
+
+
+class AdminCustomerHistorySerializer(UserSerializer):
+    addresses = serializers.SerializerMethodField()
+    leads = serializers.SerializerMethodField()
+    bookings = serializers.SerializerMethodField()
+    payments = serializers.SerializerMethodField()
+    notifications = serializers.SerializerMethodField()
+    reviews = serializers.SerializerMethodField()
+    support_notes = CustomerSupportNoteSerializer(many=True, read_only=True)
+
+    class Meta(UserSerializer.Meta):
+        fields = UserSerializer.Meta.fields + (
+            "is_active",
+            "addresses",
+            "leads",
+            "bookings",
+            "payments",
+            "notifications",
+            "reviews",
+            "support_notes",
+        )
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_addresses(self, obj):
+        return [
+            {
+                "id": str(address.id),
+                "label": address.label,
+                "recipient_name": address.recipient_name,
+                "city": address.city,
+                "postal_code": address.postal_code,
+                "is_default": address.is_default,
+                "is_active": address.is_active,
+            }
+            for address in obj.addresses.all()[:20]
+        ]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_leads(self, obj):
+        from apps.operations.models import Lead
+
+        return [
+            {
+                "id": str(lead.id),
+                "customer_name": lead.customer_name,
+                "primary_mobile": lead.primary_mobile,
+                "status": lead.status,
+                "source": lead.source,
+                "created_at": lead.created_at,
+            }
+            for lead in Lead.objects.filter(primary_mobile=obj.phone_number).order_by("-created_at")[:20]
+        ]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_bookings(self, obj):
+        return [
+            {
+                "id": str(booking.id),
+                "booking_number": booking.booking_number,
+                "service_date": booking.service_date,
+                "booking_status": booking.booking_status,
+                "payment_status": booking.payment_status,
+                "total_amount": booking.total_amount,
+                "created_at": booking.created_at,
+            }
+            for booking in obj.bookings.all()[:20]
+        ]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_payments(self, obj):
+        return [
+            {
+                "id": str(payment.id),
+                "booking": str(payment.booking_id),
+                "amount": payment.amount,
+                "payment_type": payment.payment_type,
+                "status": payment.status,
+                "paid_at": payment.paid_at,
+            }
+            for booking in obj.bookings.all()[:20]
+            for payment in booking.payments.all()[:10]
+        ]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_notifications(self, obj):
+        return [
+            {
+                "id": str(notification.id),
+                "event": notification.event,
+                "channel": notification.channel,
+                "status": notification.status,
+                "created_at": notification.created_at,
+                "sent_at": notification.sent_at,
+            }
+            for notification in obj.notifications.all()[:20]
+        ]
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_reviews(self, obj):
+        return [
+            {
+                "id": str(review.id),
+                "rating": review.rating,
+                "is_visible": review.is_visible,
+                "created_at": review.created_at,
+            }
+            for review in obj.reviews.all()[:20]
+        ]

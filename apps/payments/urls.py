@@ -1,6 +1,10 @@
 from django.urls import path
+from rest_framework.routers import SimpleRouter
 
-from apps.payments.views import BookingAdvancePaymentOrderView, PaymentVerifyView, razorpay_webhook
+from apps.payments.views import AdminPaymentViewSet, BookingAdvancePaymentOrderView, PaymentVerifyView, razorpay_webhook
+
+router = SimpleRouter()
+router.register("admin/payments", AdminPaymentViewSet, basename="admin-payment")
 
 urlpatterns = [
     path(
@@ -10,4 +14,4 @@ urlpatterns = [
     ),
     path("payments/verify/", PaymentVerifyView.as_view(), name="payment-verify"),
     path("payments/webhooks/razorpay/", razorpay_webhook, name="razorpay-webhook"),
-]
+] + router.urls
