@@ -72,8 +72,17 @@ def _title_for_event(event):
         NotificationEvent.BOOKING_CONFIRMED: "Booking confirmed",
         NotificationEvent.BOOKING_RESCHEDULED: "Booking rescheduled",
         NotificationEvent.TECHNICIAN_ASSIGNED: "Technician assigned",
+        NotificationEvent.TECHNICIAN_CHANGED: "Technician changed",
         NotificationEvent.BOOKING_CANCELLED: "Booking cancelled",
+        NotificationEvent.TECHNICIAN_EN_ROUTE: "Technician en route",
+        NotificationEvent.TECHNICIAN_ARRIVED: "Technician arrived",
+        NotificationEvent.SERVICE_STARTED: "Service started",
         NotificationEvent.SERVICE_COMPLETED: "Service completed",
+        NotificationEvent.BALANCE_PAYMENT_PENDING: "Balance payment pending",
+        NotificationEvent.BALANCE_PAYMENT_SUCCESSFUL: "Balance payment successful",
+        NotificationEvent.REFUND_INITIATED: "Refund initiated",
+        NotificationEvent.REFUND_COMPLETED: "Refund completed",
+        NotificationEvent.REVIEW_REQUEST: "Review request",
     }
     return titles.get(event, "Purple Squad update")
 
@@ -87,7 +96,16 @@ def _message_for_event(event, booking):
         NotificationEvent.BOOKING_CONFIRMED: f"{booking_number} is confirmed.",
         NotificationEvent.BOOKING_RESCHEDULED: f"{booking_number} has been rescheduled.",
         NotificationEvent.TECHNICIAN_ASSIGNED: f"A technician has been assigned to {booking_number}.",
+        NotificationEvent.TECHNICIAN_CHANGED: f"The technician for {booking_number} has been updated.",
         NotificationEvent.BOOKING_CANCELLED: f"{booking_number} has been cancelled.",
+        NotificationEvent.TECHNICIAN_EN_ROUTE: f"Your technician is on the way for {booking_number}.",
+        NotificationEvent.TECHNICIAN_ARRIVED: f"Your technician has arrived for {booking_number}.",
+        NotificationEvent.SERVICE_STARTED: f"Service work has started for {booking_number}.",
         NotificationEvent.SERVICE_COMPLETED: f"{booking_number} has been completed.",
+        NotificationEvent.BALANCE_PAYMENT_PENDING: f"Balance payment is pending for {booking_number}.",
+        NotificationEvent.BALANCE_PAYMENT_SUCCESSFUL: f"Balance payment for {booking_number} was received.",
+        NotificationEvent.REFUND_INITIATED: f"A refund has been initiated for {booking_number}.",
+        NotificationEvent.REFUND_COMPLETED: f"A refund has been completed for {booking_number}.",
+        NotificationEvent.REVIEW_REQUEST: f"Thank you for choosing Purple Squad. Please share your service experience for {booking_number}.",
     }
     return messages.get(event, f"Update for {booking_number}.")

@@ -8,7 +8,7 @@ from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.catalogue.models import Service, ServiceCategory
 from apps.locations.models import Address, ServiceArea
 from apps.scheduling.models import TimeSlot
-from apps.technicians.models import TechnicianProfile, TechnicianSkill
+from apps.technicians.models import TechnicianAvailabilityStatus, TechnicianProfile, TechnicianSkill, TechnicianVerificationStatus
 
 
 def user_factory(phone_number, *, role=UserRole.CUSTOMER, **overrides):
@@ -94,6 +94,8 @@ def technician_factory(*, phone_number="+919876543300", code="TECH-FLOW", servic
         phone=phone_number,
         is_active=True,
         is_available=True,
+        background_verification_status=TechnicianVerificationStatus.VERIFIED,
+        availability_status=TechnicianAvailabilityStatus.AVAILABLE,
     )
     profile.skills.add(skill)
     if service_area is not None:

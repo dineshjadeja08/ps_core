@@ -309,6 +309,41 @@ paths:
               schema:
                 $ref: '#/components/schemas/Booking'
           description: ''
+  /api/v1/admin/bookings/{booking_id}/remove-technician/:
+    post:
+      operationId: api_v1_admin_bookings_remove_technician_create
+      description: Admin-only removal of the active technician assignment while preserving
+        assignment history.
+      summary: Remove technician assignment
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RemoveTechnicianAssignmentRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RemoveTechnicianAssignmentRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RemoveTechnicianAssignmentRequestRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+          description: ''
   /api/v1/admin/bookings/{booking_id}/start/:
     post:
       operationId: api_v1_admin_bookings_start_create
@@ -817,8 +852,15 @@ paths:
   /api/v1/admin/technicians/:
     get:
       operationId: api_v1_admin_technicians_list
-      description: Returns active technician profiles for booking assignment.
+      description: Returns active technician profiles for booking assignment. Pass
+        booking_id to list only eligible technicians.
       summary: List active technicians for admin
+      parameters:
+      - in: query
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
       tags:
       - api
       security:
@@ -2023,6 +2065,9 @@ components:
           format: uuid
         notes:
           type: string
+        reason:
+          type: string
+          maxLength: 160
       required:
       - technician_id
     AuthLoginResponse:
@@ -2038,6 +2083,34 @@ components:
       - created
       - tokens
       - user
+    AvailabilityStatusEnum:
+      enum:
+      - AVAILABLE
+      - BUSY
+      - ON_LEAVE
+      - OFFLINE
+      - SUSPENDED
+      type: string
+      description: |-
+        * `AVAILABLE` - Available
+        * `BUSY` - Busy
+        * `ON_LEAVE` - On leave
+        * `OFFLINE` - Offline
+        * `SUSPENDED` - Suspended
+    BackgroundVerificationStatusEnum:
+      enum:
+      - PENDING
+      - UNDER_REVIEW
+      - VERIFIED
+      - REJECTED
+      - SUSPENDED
+      type: string
+      description: |-
+        * `PENDING` - Pending
+        * `UNDER_REVIEW` - Under review
+        * `VERIFIED` - Verified
+        * `REJECTED` - Rejected
+        * `SUSPENDED` - Suspended
     BalanceCollectionRequest:
       type: object
       properties:
@@ -2263,6 +2336,16 @@ components:
           minLength: 1
       required:
       - phone_number
+    EmploymentStatusEnum:
+      enum:
+      - ACTIVE
+      - INACTIVE
+      - LEFT
+      type: string
+      description: |-
+        * `ACTIVE` - Active
+        * `INACTIVE` - Inactive
+        * `LEFT` - Left
     FirebaseLoginRequestRequest:
       type: object
       properties:
@@ -2736,6 +2819,11 @@ components:
       - booking_status
       - payment_id
       - payment_status
+    RemoveTechnicianAssignmentRequestRequest:
+      type: object
+      properties:
+        notes:
+          type: string
     Review:
       type: object
       properties:
@@ -3086,9 +3174,30 @@ components:
         display_name:
           type: string
           maxLength: 150
+        profile_photo_url:
+          type: string
+          format: uri
+          readOnly: true
         phone:
           type: string
           maxLength: 16
+        alternate_phone:
+          type: string
+          maxLength: 16
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        technician_type:
+          $ref: '#/components/schemas/TechnicianTypeEnum'
+        employment_status:
+          $ref: '#/components/schemas/EmploymentStatusEnum'
+        city:
+          type: string
+          maxLength: 100
+        pincode:
+          type: string
+          maxLength: 20
         skills:
           type: array
           items:
@@ -3098,6 +3207,33 @@ components:
           type: object
           additionalProperties: {}
           readOnly: true
+        supported_services:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        experience_years:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,3}(?:\.\d{0,1})?$
+        languages: {}
+        background_verification_status:
+          $ref: '#/components/schemas/BackgroundVerificationStatusEnum'
+        availability_status:
+          $ref: '#/components/schemas/AvailabilityStatusEnum'
+        average_rating:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,1}(?:\.\d{0,2})?$
+        completed_job_count:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
+        cancellation_count:
+          type: integer
+          maximum: 9223372036854775807
+          minimum: 0
+          format: int64
         is_available:
           type: boolean
         is_active:
@@ -3106,13 +3242,23 @@ components:
           type: string
           format: date
           nullable: true
+        id_document_available:
+          type: boolean
+          readOnly: true
+        address_document_available:
+          type: boolean
+          readOnly: true
       required:
+      - address_document_available
       - display_name
       - employee_code
       - id
+      - id_document_available
       - phone
+      - profile_photo_url
       - service_areas
       - skills
+      - supported_services
     TechnicianSkill:
       type: object
       properties:
@@ -3128,6 +3274,16 @@ components:
       required:
       - id
       - name
+    TechnicianTypeEnum:
+      enum:
+      - EMPLOYEE
+      - CONTRACT
+      - PARTNER
+      type: string
+      description: |-
+        * `EMPLOYEE` - Employee
+        * `CONTRACT` - Contract technician
+        * `PARTNER` - Service partner
     TimeSlot:
       type: object
       properties:

@@ -10,7 +10,15 @@ from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.catalogue.models import Service, ServiceCategory
 from apps.locations.models import Address, ServiceArea
 from apps.scheduling.models import TimeSlot
-from apps.technicians.models import TechnicianAssignment, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import (
+    TechnicianAssignment,
+    TechnicianAvailabilityStatus,
+    TechnicianLeave,
+    TechnicianProfile,
+    TechnicianSkill,
+    TechnicianVerificationStatus,
+    TechnicianWorkingHours,
+)
 
 
 @pytest.fixture
@@ -94,7 +102,7 @@ def booking(customer, service_area):
     )
 
 
-def create_technician(*, code="TECH-001", phone="+919876543300", active=True, service_area=None):
+def create_technician(*, code="TECH-001", phone="+919876543300", active=True, service_area=None, service=None):
     user = User.objects.create_user(phone, role=UserRole.TECHNICIAN, is_verified=True)
     skill = TechnicianSkill.objects.create(name=f"AC Skill {code}")
     profile = TechnicianProfile.objects.create(
@@ -104,10 +112,14 @@ def create_technician(*, code="TECH-001", phone="+919876543300", active=True, se
         phone=phone,
         is_active=active,
         is_available=True,
+        background_verification_status=TechnicianVerificationStatus.VERIFIED if active else TechnicianVerificationStatus.PENDING,
+        availability_status=TechnicianAvailabilityStatus.AVAILABLE,
     )
     profile.skills.add(skill)
     if service_area:
         profile.service_areas.add(service_area)
+    if service:
+        profile.supported_services.add(service)
     return profile
 
 
@@ -206,3 +218,167 @@ def test_booking_status_transition(admin_client, booking, service_area):
 
     assert response.status_code == 200
     assert response.json()["booking_status"] == BookingStatus.TECHNICIAN_ASSIGNED
+
+
+@pytest.mark.django_db
+def test_assignment_requires_verified_technician(admin_client, booking, service_area):
+    technician = create_technician(service_area=service_area)
+    technician.background_verification_status = TechnicianVerificationStatus.UNDER_REVIEW
+    technician.save()
+
+    response = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Technician is not verified." in str(response.json())
+
+
+@pytest.mark.django_db
+def test_assignment_rejects_unsupported_service(admin_client, booking, service_area):
+    category = ServiceCategory.objects.create(name="Cleaning", slug="cleaning")
+    other_service = Service.objects.create(
+        category=category,
+        name="Bathroom Cleaning",
+        slug="bathroom-cleaning",
+        base_price=Decimal("999.00"),
+        advance_amount=Decimal("199.00"),
+        estimated_duration_minutes=60,
+    )
+    technician = create_technician(service_area=service_area, service=other_service)
+
+    response = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "does not support this service" in str(response.json())
+
+
+@pytest.mark.django_db
+def test_assignment_rejects_non_working_hours(admin_client, booking, service_area):
+    technician = create_technician(service_area=service_area, service=booking.service)
+    TechnicianWorkingHours.objects.create(
+        technician=technician,
+        day_of_week=booking.service_date.weekday(),
+        start_time=time(13, 0),
+        end_time=time(18, 0),
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "not working during this slot" in str(response.json())
+
+
+@pytest.mark.django_db
+def test_assignment_rejects_technician_on_leave(admin_client, booking, service_area):
+    technician = create_technician(service_area=service_area, service=booking.service)
+    slot_start = timezone.make_aware(
+        timezone.datetime.combine(booking.service_date, booking.time_slot.start_time),
+        timezone.get_current_timezone(),
+    )
+    TechnicianLeave.objects.create(
+        technician=technician,
+        start_at=slot_start - timedelta(minutes=30),
+        end_at=slot_start + timedelta(hours=3),
+        reason="Personal leave",
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "on leave" in str(response.json())
+
+
+@pytest.mark.django_db
+def test_assignment_rejects_overlapping_booking(admin_client, booking, service_area, customer):
+    technician = create_technician(service_area=service_area, service=booking.service)
+    first_response = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+    assert first_response.status_code == 200
+
+    other_booking = Booking.objects.create(
+        booking_number="PS-TECH02",
+        customer=customer,
+        service=booking.service,
+        address=booking.address,
+        address_snapshot={"postal_code": "635601"},
+        service_date=booking.service_date,
+        time_slot=booking.time_slot,
+        problem_description="Another visit.",
+        subtotal=Decimal("1499.00"),
+        total_amount=Decimal("1499.00"),
+        advance_required=Decimal("299.00"),
+        advance_paid=Decimal("299.00"),
+        balance_due=Decimal("1200.00"),
+        booking_status=BookingStatus.CONFIRMED,
+        payment_status=PaymentStatus.PARTIALLY_PAID,
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/bookings/{other_booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "overlapping booking" in str(response.json())
+
+
+@pytest.mark.django_db
+def test_admin_technician_list_can_filter_eligible_by_booking(admin_client, booking, service_area):
+    eligible = create_technician(code="TECH-ELIG", phone="+919876543303", service_area=service_area, service=booking.service)
+    other_area = ServiceArea.objects.create(
+        name="Other Area",
+        city="Tirupattur",
+        state="Tamil Nadu",
+        postal_code="635602",
+    )
+    create_technician(code="TECH-BAD", phone="+919876543304", service_area=other_area, service=booking.service)
+
+    response = admin_client.get(f"/api/v1/admin/technicians/?booking_id={booking.id}")
+
+    assert response.status_code == 200
+    ids = {item["id"] for item in response.json()}
+    assert str(eligible.id) in ids
+    assert len(ids) == 1
+
+
+@pytest.mark.django_db
+def test_remove_assignment_preserves_assignment_history(admin_client, booking, service_area):
+    technician = create_technician(service_area=service_area, service=booking.service)
+    admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id), "reason": "Nearest technician"},
+        format="json",
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/remove-technician/",
+        {"notes": "Technician called in sick."},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    booking.refresh_from_db()
+    assignment = TechnicianAssignment.objects.get()
+    assert booking.assigned_technician is None
+    assert booking.booking_status == BookingStatus.CONFIRMED
+    assert assignment.unassigned_at is not None
+    assert "called in sick" in assignment.notes

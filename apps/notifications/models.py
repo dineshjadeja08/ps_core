@@ -20,8 +20,17 @@ class NotificationEvent(models.TextChoices):
     BOOKING_CONFIRMED = "BOOKING_CONFIRMED", "Booking confirmed"
     BOOKING_RESCHEDULED = "BOOKING_RESCHEDULED", "Booking rescheduled"
     TECHNICIAN_ASSIGNED = "TECHNICIAN_ASSIGNED", "Technician assigned"
+    TECHNICIAN_CHANGED = "TECHNICIAN_CHANGED", "Technician changed"
     BOOKING_CANCELLED = "BOOKING_CANCELLED", "Booking cancelled"
+    TECHNICIAN_EN_ROUTE = "TECHNICIAN_EN_ROUTE", "Technician en route"
+    TECHNICIAN_ARRIVED = "TECHNICIAN_ARRIVED", "Technician arrived"
+    SERVICE_STARTED = "SERVICE_STARTED", "Service started"
     SERVICE_COMPLETED = "SERVICE_COMPLETED", "Service completed"
+    BALANCE_PAYMENT_PENDING = "BALANCE_PAYMENT_PENDING", "Balance payment pending"
+    BALANCE_PAYMENT_SUCCESSFUL = "BALANCE_PAYMENT_SUCCESSFUL", "Balance payment successful"
+    REFUND_INITIATED = "REFUND_INITIATED", "Refund initiated"
+    REFUND_COMPLETED = "REFUND_COMPLETED", "Refund completed"
+    REVIEW_REQUEST = "REVIEW_REQUEST", "Review request"
 
 
 class NotificationStatus(models.TextChoices):

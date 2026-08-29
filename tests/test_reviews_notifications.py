@@ -14,7 +14,7 @@ from apps.notifications.models import Notification, NotificationChannel, Notific
 from apps.notifications.services import emit_notification_event
 from apps.reviews.models import Review
 from apps.scheduling.models import TimeSlot
-from apps.technicians.models import TechnicianProfile, TechnicianSkill
+from apps.technicians.models import TechnicianAvailabilityStatus, TechnicianProfile, TechnicianSkill, TechnicianVerificationStatus
 from apps.technicians.services import assign_technician
 
 
@@ -140,6 +140,8 @@ def create_technician(service_area):
         phone=user.phone_number,
         is_active=True,
         is_available=True,
+        background_verification_status=TechnicianVerificationStatus.VERIFIED,
+        availability_status=TechnicianAvailabilityStatus.AVAILABLE,
     )
     profile.skills.add(skill)
     profile.service_areas.add(service_area)
