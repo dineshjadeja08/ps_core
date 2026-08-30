@@ -136,6 +136,56 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/admin/audit-logs/:
+    get:
+      operationId: api_v1_admin_audit_logs_list
+      summary: List audit logs for admin
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAuditLogList'
+          description: ''
+  /api/v1/admin/audit-logs/{id}/:
+    get:
+      operationId: api_v1_admin_audit_logs_retrieve
+      summary: Get audit log for admin
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLog'
+          description: ''
   /api/v1/admin/bookings/:
     get:
       operationId: api_v1_admin_bookings_list
@@ -1220,6 +1270,102 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaymentOrderResponse'
           description: ''
+  /api/v1/admin/reports/summary/:
+    get:
+      operationId: api_v1_admin_reports_summary_retrieve
+      summary: Get admin reports summary
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReportSummary'
+          description: ''
+  /api/v1/admin/reviews/:
+    get:
+      operationId: api_v1_admin_reviews_list
+      summary: List reviews for admin
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminReviewList'
+          description: ''
+  /api/v1/admin/reviews/{id}/:
+    get:
+      operationId: api_v1_admin_reviews_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReview'
+          description: ''
+    patch:
+      operationId: api_v1_admin_reviews_partial_update
+      summary: Update review moderation fields
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminReviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminReviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminReviewRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminReview'
+          description: ''
   /api/v1/admin/service-categories/:
     get:
       operationId: api_v1_admin_service_categories_list
@@ -1669,6 +1815,162 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/admin/settings/:
+    get:
+      operationId: api_v1_admin_settings_retrieve
+      summary: Get safe admin settings
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminSettings'
+          description: ''
+  /api/v1/admin/staff/:
+    get:
+      operationId: api_v1_admin_staff_list
+      summary: List staff users for admin
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminStaffList'
+          description: ''
+  /api/v1/admin/staff-groups/:
+    get:
+      operationId: api_v1_admin_staff_groups_list
+      summary: List staff groups for admin
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedStaffGroupList'
+          description: ''
+  /api/v1/admin/staff/{id}/:
+    get:
+      operationId: api_v1_admin_staff_retrieve
+      summary: Get staff user for admin
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStaff'
+          description: ''
+    put:
+      operationId: api_v1_admin_staff_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminStaffUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminStaffUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminStaffUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStaffUpdate'
+          description: ''
+    patch:
+      operationId: api_v1_admin_staff_partial_update
+      summary: Update staff user for admin
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminStaffUpdateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminStaffUpdateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminStaffUpdateRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStaff'
+          description: ''
   /api/v1/admin/technicians/:
     get:
       operationId: api_v1_admin_technicians_list
@@ -2496,6 +2798,80 @@ paths:
           description: ''
 components:
   schemas:
+    ActionEnum:
+      enum:
+      - ADMIN_BOOKING_START
+      - ADMIN_BOOKING_COMPLETE
+      - ADMIN_BOOKING_CANCEL
+      - ADMIN_RECORD_BALANCE
+      - ADMIN_PAYMENT_LINK_CREATED
+      - TECHNICIAN_ASSIGN
+      - TECHNICIAN_CREATED
+      - TECHNICIAN_UPDATED
+      - TECHNICIAN_VERIFICATION_CHANGED
+      - TECHNICIAN_AVAILABILITY_CHANGED
+      - TECHNICIAN_ASSIGNMENT_REMOVED
+      - TECHNICIAN_LEAVE_CREATED
+      - PAYMENT_WEBHOOK_RECEIVED
+      - PAYMENT_WEBHOOK_REJECTED
+      - PERMISSION_DENIED
+      - SERVICE_CREATED
+      - SERVICE_UPDATED
+      - SERVICE_DEACTIVATED
+      - SERVICE_PRICE_CHANGED
+      - SERVICE_IMAGE_CHANGED
+      - CATEGORY_CREATED
+      - CATEGORY_UPDATED
+      - CATEGORY_DEACTIVATED
+      - LEAD_CREATED
+      - LEAD_UPDATED
+      - LEAD_STATUS_CHANGED
+      - LEAD_CONVERTED
+      - BANNER_CREATED
+      - BANNER_UPDATED
+      - BANNER_PUBLICATION_CHANGED
+      - FAQ_CREATED
+      - FAQ_UPDATED
+      - REVIEW_UPDATED
+      - CUSTOMER_SUPPORT_NOTE_CREATED
+      - STAFF_UPDATED
+      type: string
+      description: |-
+        * `ADMIN_BOOKING_START` - Admin booking start
+        * `ADMIN_BOOKING_COMPLETE` - Admin booking complete
+        * `ADMIN_BOOKING_CANCEL` - Admin booking cancel
+        * `ADMIN_RECORD_BALANCE` - Admin record balance
+        * `ADMIN_PAYMENT_LINK_CREATED` - Admin payment link created
+        * `TECHNICIAN_ASSIGN` - Technician assign
+        * `TECHNICIAN_CREATED` - Technician created
+        * `TECHNICIAN_UPDATED` - Technician updated
+        * `TECHNICIAN_VERIFICATION_CHANGED` - Technician verification changed
+        * `TECHNICIAN_AVAILABILITY_CHANGED` - Technician availability changed
+        * `TECHNICIAN_ASSIGNMENT_REMOVED` - Technician assignment removed
+        * `TECHNICIAN_LEAVE_CREATED` - Technician leave created
+        * `PAYMENT_WEBHOOK_RECEIVED` - Payment webhook received
+        * `PAYMENT_WEBHOOK_REJECTED` - Payment webhook rejected
+        * `PERMISSION_DENIED` - Permission denied
+        * `SERVICE_CREATED` - Service created
+        * `SERVICE_UPDATED` - Service updated
+        * `SERVICE_DEACTIVATED` - Service deactivated
+        * `SERVICE_PRICE_CHANGED` - Service price changed
+        * `SERVICE_IMAGE_CHANGED` - Service image changed
+        * `CATEGORY_CREATED` - Category created
+        * `CATEGORY_UPDATED` - Category updated
+        * `CATEGORY_DEACTIVATED` - Category deactivated
+        * `LEAD_CREATED` - Lead created
+        * `LEAD_UPDATED` - Lead updated
+        * `LEAD_STATUS_CHANGED` - Lead status changed
+        * `LEAD_CONVERTED` - Lead converted
+        * `BANNER_CREATED` - Banner created
+        * `BANNER_UPDATED` - Banner updated
+        * `BANNER_PUBLICATION_CHANGED` - Banner publication changed
+        * `FAQ_CREATED` - FAQ created
+        * `FAQ_UPDATED` - FAQ updated
+        * `REVIEW_UPDATED` - Review updated
+        * `CUSTOMER_SUPPORT_NOTE_CREATED` - Customer support note created
+        * `STAFF_UPDATED` - Staff updated
     Address:
       type: object
       properties:
@@ -2788,6 +3164,107 @@ components:
       - role
       - support_notes
       - updated_at
+    AdminReportSummary:
+      type: object
+      properties:
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        daily_bookings:
+          type: integer
+        completed_services:
+          type: integer
+        cancelled_bookings:
+          type: integer
+        payment_pending_bookings:
+          type: integer
+        revenue_collected:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        advance_payments:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        balance_payments:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        refunds:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        unassigned_bookings:
+          type: integer
+        average_rating:
+          type: number
+          format: double
+      required:
+      - advance_payments
+      - average_rating
+      - balance_payments
+      - cancelled_bookings
+      - completed_services
+      - daily_bookings
+      - payment_pending_bookings
+      - refunds
+      - revenue_collected
+      - unassigned_bookings
+    AdminReview:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        booking:
+          type: string
+          format: uuid
+          readOnly: true
+        customer:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        technician:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+        comment:
+          type: string
+        is_visible:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        booking_number:
+          type: string
+          readOnly: true
+        service_name:
+          type: string
+          readOnly: true
+      required:
+      - booking
+      - booking_number
+      - comment
+      - created_at
+      - customer
+      - id
+      - rating
+      - service_name
+      - technician
+      - updated_at
     AdminService:
       type: object
       properties:
@@ -3026,6 +3503,149 @@ components:
       - estimated_duration_minutes
       - name
       - slug
+    AdminSettings:
+      type: object
+      properties:
+        debug:
+          type: boolean
+        allowed_hosts:
+          type: array
+          items:
+            type: string
+        cors_allowed_origins:
+          type: array
+          items:
+            type: string
+        csrf_trusted_origins:
+          type: array
+          items:
+            type: string
+        otp_provider:
+          type: string
+        notification_provider:
+          type: string
+        razorpay_configured:
+          type: boolean
+        msg91_configured:
+          type: boolean
+        firebase_configured:
+          type: boolean
+        booking_require_balance_before_completion:
+          type: boolean
+      required:
+      - allowed_hosts
+      - booking_require_balance_before_completion
+      - cors_allowed_origins
+      - csrf_trusted_origins
+      - debug
+      - firebase_configured
+      - msg91_configured
+      - notification_provider
+      - otp_provider
+      - razorpay_configured
+    AdminStaff:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        phone_number:
+          type: string
+          maxLength: 16
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        is_verified:
+          type: boolean
+        is_active:
+          type: boolean
+        is_staff:
+          type: boolean
+        is_superuser:
+          type: boolean
+          readOnly: true
+          title: Superuser status
+          description: Designates that this user has all permissions without explicitly
+            assigning them.
+        groups:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - groups
+      - id
+      - is_superuser
+      - phone_number
+      - updated_at
+    AdminStaffUpdate:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        is_verified:
+          type: boolean
+        is_active:
+          type: boolean
+        is_staff:
+          type: boolean
+    AdminStaffUpdateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        is_verified:
+          type: boolean
+        is_active:
+          type: boolean
+        is_staff:
+          type: boolean
+        group_ids:
+          type: array
+          items:
+            type: integer
+          writeOnly: true
     AdvancePaymentTypeEnum:
       enum:
       - FIXED
@@ -3047,6 +3667,64 @@ components:
           maxLength: 160
       required:
       - technician_id
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        actor:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        actor_phone:
+          type: string
+          readOnly: true
+        action:
+          allOf:
+          - $ref: '#/components/schemas/ActionEnum'
+          readOnly: true
+        resource_type:
+          type: string
+          readOnly: true
+        resource_id:
+          type: string
+          readOnly: true
+        request_id:
+          type: string
+          readOnly: true
+        ip_address:
+          type: string
+          readOnly: true
+          nullable: true
+        user_agent:
+          type: string
+          readOnly: true
+        metadata:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - actor
+      - actor_phone
+      - created_at
+      - id
+      - ip_address
+      - metadata
+      - request_id
+      - resource_id
+      - resource_type
+      - updated_at
+      - user_agent
     AuthLoginResponse:
       type: object
       properties:
@@ -4048,6 +4726,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminCustomer'
+    PaginatedAdminReviewList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminReview'
     PaginatedAdminServiceCategoryList:
       type: object
       required:
@@ -4094,6 +4795,52 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminService'
+    PaginatedAdminStaffList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminStaff'
+    PaginatedAuditLogList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditLog'
     PaginatedBookingList:
       type: object
       required:
@@ -4301,6 +5048,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ServiceList'
+    PaginatedStaffGroupList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/StaffGroup'
     PatchedAddressRequest:
       type: object
       properties:
@@ -4356,6 +5126,18 @@ components:
           pattern: ^-?\d{0,3}(?:\.\d{0,6})?$
           nullable: true
         is_default:
+          type: boolean
+    PatchedAdminReviewRequest:
+      type: object
+      properties:
+        rating:
+          type: integer
+          maximum: 5
+          minimum: 1
+        comment:
+          type: string
+          minLength: 1
+        is_visible:
           type: boolean
     PatchedAdminServiceCategoryRequest:
       type: object
@@ -4443,6 +5225,33 @@ components:
           maximum: 9223372036854775807
           minimum: 0
           format: int64
+    PatchedAdminStaffUpdateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          $ref: '#/components/schemas/RoleEnum'
+        is_verified:
+          type: boolean
+        is_active:
+          type: boolean
+        is_staff:
+          type: boolean
+        group_ids:
+          type: array
+          items:
+            type: integer
+          writeOnly: true
     PatchedFAQRequest:
       type: object
       properties:
@@ -5171,6 +5980,16 @@ components:
         * `PAYMENT_PENDING` - Payment pending
         * `MANUAL` - Manual
         * `OTHER` - Other
+    StaffGroup:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+      required:
+      - id
+      - name
     TechnicianProfile:
       type: object
       properties:

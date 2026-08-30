@@ -1,16 +1,28 @@
+from django.conf import settings
+from django.db.models import Avg, Q, Sum
 from django.utils import timezone
-from django.db.models import Q
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
+from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.operations.models import FAQ, HomepageBanner, Lead, LeadStatus, LeadStatusHistory
-from apps.operations.serializers import FAQSerializer, HomepageBannerSerializer, LeadConvertSerializer, LeadSerializer
+from apps.operations.serializers import (
+    AdminReportSummarySerializer,
+    AdminSettingsSerializer,
+    FAQSerializer,
+    HomepageBannerSerializer,
+    LeadConvertSerializer,
+    LeadSerializer,
+)
+from apps.payments.models import Payment, PaymentRecordStatus, PaymentType
+from apps.reviews.models import Review
 
 
 class AdminLeadViewSet(viewsets.ModelViewSet):
@@ -163,3 +175,60 @@ class AdminHomepageBannerViewSet(viewsets.ModelViewSet):
             resource_id=banner.id,
             metadata={"placement": banner.placement, "is_active": banner.is_active},
         )
+
+
+class AdminReportsSummaryView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="Get admin reports summary", responses={status.HTTP_200_OK: AdminReportSummarySerializer})
+    def get(self, request):
+        date_from = request.query_params.get("date_from")
+        date_to = request.query_params.get("date_to")
+        bookings = Booking.objects.all()
+        payments = Payment.objects.filter(status=PaymentRecordStatus.SUCCESS)
+        if date_from:
+            bookings = bookings.filter(created_at__date__gte=date_from)
+            payments = payments.filter(created_at__date__gte=date_from)
+        if date_to:
+            bookings = bookings.filter(created_at__date__lte=date_to)
+            payments = payments.filter(created_at__date__lte=date_to)
+
+        revenue = payments.aggregate(total=Sum("amount"))["total"] or 0
+        advance = payments.filter(payment_type=PaymentType.BOOKING_ADVANCE).aggregate(total=Sum("amount"))["total"] or 0
+        balance = payments.filter(payment_type=PaymentType.BALANCE).aggregate(total=Sum("amount"))["total"] or 0
+        refunds = payments.filter(payment_type=PaymentType.REFUND).aggregate(total=Sum("amount"))["total"] or 0
+        payload = {
+            "date_from": date_from,
+            "date_to": date_to,
+            "daily_bookings": bookings.count(),
+            "completed_services": bookings.filter(booking_status=BookingStatus.COMPLETED).count(),
+            "cancelled_bookings": bookings.filter(booking_status=BookingStatus.CANCELLED).count(),
+            "payment_pending_bookings": bookings.filter(payment_status=PaymentStatus.UNPAID).count(),
+            "revenue_collected": revenue,
+            "advance_payments": advance,
+            "balance_payments": balance,
+            "refunds": refunds,
+            "unassigned_bookings": bookings.filter(booking_status=BookingStatus.CONFIRMED, assigned_technician__isnull=True).count(),
+            "average_rating": Review.objects.aggregate(value=Avg("rating"))["value"] or 0,
+        }
+        return Response(AdminReportSummarySerializer(payload).data)
+
+
+class AdminSettingsView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="Get safe admin settings", responses={status.HTTP_200_OK: AdminSettingsSerializer})
+    def get(self, request):
+        payload = {
+            "debug": settings.DEBUG,
+            "allowed_hosts": list(settings.ALLOWED_HOSTS),
+            "cors_allowed_origins": list(getattr(settings, "CORS_ALLOWED_ORIGINS", [])),
+            "csrf_trusted_origins": list(getattr(settings, "CSRF_TRUSTED_ORIGINS", [])),
+            "otp_provider": settings.OTP_AUTH_PROVIDER,
+            "notification_provider": getattr(settings, "NOTIFICATION_PROVIDER", ""),
+            "razorpay_configured": bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET),
+            "msg91_configured": bool(settings.MSG91_AUTH_KEY and settings.MSG91_TEMPLATE_ID),
+            "firebase_configured": bool(getattr(settings, "FIREBASE_CREDENTIALS_JSON", "")),
+            "booking_require_balance_before_completion": settings.BOOKING_REQUIRE_BALANCE_BEFORE_COMPLETION,
+        }
+        return Response(AdminSettingsSerializer(payload).data)

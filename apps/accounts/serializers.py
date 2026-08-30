@@ -226,3 +226,52 @@ class AdminCustomerHistorySerializer(UserSerializer):
             }
             for review in obj.reviews.all()[:20]
         ]
+
+
+class AdminStaffSerializer(serializers.ModelSerializer):
+    groups = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "phone_number",
+            "email",
+            "first_name",
+            "last_name",
+            "role",
+            "is_verified",
+            "is_active",
+            "is_staff",
+            "is_superuser",
+            "groups",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "is_superuser", "groups", "created_at", "updated_at")
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_groups(self, obj):
+        return [{"id": group.id, "name": group.name} for group in obj.groups.all()]
+
+
+class AdminStaffUpdateSerializer(serializers.ModelSerializer):
+    group_ids = serializers.ListField(child=serializers.IntegerField(), required=False, write_only=True)
+
+    class Meta:
+        model = User
+        fields = ("email", "first_name", "last_name", "role", "is_verified", "is_active", "is_staff", "group_ids")
+
+    def update(self, instance, validated_data):
+        group_ids = validated_data.pop("group_ids", None)
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        instance.save(update_fields=[*validated_data.keys(), "updated_at"] if validated_data else ["updated_at"])
+        if group_ids is not None:
+            instance.groups.set(group_ids)
+        return instance
+
+
+class StaffGroupSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()

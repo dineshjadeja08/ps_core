@@ -117,3 +117,31 @@ class HomepageBannerSerializer(serializers.ModelSerializer):
             return ""
         url = obj.mobile_image.url
         return request.build_absolute_uri(url) if request else url
+
+
+class AdminReportSummarySerializer(serializers.Serializer):
+    date_from = serializers.DateField(required=False)
+    date_to = serializers.DateField(required=False)
+    daily_bookings = serializers.IntegerField()
+    completed_services = serializers.IntegerField()
+    cancelled_bookings = serializers.IntegerField()
+    payment_pending_bookings = serializers.IntegerField()
+    revenue_collected = serializers.DecimalField(max_digits=12, decimal_places=2)
+    advance_payments = serializers.DecimalField(max_digits=12, decimal_places=2)
+    balance_payments = serializers.DecimalField(max_digits=12, decimal_places=2)
+    refunds = serializers.DecimalField(max_digits=12, decimal_places=2)
+    unassigned_bookings = serializers.IntegerField()
+    average_rating = serializers.FloatField()
+
+
+class AdminSettingsSerializer(serializers.Serializer):
+    debug = serializers.BooleanField()
+    allowed_hosts = serializers.ListField(child=serializers.CharField())
+    cors_allowed_origins = serializers.ListField(child=serializers.CharField())
+    csrf_trusted_origins = serializers.ListField(child=serializers.CharField())
+    otp_provider = serializers.CharField()
+    notification_provider = serializers.CharField()
+    razorpay_configured = serializers.BooleanField()
+    msg91_configured = serializers.BooleanField()
+    firebase_configured = serializers.BooleanField()
+    booking_require_balance_before_completion = serializers.BooleanField()

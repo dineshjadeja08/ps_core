@@ -1,5 +1,6 @@
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from django.db.models import Count, Max, Q, Sum
+from django.contrib.auth.models import Group
 from rest_framework import status
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
@@ -14,6 +15,8 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.accounts.serializers import (
     AdminCustomerHistorySerializer,
     AdminCustomerSerializer,
+    AdminStaffSerializer,
+    AdminStaffUpdateSerializer,
     CustomerSupportNoteSerializer,
     DevPhoneLoginRequestSerializer,
     FirebaseLoginRequestSerializer,
@@ -21,11 +24,12 @@ from apps.accounts.serializers import (
     OtpSendRequestSerializer,
     OtpSendResponseSerializer,
     OtpVerifyRequestSerializer,
+    StaffGroupSerializer,
     UserSerializer,
     UserProfileUpdateSerializer,
 )
 from apps.accounts.models import CustomerSupportNote, User, UserRole
-from apps.accounts.permissions import IsAdminRole
+from apps.accounts.permissions import IsAdminRole, IsSuperAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.accounts.services import authenticate_dev_phone, authenticate_with_firebase, authenticate_with_otp, send_login_otp
@@ -312,3 +316,57 @@ class AdminCustomerViewSet(
             metadata={"note_id": str(note.id)},
         )
         return Response(CustomerSupportNoteSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class AdminStaffViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated, IsSuperAdminRole]
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_serializer_class(self):
+        if self.action in {"partial_update", "update"}:
+            return AdminStaffUpdateSerializer
+        return AdminStaffSerializer
+
+    def get_queryset(self):
+        queryset = User.objects.filter(is_staff=True).prefetch_related("groups").order_by("phone_number")
+        search = self.request.query_params.get("search")
+        if search:
+            term = search.strip()
+            queryset = queryset.filter(Q(phone_number__icontains=term) | Q(first_name__icontains=term) | Q(last_name__icontains=term))
+        return queryset
+
+    @extend_schema(summary="List staff users for admin", responses={status.HTTP_200_OK: AdminStaffSerializer(many=True)})
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Get staff user for admin", responses={status.HTTP_200_OK: AdminStaffSerializer})
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Update staff user for admin", request=AdminStaffUpdateSerializer, responses={status.HTTP_200_OK: AdminStaffSerializer})
+    def partial_update(self, request, *args, **kwargs):
+        response = super().partial_update(request, *args, **kwargs)
+        audit_event(
+            action=AuditAction.STAFF_UPDATED,
+            actor=request.user,
+            request=request,
+            resource_type="staff",
+            resource_id=response.data["id"],
+            metadata={"fields": list(request.data.keys())},
+        )
+        return response
+
+
+class AdminStaffGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated, IsSuperAdminRole]
+    serializer_class = StaffGroupSerializer
+
+    @extend_schema(summary="List staff groups for admin", responses={status.HTTP_200_OK: StaffGroupSerializer(many=True)})
+    def list(self, request, *args, **kwargs):
+        return Response([{"id": group.id, "name": group.name} for group in Group.objects.order_by("name")])

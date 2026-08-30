@@ -37,7 +37,9 @@ class AuditAction(models.TextChoices):
     BANNER_PUBLICATION_CHANGED = "BANNER_PUBLICATION_CHANGED", "Banner publication changed"
     FAQ_CREATED = "FAQ_CREATED", "FAQ created"
     FAQ_UPDATED = "FAQ_UPDATED", "FAQ updated"
+    REVIEW_UPDATED = "REVIEW_UPDATED", "Review updated"
     CUSTOMER_SUPPORT_NOTE_CREATED = "CUSTOMER_SUPPORT_NOTE_CREATED", "Customer support note created"
+    STAFF_UPDATED = "STAFF_UPDATED", "Staff updated"
 
 
 class AuditLog(BaseModel):

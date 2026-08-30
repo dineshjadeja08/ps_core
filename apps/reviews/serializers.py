@@ -53,3 +53,12 @@ class ReviewSerializer(serializers.ModelSerializer):
             "id": str(obj.technician_id),
             "phone_number": obj.technician.phone_number,
         }
+
+
+class AdminReviewSerializer(ReviewSerializer):
+    booking_number = serializers.CharField(source="booking.booking_number", read_only=True)
+    service_name = serializers.CharField(source="booking.service.name", read_only=True)
+
+    class Meta(ReviewSerializer.Meta):
+        fields = ReviewSerializer.Meta.fields + ("booking_number", "service_name")
+        read_only_fields = ("id", "booking", "customer", "technician", "booking_number", "service_name", "created_at", "updated_at")
