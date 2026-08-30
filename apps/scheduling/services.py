@@ -1,3 +1,5 @@
+from datetime import time
+
 from django.apps import apps
 from django.db import transaction
 from django.utils import timezone
@@ -5,6 +7,15 @@ from django.utils import timezone
 from apps.scheduling.models import TimeSlot
 
 
+DEFAULT_DAILY_SLOT_WINDOWS = (
+    (8, 10),
+    (10, 12),
+    (12, 14),
+    (14, 16),
+    (16, 18),
+    (18, 20),
+)
+DEFAULT_DAILY_SLOT_CAPACITY = 20
 BOOKING_CAPACITY_STATUSES = {
     "PENDING_PAYMENT",
     "CONFIRMED",
@@ -36,6 +47,20 @@ def count_reserved_bookings(slot):
 
 def get_available_capacity(slot):
     return max(slot.capacity - count_reserved_bookings(slot), 0)
+
+
+def ensure_daily_slots(service_area, service_date):
+    if service_date < timezone.localdate():
+        return
+
+    for start_hour, end_hour in DEFAULT_DAILY_SLOT_WINDOWS:
+        TimeSlot.objects.get_or_create(
+            service_area=service_area,
+            date=service_date,
+            start_time=time(start_hour, 0),
+            end_time=time(end_hour, 0),
+            defaults={"capacity": DEFAULT_DAILY_SLOT_CAPACITY, "is_active": True},
+        )
 
 
 def is_slot_bookable(slot):

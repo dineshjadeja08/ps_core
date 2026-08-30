@@ -57,8 +57,22 @@ def test_available_slots(client, service, service_area):
     )
 
     assert response.status_code == 200
-    assert response.json()[0]["id"] == str(slot.id)
-    assert response.json()[0]["available_capacity"] == 2
+    assert any(item["id"] == str(slot.id) for item in response.json())
+    assert next(item for item in response.json() if item["id"] == str(slot.id))["available_capacity"] == 2
+
+
+@pytest.mark.django_db
+def test_slots_are_created_for_supported_days(client, service, service_area):
+    service_date = timezone.localdate() + timedelta(days=3)
+
+    response = client.get(
+        f"/api/v1/slots/?service_id={service.id}&date={service_date}&postal_code=635601"
+    )
+
+    assert response.status_code == 200
+    assert len(response.json()) == 6
+    assert response.json()[0]["start_time"] == "08:00:00"
+    assert response.json()[-1]["end_time"] == "20:00:00"
 
 
 @pytest.mark.django_db
@@ -71,7 +85,8 @@ def test_full_slot(client, service, service_area, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert all(item["id"] != str(slot.id) for item in response.json())
+    assert len(response.json()) == 5
 
 
 @pytest.mark.django_db
@@ -83,7 +98,8 @@ def test_inactive_slot(client, service, service_area):
     )
 
     assert response.status_code == 200
-    assert response.json() == []
+    assert all(item["id"] != str(slot.id) for item in response.json())
+    assert len(response.json()) == 5
 
 
 @pytest.mark.django_db

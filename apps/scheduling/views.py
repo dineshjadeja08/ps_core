@@ -1,3 +1,4 @@
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import status
 from rest_framework.generics import ListAPIView
@@ -9,7 +10,7 @@ from apps.locations.models import normalize_postal_code
 from apps.locations.services import get_active_service_area
 from apps.scheduling.models import TimeSlot
 from apps.scheduling.serializers import TimeSlotSerializer
-from apps.scheduling.services import get_available_capacity, is_slot_expired
+from apps.scheduling.services import ensure_daily_slots, get_available_capacity, is_slot_expired
 
 
 class SlotListView(ListAPIView):
@@ -29,9 +30,14 @@ class SlotListView(ListAPIView):
         if service_area is None:
             return TimeSlot.objects.none()
 
+        service_date = self._parse_date(self.request.query_params.get("date"))
+        if service_date is None:
+            return TimeSlot.objects.none()
+        ensure_daily_slots(service_area, service_date)
+
         queryset = TimeSlot.objects.select_related("service_area").filter(
             service_area=service_area,
-            date=self.request.query_params.get("date"),
+            date=service_date,
             is_active=True,
             service_area__is_active=True,
             capacity__gt=0,
@@ -57,7 +63,16 @@ class SlotListView(ListAPIView):
                 code="ADDRESS_OUTSIDE_SERVICE_AREA",
             )
 
+        if self._parse_date(date) is None:
+            return _validation_error("Use a valid service date in YYYY-MM-DD format.")
+
         return None
+
+    def _parse_date(self, value):
+        try:
+            return timezone.datetime.fromisoformat(value).date()
+        except (TypeError, ValueError):
+            return None
 
     @extend_schema(
         summary="List available slots",
