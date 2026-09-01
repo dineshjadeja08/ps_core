@@ -144,4 +144,6 @@ class AdminSettingsSerializer(serializers.Serializer):
     razorpay_configured = serializers.BooleanField()
     msg91_configured = serializers.BooleanField()
     firebase_configured = serializers.BooleanField()
+    cloudinary_media_enabled = serializers.BooleanField()
+    cloudinary_media_configured = serializers.BooleanField()
     booking_require_balance_before_completion = serializers.BooleanField()

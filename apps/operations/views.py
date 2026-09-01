@@ -229,6 +229,15 @@ class AdminSettingsView(APIView):
             "razorpay_configured": bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET),
             "msg91_configured": bool(settings.MSG91_AUTH_KEY and settings.MSG91_TEMPLATE_ID),
             "firebase_configured": bool(getattr(settings, "FIREBASE_CREDENTIALS_JSON", "")),
+            "cloudinary_media_enabled": bool(getattr(settings, "USE_CLOUDINARY_MEDIA", False)),
+            "cloudinary_media_configured": bool(
+                getattr(settings, "CLOUDINARY_URL", "")
+                or (
+                    getattr(settings, "CLOUDINARY_CLOUD_NAME", "")
+                    and getattr(settings, "CLOUDINARY_API_KEY", "")
+                    and getattr(settings, "CLOUDINARY_API_SECRET", "")
+                )
+            ),
             "booking_require_balance_before_completion": settings.BOOKING_REQUIRE_BALANCE_BEFORE_COMPLETION,
         }
         return Response(AdminSettingsSerializer(payload).data)

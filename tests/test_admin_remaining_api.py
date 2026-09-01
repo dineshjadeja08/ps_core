@@ -75,7 +75,10 @@ def test_admin_settings_returns_safe_flags(admin_client):
 
     assert response.status_code == 200
     assert "razorpay_configured" in response.json()
+    assert "cloudinary_media_enabled" in response.json()
+    assert "cloudinary_media_configured" in response.json()
     assert "RAZORPAY_KEY_SECRET" not in str(response.json())
+    assert "CLOUDINARY_API_SECRET" not in str(response.json())
 
 
 @pytest.mark.django_db

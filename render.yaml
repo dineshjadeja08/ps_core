@@ -37,6 +37,10 @@ services:
         sync: false
       - key: RAZORPAY_ADAPTER
         value: apps.payments.providers.RazorpayApiAdapter
+      - key: USE_CLOUDINARY_MEDIA
+        value: "true"
+      - key: CLOUDINARY_URL
+        sync: false
       - key: NOTIFICATION_PROVIDER
         value: apps.notifications.providers.LocalNotificationProvider
       - key: DEV_PHONE_LOGIN_ENABLED

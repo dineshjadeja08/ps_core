@@ -55,6 +55,30 @@ if not RAZORPAY_KEY_SECRET:  # noqa: F405
 if RAZORPAY_ADAPTER.endswith("LocalRazorpayAdapter"):  # noqa: F405
     raise RuntimeError("RAZORPAY_ADAPTER must use RazorpayApiAdapter in production.")
 
+USE_CLOUDINARY_MEDIA = env.bool("USE_CLOUDINARY_MEDIA", default=True)  # noqa: F405
+CLOUDINARY_URL = env("CLOUDINARY_URL", default="")  # noqa: F405
+CLOUDINARY_CLOUD_NAME = env("CLOUDINARY_CLOUD_NAME", default="")  # noqa: F405
+CLOUDINARY_API_KEY = env("CLOUDINARY_API_KEY", default="")  # noqa: F405
+CLOUDINARY_API_SECRET = env("CLOUDINARY_API_SECRET", default="")  # noqa: F405
+
+if USE_CLOUDINARY_MEDIA:
+    cloudinary_configured = bool(CLOUDINARY_URL) or bool(
+        CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET
+    )
+    if not cloudinary_configured:
+        raise RuntimeError("Cloudinary media storage must be configured in production.")
+
+    INSTALLED_APPS += ["cloudinary_storage", "cloudinary"]  # noqa: F405
+    STORAGES["default"] = {  # noqa: F405
+        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage",
+    }
+    if not CLOUDINARY_URL:
+        CLOUDINARY_STORAGE = {
+            "CLOUD_NAME": CLOUDINARY_CLOUD_NAME,
+            "API_KEY": CLOUDINARY_API_KEY,
+            "API_SECRET": CLOUDINARY_API_SECRET,
+        }
+
 REQUIRE_OTP_PROVIDER_CONFIG = env.bool("REQUIRE_OTP_PROVIDER_CONFIG", default=False)  # noqa: F405
 
 if REQUIRE_OTP_PROVIDER_CONFIG and OTP_AUTH_PROVIDER.endswith("Msg91OtpProvider"):  # noqa: F405

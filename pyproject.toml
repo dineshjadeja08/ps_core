@@ -12,6 +12,7 @@ dependencies = [
     "dj-database-url>=2.3,<3",
     "django-cors-headers>=4.4,<4.5",
     "whitenoise>=6.7,<6.8",
+    "django-cloudinary-storage>=0.3,<0.4",
     "psycopg[binary]>=3.2,<3.3",
     "gunicorn>=22,<23",
     "razorpay>=2.0,<3",
