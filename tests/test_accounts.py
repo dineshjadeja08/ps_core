@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 
 import pytest
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import override_settings
 from rest_framework.test import APIClient
@@ -52,6 +53,7 @@ class FakeOtpProvider:
 
 @pytest.fixture(autouse=True)
 def fake_provider(monkeypatch):
+    cache.clear()
     monkeypatch.setattr("apps.accounts.services.get_firebase_auth_provider", FakeProvider)
     monkeypatch.setattr("apps.accounts.services.get_otp_auth_provider", FakeOtpProvider)
     FakeProvider.phone_number = "+919876543210"
@@ -152,6 +154,100 @@ def test_otp_verify_rejects_provider_failure():
     response = APIClient().post(
         "/api/v1/auth/otp/verify/",
         {"phone_number": "+919629025814", "otp": "123456"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.django_db
+def test_password_signup_creates_customer_session():
+    response = APIClient().post(
+        "/api/v1/auth/password/signup/",
+        {
+            "phone_number": "+919629025814",
+            "password": "StrongPass123",
+            "first_name": "Viknesh",
+            "email": "viknesh@example.com",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    user = User.objects.get(phone_number="+919629025814")
+    assert payload["created"] is True
+    assert payload["user"]["first_name"] == "Viknesh"
+    assert payload["user"]["role"] == UserRole.CUSTOMER
+    assert payload["tokens"]["access"]
+    assert user.check_password("StrongPass123") is True
+    assert CustomerProfile.objects.filter(user=user).exists() is True
+
+
+@pytest.mark.django_db
+def test_password_signup_rejects_existing_password_account():
+    User.objects.create_user(phone_number="+919629025814", password="StrongPass123", role=UserRole.CUSTOMER)
+
+    response = APIClient().post(
+        "/api/v1/auth/password/signup/",
+        {"phone_number": "+919629025814", "password": "NewStrongPass123"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.django_db
+def test_password_signup_does_not_modify_admin_accounts():
+    User.objects.create_user(
+        phone_number="+919629025814",
+        role=UserRole.ADMIN,
+        is_staff=True,
+        is_verified=True,
+    )
+
+    response = APIClient().post(
+        "/api/v1/auth/password/signup/",
+        {"phone_number": "+919629025814", "password": "StrongPass123"},
+        format="json",
+    )
+
+    user = User.objects.get(phone_number="+919629025814")
+    assert response.status_code == 400
+    assert user.has_usable_password() is False
+
+
+@pytest.mark.django_db
+def test_password_login_returns_customer_session():
+    User.objects.create_user(
+        phone_number="+919629025814",
+        password="StrongPass123",
+        role=UserRole.CUSTOMER,
+        is_verified=True,
+    )
+
+    response = APIClient().post(
+        "/api/v1/auth/password/login/",
+        {"phone_number": "+919629025814", "password": "StrongPass123"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["created"] is False
+    assert payload["user"]["phone_number"] == "+919629025814"
+    assert payload["tokens"]["access"]
+
+
+@pytest.mark.django_db
+def test_password_login_rejects_bad_credentials():
+    User.objects.create_user(phone_number="+919629025814", password="StrongPass123", role=UserRole.CUSTOMER)
+
+    response = APIClient().post(
+        "/api/v1/auth/password/login/",
+        {"phone_number": "+919629025814", "password": "WrongPass123"},
         format="json",
     )
 

@@ -13,6 +13,19 @@ class DevPhoneLoginRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 
 
+class PasswordSignupRequestSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+    password = serializers.CharField(write_only=True, min_length=8, max_length=128, trim_whitespace=False)
+    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+
+
+class PasswordLoginRequestSerializer(serializers.Serializer):
+    phone_number = serializers.CharField()
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+
+
 class OtpSendRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 

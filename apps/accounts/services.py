@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from django.utils.module_loading import import_string
 from rest_framework import serializers
@@ -71,6 +72,77 @@ def authenticate_verified_phone(phone_number: str):
     return {
         "user": user,
         "created": created,
+        "tokens": {
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "token_type": "Bearer",
+        },
+    }
+
+
+@transaction.atomic
+def register_with_password(phone_number: str, password: str, **profile_fields):
+    phone_number = normalize_phone_number(phone_number)
+    existing_user = User.objects.filter(phone_number=phone_number).first()
+
+    if existing_user and existing_user.role != UserRole.CUSTOMER:
+        raise serializers.ValidationError("This phone number cannot create a customer account.")
+
+    if existing_user and existing_user.has_usable_password():
+        raise serializers.ValidationError("An account already exists for this phone number. Please login.")
+
+    user = existing_user or User(phone_number=phone_number, role=UserRole.CUSTOMER, is_active=True)
+    validate_password(password, user=user)
+
+    user.role = user.role or UserRole.CUSTOMER
+    user.is_verified = True
+    user.is_active = True
+    user.set_password(password)
+
+    for field in ("first_name", "last_name", "email"):
+        if field in profile_fields:
+            value = profile_fields[field]
+            setattr(user, field, None if field == "email" and value == "" else value)
+
+    user.save()
+
+    if user.role == UserRole.CUSTOMER:
+        CustomerProfile.objects.get_or_create(user=user)
+
+    refresh = RefreshToken.for_user(user)
+    return {
+        "user": user,
+        "created": existing_user is None,
+        "tokens": {
+            "access": str(refresh.access_token),
+            "refresh": str(refresh),
+            "token_type": "Bearer",
+        },
+    }
+
+
+@transaction.atomic
+def authenticate_with_password(phone_number: str, password: str):
+    phone_number = normalize_phone_number(phone_number)
+
+    try:
+        user = User.objects.get(phone_number=phone_number)
+    except User.DoesNotExist as exc:
+        raise serializers.ValidationError("Invalid phone number or password.") from exc
+
+    if not user.is_active:
+        raise serializers.ValidationError("This account is disabled.")
+
+    if not user.has_usable_password() or not user.check_password(password):
+        raise serializers.ValidationError("Invalid phone number or password.")
+
+    if user.role == UserRole.CUSTOMER:
+        CustomerProfile.objects.get_or_create(user=user)
+
+    refresh = RefreshToken.for_user(user)
+    return {
+        "user": user,
+        "created": False,
         "tokens": {
             "access": str(refresh.access_token),
             "refresh": str(refresh),

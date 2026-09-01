@@ -24,6 +24,8 @@ from apps.accounts.serializers import (
     OtpSendRequestSerializer,
     OtpSendResponseSerializer,
     OtpVerifyRequestSerializer,
+    PasswordLoginRequestSerializer,
+    PasswordSignupRequestSerializer,
     StaffGroupSerializer,
     UserSerializer,
     UserProfileUpdateSerializer,
@@ -32,7 +34,14 @@ from apps.accounts.models import CustomerSupportNote, User, UserRole
 from apps.accounts.permissions import IsAdminRole, IsSuperAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
-from apps.accounts.services import authenticate_dev_phone, authenticate_with_firebase, authenticate_with_otp, send_login_otp
+from apps.accounts.services import (
+    authenticate_dev_phone,
+    authenticate_with_firebase,
+    authenticate_with_otp,
+    authenticate_with_password,
+    register_with_password,
+    send_login_otp,
+)
 from django.conf import settings
 
 
@@ -127,6 +136,55 @@ class DevPhoneLoginView(APIView):
             )
 
         result = authenticate_dev_phone(phone_number)
+        return Response(
+            {
+                "user": UserSerializer(result["user"]).data,
+                "tokens": result["tokens"],
+                "created": result["created"],
+            }
+        )
+
+
+class PasswordSignupView(APIView):
+    authentication_classes = []
+    permission_classes = []
+    throttle_scope = "auth"
+
+    @extend_schema(
+        summary="Create account with phone and password",
+        description="Temporary phone-password customer account creation while OTP delivery is being configured.",
+        request=PasswordSignupRequestSerializer,
+        responses={status.HTTP_201_CREATED: AuthLoginResponseSerializer},
+    )
+    def post(self, request):
+        serializer = PasswordSignupRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = register_with_password(**serializer.validated_data)
+        return Response(
+            {
+                "user": UserSerializer(result["user"]).data,
+                "tokens": result["tokens"],
+                "created": result["created"],
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class PasswordLoginView(APIView):
+    authentication_classes = []
+    permission_classes = []
+    throttle_scope = "auth"
+
+    @extend_schema(
+        summary="Login with phone and password",
+        description="Temporary phone-password customer login while OTP delivery is being configured.",
+        request=PasswordLoginRequestSerializer,
+        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
+    )
+    def post(self, request):
+        serializer = PasswordLoginRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = authenticate_with_password(**serializer.validated_data)
         return Response(
             {
                 "user": UserSerializer(result["user"]).data,

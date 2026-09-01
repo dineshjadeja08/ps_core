@@ -55,7 +55,9 @@ if not RAZORPAY_KEY_SECRET:  # noqa: F405
 if RAZORPAY_ADAPTER.endswith("LocalRazorpayAdapter"):  # noqa: F405
     raise RuntimeError("RAZORPAY_ADAPTER must use RazorpayApiAdapter in production.")
 
-if OTP_AUTH_PROVIDER.endswith("Msg91OtpProvider"):  # noqa: F405
+REQUIRE_OTP_PROVIDER_CONFIG = env.bool("REQUIRE_OTP_PROVIDER_CONFIG", default=False)  # noqa: F405
+
+if REQUIRE_OTP_PROVIDER_CONFIG and OTP_AUTH_PROVIDER.endswith("Msg91OtpProvider"):  # noqa: F405
     if not MSG91_AUTH_KEY:  # noqa: F405
         raise RuntimeError("MSG91_AUTH_KEY must be set in production.")
     if not MSG91_TEMPLATE_ID:  # noqa: F405
