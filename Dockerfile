@@ -16,11 +16,12 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
-RUN useradd --create-home --shell /usr/sbin/nologin appuser \
+RUN chmod +x /app/scripts/render-start.sh \
+    && useradd --create-home --shell /usr/sbin/nologin appuser \
     && chown -R appuser:appuser /app
 
 USER appuser
 
 EXPOSE 8000
 
-CMD gunicorn config.wsgi:application --bind 0.0.0.0:${PORT} --workers 2 --timeout 60 --access-logfile - --error-logfile -
+CMD ["/app/scripts/render-start.sh"]
