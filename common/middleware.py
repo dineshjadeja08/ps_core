@@ -3,8 +3,40 @@ import time
 import uuid
 
 from django.conf import settings
+from django.http import JsonResponse
 
 logger = logging.getLogger("purple_squad.request")
+error_logger = logging.getLogger("purple_squad.errors")
+
+
+class ApiExceptionMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        return self.get_response(request)
+
+    def process_exception(self, request, exception):
+        if not request.path.startswith("/api/"):
+            return None
+
+        request_id = getattr(request, "request_id", "")
+        error_logger.exception(
+            "api_unhandled_exception path=%s method=%s request_id=%s",
+            request.path,
+            request.method,
+            request_id,
+        )
+        return JsonResponse(
+            {
+                "error": {
+                    "code": "SERVER_ERROR",
+                    "message": "Purple Squad backend hit a server error. Check backend logs with this request ID.",
+                    "request_id": request_id,
+                }
+            },
+            status=500,
+        )
 
 
 class RequestIDMiddleware:
