@@ -163,6 +163,7 @@ class ServiceDetailView(generics.RetrieveAPIView):
 class AdminServiceCategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminRole]
     serializer_class = AdminServiceCategorySerializer
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
     lookup_field = "id"
     lookup_value_regex = "[0-9a-f-]{36}"
 

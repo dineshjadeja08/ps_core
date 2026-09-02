@@ -11,7 +11,19 @@ class ServiceCategoryAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("display_order", "name")
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("created_at", "updated_at", "image_preview")
+    fieldsets = (
+        ("Category", {"fields": ("name", "slug", "description")}),
+        ("Media", {"fields": ("image", "image_preview", "image_url")}),
+        ("Display", {"fields": ("display_order", "is_active")}),
+        ("System", {"fields": ("created_at", "updated_at")}),
+    )
+
+    @admin.display(description="Image preview")
+    def image_preview(self, obj):
+        if not obj.image:
+            return "-"
+        return format_html('<img src="{}" style="max-width:180px;max-height:120px;border-radius:8px;" />', obj.image.url)
 
 
 @admin.register(Service)

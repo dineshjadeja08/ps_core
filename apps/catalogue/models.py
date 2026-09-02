@@ -15,6 +15,7 @@ class ServiceCategory(BaseModel):
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=180, unique=True)
     description = models.TextField(blank=True)
+    image = models.ImageField(upload_to="categories/", blank=True)
     image_url = models.URLField(blank=True)
     display_order = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True)

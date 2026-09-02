@@ -24,6 +24,8 @@ def validate_uploaded_image(file_obj):
 
 
 class ServiceCategorySerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
     class Meta:
         model = ServiceCategory
         fields = (
@@ -34,6 +36,13 @@ class ServiceCategorySerializer(serializers.ModelSerializer):
             "image_url",
             "display_order",
         )
+
+    def get_image_url(self, obj):
+        if obj.image:
+            request = self.context.get("request")
+            url = obj.image.url
+            return request.build_absolute_uri(url) if request else url
+        return obj.image_url
 
 
 class ServiceListSerializer(serializers.ModelSerializer):
@@ -76,6 +85,10 @@ class ServiceDetailSerializer(ServiceListSerializer):
 
 
 class AdminServiceCategorySerializer(serializers.ModelSerializer):
+    image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
+    image_url = serializers.SerializerMethodField()
+    external_image_url = serializers.URLField(source="image_url", required=False, allow_blank=True, write_only=True)
+
     class Meta:
         model = ServiceCategory
         fields = (
@@ -83,13 +96,22 @@ class AdminServiceCategorySerializer(serializers.ModelSerializer):
             "name",
             "slug",
             "description",
+            "image",
             "image_url",
+            "external_image_url",
             "display_order",
             "is_active",
             "created_at",
             "updated_at",
         )
         read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_image_url(self, obj):
+        if obj.image:
+            request = self.context.get("request")
+            url = obj.image.url
+            return request.build_absolute_uri(url) if request else url
+        return obj.image_url
 
 
 class ServiceImageSerializer(serializers.ModelSerializer):
