@@ -59,6 +59,12 @@ def create_booking(*, customer, service_id, address_id, slot_id, problem_descrip
             changed_by=customer,
             notes="Booking created.",
         )
+        try:
+            from apps.operations.services import link_booking_to_lead
+
+            link_booking_to_lead(booking=booking)
+        except Exception:
+            pass
         return booking
 
 

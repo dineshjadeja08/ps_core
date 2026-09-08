@@ -114,6 +114,12 @@ def verify_razorpay_payment(*, order_id, payment_id, signature, user=None, paylo
                     booking=booking,
                     payload={"payment_id": str(payment.id)},
                 )
+            try:
+                from apps.operations.services import mark_booking_payment_paid
+
+                mark_booking_payment_paid(booking=booking, payment=payment, performed_by=user)
+            except Exception:
+                pass
             payment.booking = booking
     if not signature_is_valid:
         raise serializers.ValidationError("Payment verification failed.")

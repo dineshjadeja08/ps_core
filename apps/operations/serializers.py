@@ -4,7 +4,7 @@ from drf_spectacular.utils import extend_schema_field
 
 from apps.bookings.models import Booking
 from apps.bookings.serializers import BookingSerializer
-from apps.operations.models import FAQ, HomepageBanner, Lead, LeadStatusHistory
+from apps.operations.models import FAQ, HomepageBanner, Lead, LeadActivity, LeadStatusHistory, ManualPaymentMethod
 
 
 class LeadStatusHistorySerializer(serializers.ModelSerializer):
@@ -14,36 +14,88 @@ class LeadStatusHistorySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class LeadActivitySerializer(serializers.ModelSerializer):
+    performed_by_phone = serializers.CharField(source="performed_by.phone_number", read_only=True)
+
+    class Meta:
+        model = LeadActivity
+        fields = (
+            "id",
+            "action",
+            "previous_value",
+            "new_value",
+            "note",
+            "performed_by",
+            "performed_by_phone",
+            "ip_address",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
 class LeadSerializer(serializers.ModelSerializer):
     status_history = LeadStatusHistorySerializer(many=True, read_only=True)
+    activities = LeadActivitySerializer(many=True, read_only=True)
+    service_name = serializers.CharField(source="required_service.name", read_only=True)
+    assigned_staff_phone = serializers.CharField(source="assigned_staff.phone_number", read_only=True)
+    booking_number = serializers.CharField(source="converted_booking.booking_number", read_only=True)
 
     class Meta:
         model = Lead
         fields = (
             "id",
+            "customer",
             "customer_name",
             "primary_mobile",
             "alternate_mobile",
             "email",
             "required_service",
+            "service_name",
             "package",
             "address",
             "city",
             "pincode",
             "source",
             "status",
+            "funnel_status",
+            "payment_status",
+            "lead_temperature",
             "assigned_staff",
+            "assigned_staff_phone",
             "preferred_callback_at",
+            "preferred_date",
+            "preferred_slot",
+            "quoted_amount",
+            "advance_amount",
+            "balance_amount",
+            "payment_link_url",
+            "payment_link_provider_id",
+            "payment_link_expires_at",
+            "last_contacted_at",
             "follow_up_at",
             "customer_notes",
             "internal_notes",
+            "admin_notes",
+            "lost_reason",
+            "first_seen_at",
+            "last_activity_at",
             "converted_booking",
+            "booking_number",
             "created_by",
             "created_at",
             "updated_at",
             "status_history",
+            "activities",
         )
-        read_only_fields = ("id", "created_by", "created_at", "updated_at", "status_history")
+        read_only_fields = (
+            "id",
+            "created_by",
+            "payment_link_provider_id",
+            "created_at",
+            "updated_at",
+            "status_history",
+            "activities",
+        )
 
 
 class LeadConvertSerializer(serializers.Serializer):
@@ -55,6 +107,39 @@ class LeadConvertSerializer(serializers.Serializer):
             return Booking.objects.get(id=value)
         except Booking.DoesNotExist as exc:
             raise serializers.ValidationError("Booking was not found.") from exc
+
+
+class LeadContactSerializer(serializers.Serializer):
+    note = serializers.CharField()
+    next_follow_up_at = serializers.DateTimeField(required=False)
+
+
+class LeadPaymentLinkSerializer(serializers.Serializer):
+    channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="SMS")
+
+
+class LeadManualPaymentSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    method = serializers.ChoiceField(choices=ManualPaymentMethod.choices)
+    reference = serializers.CharField(required=False, allow_blank=True)
+    payment_date = serializers.DateField()
+    note = serializers.CharField(required=False, allow_blank=True)
+    confirm = serializers.BooleanField()
+
+    def validate_confirm(self, value):
+        if not value:
+            raise serializers.ValidationError("Manual payment confirmation is required.")
+        return value
+
+
+class LeadSummarySerializer(serializers.Serializer):
+    all_leads = serializers.IntegerField()
+    visited = serializers.IntegerField()
+    cart_added = serializers.IntegerField()
+    unpaid = serializers.IntegerField()
+    paid = serializers.IntegerField()
+    booked = serializers.IntegerField()
+    follow_ups_due_today = serializers.IntegerField()
 
 
 class FAQSerializer(serializers.ModelSerializer):

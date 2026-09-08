@@ -16,6 +16,7 @@ from apps.operations.models import (
     HomepageBanner,
     HomepageBannerPlacement,
     Lead,
+    LeadActivity,
     LeadStatus,
     LeadStatusHistory,
 )
@@ -30,6 +31,14 @@ class LeadStatusHistoryInline(admin.TabularInline):
     fields = readonly_fields
 
 
+class LeadActivityInline(admin.TabularInline):
+    model = LeadActivity
+    extra = 0
+    can_delete = False
+    readonly_fields = ("action", "previous_value", "new_value", "note", "performed_by", "ip_address", "created_at")
+    fields = readonly_fields
+
+
 @admin.register(Lead)
 class LeadAdmin(admin.ModelAdmin):
     list_display = (
@@ -40,27 +49,43 @@ class LeadAdmin(admin.ModelAdmin):
         "pincode",
         "source",
         "status_badge",
+        "funnel_status",
+        "payment_status",
+        "lead_temperature",
         "assigned_staff",
         "follow_up_at",
         "converted_booking_link",
         "created_at",
     )
-    list_filter = ("source", "status", "required_service", "assigned_staff", "pincode", "created_at", "follow_up_at")
+    list_filter = (
+        "source",
+        "status",
+        "funnel_status",
+        "payment_status",
+        "lead_temperature",
+        "required_service",
+        "assigned_staff",
+        "pincode",
+        "created_at",
+        "follow_up_at",
+    )
     search_fields = ("customer_name", "primary_mobile", "alternate_mobile", "email", "pincode", "converted_booking__booking_number")
     date_hierarchy = "created_at"
-    autocomplete_fields = ("required_service", "assigned_staff", "converted_booking")
-    readonly_fields = ("created_by", "created_at", "updated_at", "converted_booking_link")
-    inlines = (LeadStatusHistoryInline,)
+    autocomplete_fields = ("customer", "required_service", "assigned_staff", "converted_booking")
+    readonly_fields = ("created_by", "first_seen_at", "last_activity_at", "last_contacted_at", "created_at", "updated_at", "converted_booking_link")
+    inlines = (LeadActivityInline, LeadStatusHistoryInline)
     fieldsets = (
-        ("Customer", {"fields": ("customer_name", "primary_mobile", "alternate_mobile", "email")}),
-        ("Need", {"fields": ("required_service", "package", "address", "city", "pincode")}),
-        ("Lead management", {"fields": ("source", "status", "assigned_staff", "preferred_callback_at", "follow_up_at")}),
-        ("Notes", {"fields": ("customer_notes", "internal_notes")}),
+        ("Customer", {"fields": ("customer", "customer_name", "primary_mobile", "alternate_mobile", "email")}),
+        ("Need", {"fields": ("required_service", "package", "address", "city", "pincode", "preferred_date", "preferred_slot")}),
+        ("Pricing", {"fields": ("quoted_amount", "advance_amount", "balance_amount")}),
+        ("Lead management", {"fields": ("source", "status", "funnel_status", "payment_status", "lead_temperature", "assigned_staff", "preferred_callback_at", "follow_up_at")}),
+        ("Payment link", {"fields": ("payment_link_url", "payment_link_provider_id", "payment_link_expires_at")}),
+        ("Notes", {"fields": ("customer_notes", "internal_notes", "admin_notes", "lost_reason")}),
         ("Conversion", {"fields": ("converted_booking", "converted_booking_link")}),
-        ("System", {"fields": ("created_by", "created_at", "updated_at")}),
+        ("System", {"fields": ("created_by", "first_seen_at", "last_activity_at", "last_contacted_at", "created_at", "updated_at")}),
     )
     actions = ("mark_contacted", "mark_interested", "mark_follow_up", "mark_lost", "mark_closed")
-    list_select_related = ("required_service", "assigned_staff", "converted_booking", "created_by")
+    list_select_related = ("customer", "required_service", "assigned_staff", "converted_booking", "created_by")
 
     @admin.display(description="Status")
     def status_badge(self, obj):
@@ -192,6 +217,20 @@ class LeadStatusHistoryAdmin(admin.ModelAdmin):
     list_filter = ("to_status", "created_at")
     search_fields = ("lead__customer_name", "lead__primary_mobile", "notes")
     readonly_fields = ("lead", "from_status", "to_status", "changed_by", "notes", "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(LeadActivity)
+class LeadActivityAdmin(admin.ModelAdmin):
+    list_display = ("lead", "action", "performed_by", "created_at")
+    list_filter = ("action", "created_at")
+    search_fields = ("lead__customer_name", "lead__primary_mobile", "note")
+    readonly_fields = ("lead", "action", "previous_value", "new_value", "note", "performed_by", "ip_address", "created_at", "updated_at")
 
     def has_add_permission(self, request):
         return False

@@ -18,6 +18,7 @@ from apps.catalogue.serializers import (
     ServiceImageSerializer,
     ServiceListSerializer,
 )
+from apps.operations.services import capture_authenticated_service_view
 
 
 class ServiceCategoryListView(generics.ListAPIView):
@@ -117,7 +118,6 @@ class ServiceListView(generics.ListAPIView):
 
 
 class ServiceDetailView(generics.RetrieveAPIView):
-    authentication_classes = []
     permission_classes = [AllowAny]
     serializer_class = ServiceDetailSerializer
     lookup_field = "slug"
@@ -156,7 +156,12 @@ class ServiceDetailView(generics.RetrieveAPIView):
         ],
     )
     def get(self, request, *args, **kwargs):
-        return super().get(request, *args, **kwargs)
+        response = super().get(request, *args, **kwargs)
+        try:
+            capture_authenticated_service_view(user=request.user, service=self.get_object(), request=request)
+        except Exception:
+            pass
+        return response
 
 
 @extend_schema(tags=["Admin - Categories"])
