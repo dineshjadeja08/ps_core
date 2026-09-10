@@ -92,3 +92,6 @@ if OTP_AUTH_PROVIDER.endswith("FirebaseAdminAuthProvider") and not (  # noqa: F4
     or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 ):
     raise RuntimeError("Firebase Admin credentials must be configured server-side in production.")
+
+if REQUIRE_OTP_PROVIDER_CONFIG and OTP_AUTH_PROVIDER.endswith("Fast2SmsOtpProvider") and not FAST2SMS_API_KEY:  # noqa: F405
+    raise RuntimeError("FAST2SMS_API_KEY must be set in production.")

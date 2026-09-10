@@ -198,7 +198,7 @@ FIREBASE_AUTH_PROVIDER = env(
     "FIREBASE_AUTH_PROVIDER",
     default="apps.accounts.auth.providers.FirebaseAdminAuthProvider",
 )
-OTP_AUTH_PROVIDER = env("OTP_AUTH_PROVIDER", default="apps.accounts.otp.providers.Msg91OtpProvider")
+OTP_AUTH_PROVIDER = env("OTP_AUTH_PROVIDER", default="apps.accounts.otp.providers.Fast2SmsOtpProvider")
 MSG91_AUTH_KEY = env("MSG91_AUTH_KEY", default="")
 MSG91_TEMPLATE_ID = env("MSG91_TEMPLATE_ID", default="")
 MSG91_SEND_OTP_URL = env("MSG91_SEND_OTP_URL", default="https://control.msg91.com/api/v5/otp")
@@ -251,3 +251,6 @@ LOGGING = {
         "level": LOG_LEVEL,
     },
 }
+
+FAST2SMS_API_KEY = env("FAST2SMS_API_KEY", default="")
+FAST2SMS_OTP_TTL_SECONDS = env.int("FAST2SMS_OTP_TTL_SECONDS", default=300)

@@ -103,3 +103,13 @@ class BookingStatusHistory(BaseModel):
 
     def __str__(self):
         return f"{self.booking.booking_number}: {self.from_status} -> {self.to_status}"
+
+
+class CartItem(BaseModel):
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cart_items")
+    service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name="cart_items")
+    booking = models.OneToOneField(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name="cart_item")
+
+    class Meta:
+        ordering = ("created_at", "id")
+        constraints = [models.UniqueConstraint(fields=["customer", "service"], name="unique_customer_cart_service")]

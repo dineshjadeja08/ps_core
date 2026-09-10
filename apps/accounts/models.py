@@ -91,3 +91,12 @@ class CustomerSupportNote(BaseModel):
 
     def __str__(self):
         return f"Support note for {self.customer.phone_number}"
+
+
+class LoginOtpChallenge(BaseModel):
+    mobile = models.CharField(max_length=15, unique=True)
+    code_hash = models.CharField(max_length=64, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveSmallIntegerField(default=0)
+    consumed_at = models.DateTimeField(null=True, blank=True)

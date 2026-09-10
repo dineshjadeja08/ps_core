@@ -24,10 +24,8 @@ services:
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
       - key: OTP_AUTH_PROVIDER
-        value: apps.accounts.otp.providers.Msg91OtpProvider
-      - key: MSG91_AUTH_KEY
-        sync: false
-      - key: MSG91_TEMPLATE_ID
+        value: apps.accounts.otp.providers.Fast2SmsOtpProvider
+      - key: FAST2SMS_API_KEY
         sync: false
       - key: RAZORPAY_KEY_ID
         sync: false

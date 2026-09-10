@@ -23,3 +23,6 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(  # noqa: F405
         "webhook": "10000/min",
     }
 )
+
+# Schema tests must not depend on a developer's production-like .env.
+SHOW_API_DOCS = True

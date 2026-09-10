@@ -35,7 +35,6 @@ def send_login_otp(phone_number: str):
     }
 
 
-@transaction.atomic
 def authenticate_with_otp(phone_number: str, otp: str):
     phone_number = normalize_phone_number(phone_number)
     mobile = phone_number.replace("+", "")
