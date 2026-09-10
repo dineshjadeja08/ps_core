@@ -3,6 +3,7 @@ import pytest
 from rest_framework.test import APIClient
 from apps.bookings.models import Booking, CartItem, PaymentStatus
 from apps.catalogue.models import Service
+from apps.operations.models import Lead, LeadActivityAction, LeadFunnelStatus, LeadSource
 from tests.test_bookings import customer, other_customer, authenticated_client, service_area, service, address, slot, booking_payload
 
 pytestmark = pytest.mark.django_db
@@ -21,6 +22,20 @@ def test_cart_prices_are_server_owned_and_merge_is_idempotent(authenticated_clie
     service.base_price = Decimal("2000.00")
     service.save()
     assert Decimal(authenticated_client.get("/api/v1/cart/").data["total"]) == service.effective_price
+
+
+def test_adding_account_cart_item_creates_admin_lead(authenticated_client, customer, service):
+    customer.first_name = "Purple"
+    customer.last_name = "Customer"
+    customer.save()
+    response = add(authenticated_client, service)
+    assert response.status_code == 200
+    lead = Lead.objects.get(primary_mobile=customer.phone_number, required_service=service)
+    assert lead.customer == customer
+    assert lead.customer_name == "Purple Customer"
+    assert lead.source == LeadSource.CART
+    assert lead.funnel_status == LeadFunnelStatus.CART_ADDED
+    assert lead.activities.filter(action=LeadActivityAction.ADDED_TO_CART).exists()
 
 def test_cart_isolated_between_customers(authenticated_client, customer, other_customer, service):
     add(authenticated_client, service)

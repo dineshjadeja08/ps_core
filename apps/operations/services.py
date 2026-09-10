@@ -11,6 +11,7 @@ from apps.bookings.models import Booking, PaymentStatus as BookingPaymentStatus
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent
 from apps.notifications.services import send_notification
 from apps.operations.models import (
+    ACTIVE_LEAD_STATUSES,
     Lead,
     LeadActivity,
     LeadActivityAction,
@@ -77,6 +78,21 @@ def mark_checkout_started(*, customer, service, request=None, note="Checkout sta
         action=LeadActivityAction.CHECKOUT_STARTED,
         request=request,
         note=note,
+    )
+
+
+def mark_cart_added(*, customer, service, request=None):
+    return upsert_lead(
+        customer=customer,
+        mobile_number=customer.phone_number,
+        customer_name=_customer_name(customer),
+        service=service,
+        source=LeadSource.CART,
+        funnel_status=LeadFunnelStatus.CART_ADDED,
+        payment_status=LeadPaymentStatus.NOT_REQUIRED,
+        action=LeadActivityAction.ADDED_TO_CART,
+        request=request,
+        note="Authenticated customer added service to cart.",
     )
 
 
@@ -158,7 +174,7 @@ def upsert_lead(
         .filter(
             primary_mobile=mobile_number,
             required_service=service,
-            funnel_status__in=OPEN_FUNNEL_STATUSES,
+            status__in=ACTIVE_LEAD_STATUSES,
         )
         .order_by("-last_activity_at")
         .first()

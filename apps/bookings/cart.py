@@ -13,6 +13,7 @@ from apps.bookings.models import CartItem, BookingStatus, PaymentStatus
 from apps.bookings.serializers import BookingCreateSerializer, BookingSerializer
 from apps.bookings.services import create_booking
 from apps.catalogue.models import Service
+from apps.operations.services import mark_cart_added
 
 
 class CartAddSerializer(serializers.Serializer):
@@ -96,7 +97,9 @@ class CartView(APIView):
         if len(existing | {service.id for service in services}) > 100:
             raise serializers.ValidationError("Your cart can contain up to 100 services.")
         for service in services:
-            row, _ = CartItem.objects.get_or_create(customer=request.user, service=service)
+            row, created = CartItem.objects.get_or_create(customer=request.user, service=service)
+            if created:
+                mark_cart_added(customer=request.user, service=service, request=request)
             booking_id = serializer.validated_data["booking_ids"].get(str(service.id))
             if booking_id and not row.booking_id:
                 from apps.bookings.models import Booking
