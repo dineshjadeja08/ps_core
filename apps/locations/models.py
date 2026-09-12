@@ -11,6 +11,8 @@ class ServiceArea(BaseModel):
     state = models.CharField(max_length=100)
     country = models.CharField(max_length=100, default="India")
     postal_code = models.CharField(max_length=20)
+    services = models.ManyToManyField("catalogue.Service", blank=True, related_name="service_areas")
+    services_configured = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
 
     class Meta:
@@ -29,6 +31,9 @@ class ServiceArea(BaseModel):
     def clean(self):
         if self.postal_code:
             self.postal_code = normalize_postal_code(self.postal_code)
+
+    def supports_service(self, service):
+        return not self.services_configured or self.services.filter(id=service.id).exists()
 
     def save(self, *args, **kwargs):
         self.full_clean()

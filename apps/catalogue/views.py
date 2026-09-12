@@ -19,6 +19,7 @@ from apps.catalogue.serializers import (
     ServiceListSerializer,
 )
 from apps.operations.services import capture_authenticated_service_view
+from apps.locations.services import get_active_service_area
 
 
 class ServiceCategoryListView(generics.ListAPIView):
@@ -77,15 +78,24 @@ class ServiceListView(generics.ListAPIView):
         if search:
             queryset = queryset.filter(name__icontains=search.strip())
 
+        postal_code = self.request.query_params.get("postal_code")
+        if postal_code:
+            service_area = get_active_service_area(postal_code)
+            if service_area and service_area.services_configured:
+                queryset = queryset.filter(service_areas=service_area)
+            elif service_area is None:
+                queryset = queryset.none()
+
         return queryset
 
     @extend_schema(
         summary="List services",
-        description="Returns active public services with optional category, featured, and name search filters.",
+        description="Returns active public services with optional category, featured, name search, and postal-code availability filters.",
         parameters=[
             OpenApiParameter("category", str, description="Filter by category slug."),
             OpenApiParameter("featured", bool, description="Filter featured services."),
             OpenApiParameter("search", str, description="Search by service name."),
+            OpenApiParameter("postal_code", str, description="Only return services available at this postal code."),
         ],
         responses={status.HTTP_200_OK: ServiceListSerializer(many=True)},
         examples=[

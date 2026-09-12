@@ -1,5 +1,6 @@
 from rest_framework import serializers
 
+from apps.catalogue.models import Service
 from apps.locations.models import Address, ServiceArea, normalize_postal_code
 
 
@@ -17,6 +18,58 @@ class ServiceAreaSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceArea
         fields = ("id", "name", "city", "state", "country", "postal_code")
+
+
+class AdminServiceAreaSerializer(serializers.ModelSerializer):
+    services = serializers.SerializerMethodField()
+    service_ids = serializers.PrimaryKeyRelatedField(
+        source="services",
+        queryset=Service.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+    )
+
+    class Meta:
+        model = ServiceArea
+        fields = (
+            "id",
+            "name",
+            "city",
+            "state",
+            "country",
+            "postal_code",
+            "is_active",
+            "services",
+            "service_ids",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def get_services(self, obj):
+        return [
+            {"id": str(service.id), "name": service.name, "slug": service.slug}
+            for service in obj.services.all().order_by("category__display_order", "display_order", "name")
+        ]
+
+    def validate_postal_code(self, value):
+        normalized = normalize_postal_code(value)
+        if not normalized:
+            raise serializers.ValidationError("Postal code is required.")
+        return normalized
+
+    def create(self, validated_data):
+        selected_services = validated_data.pop("services", None)
+        validated_data["services_configured"] = selected_services is not None
+        area = super().create(validated_data)
+        area.services.set(selected_services if selected_services is not None else Service.objects.filter(is_active=True))
+        return area
+
+    def update(self, instance, validated_data):
+        if "services" in validated_data:
+            validated_data["services_configured"] = True
+        return super().update(instance, validated_data)
 
 
 class AddressSerializer(serializers.ModelSerializer):

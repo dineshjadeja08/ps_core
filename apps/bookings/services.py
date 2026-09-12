@@ -42,7 +42,7 @@ def create_booking(*, customer, service_id, address_id, slot_id, problem_descrip
     with transaction.atomic():
         service = _get_active_service(service_id)
         address = _get_customer_address(customer, address_id)
-        slot = _lock_and_validate_slot(slot_id=slot_id, address=address)
+        slot = _lock_and_validate_slot(slot_id=slot_id, address=address, service=service)
 
         booking = _create_booking_record(
             customer=customer,
@@ -86,10 +86,12 @@ def _get_customer_address(customer, address_id):
         raise serializers.ValidationError("Address was not found.") from exc
 
 
-def _lock_and_validate_slot(*, slot_id, address):
+def _lock_and_validate_slot(*, slot_id, address, service):
     service_area = get_active_service_area(address.postal_code)
     if service_area is None:
         raise serializers.ValidationError("Address is outside the active service area.")
+    if not service_area.supports_service(service):
+        raise serializers.ValidationError("This service is not available at the selected postal code.")
 
     try:
         slot = lock_slot_for_reservation(slot_id)
@@ -251,7 +253,7 @@ def reschedule_booking(*, booking_id, slot_id, changed_by, notes=""):
         message="Booking can no longer be rescheduled online.",
     )
 
-    slot = _lock_and_validate_slot(slot_id=slot_id, address=booking.address)
+    slot = _lock_and_validate_slot(slot_id=slot_id, address=booking.address, service=booking.service)
     previous_slot_id = str(booking.time_slot_id)
     previous_service_date = booking.service_date
     booking.time_slot = slot

@@ -7,7 +7,8 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -32,6 +33,25 @@ from apps.operations.serializers import (
 from apps.operations.services import record_lead_contact, record_manual_lead_payment, send_lead_payment_link
 from apps.payments.models import Payment, PaymentRecordStatus, PaymentType
 from apps.reviews.models import Review
+
+
+class PublicFAQListView(ListAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = FAQSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = FAQ.objects.filter(is_active=True).order_by("display_order", "question")
+        service_id = self.request.query_params.get("service_id")
+        category_id = self.request.query_params.get("category_id")
+        if service_id:
+            queryset = queryset.filter(service_id=service_id)
+        elif category_id:
+            queryset = queryset.filter(category_id=category_id, service__isnull=True)
+        else:
+            queryset = queryset.filter(category__isnull=True, service__isnull=True)
+        return queryset
 
 
 class AdminLeadViewSet(viewsets.ModelViewSet):

@@ -63,6 +63,13 @@ class SlotListView(ListAPIView):
                 code="ADDRESS_OUTSIDE_SERVICE_AREA",
             )
 
+        service = Service.objects.get(id=service_id)
+        if not service_area.supports_service(service):
+            return _validation_error(
+                "This service is not available at the requested postal code.",
+                code="SERVICE_NOT_AVAILABLE_IN_AREA",
+            )
+
         if self._parse_date(date) is None:
             return _validation_error("Use a valid service date in YYYY-MM-DD format.")
 

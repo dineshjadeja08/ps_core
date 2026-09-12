@@ -9,6 +9,7 @@ class ServiceAreaAdmin(admin.ModelAdmin):
     list_filter = ("is_active", "city", "state", "country")
     search_fields = ("name", "city", "state", "postal_code")
     readonly_fields = ("created_at", "updated_at")
+    filter_horizontal = ("services",)
 
 
 @admin.register(Address)

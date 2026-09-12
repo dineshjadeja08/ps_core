@@ -5,12 +5,30 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from apps.locations.models import Address, normalize_postal_code
+from apps.accounts.permissions import IsAdminRole
+from apps.locations.models import Address, ServiceArea, normalize_postal_code
 from apps.locations.serializers import (
     AddressSerializer,
+    AdminServiceAreaSerializer,
     ServiceAreaCheckResponseSerializer,
 )
 from apps.locations.services import enforce_single_default, get_active_service_area
+
+
+@extend_schema(tags=["Admin - Service Areas"])
+class AdminServiceAreaViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = AdminServiceAreaSerializer
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        return ServiceArea.objects.prefetch_related("services").all().order_by("city", "postal_code", "name")
+
+    def perform_destroy(self, instance):
+        instance.is_active = False
+        instance.save(update_fields=["is_active", "updated_at"])
 
 
 @extend_schema(
