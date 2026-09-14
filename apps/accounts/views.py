@@ -208,7 +208,10 @@ class OtpSendView(APIView):
     def post(self, request):
         serializer = OtpSendRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = send_login_otp(serializer.validated_data["phone_number"])
+        result = send_login_otp(
+            serializer.validated_data["phone_number"],
+            serializer.validated_data["channel"],
+        )
         return Response(result)
 
 

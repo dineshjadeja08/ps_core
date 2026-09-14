@@ -115,7 +115,7 @@ class LeadContactSerializer(serializers.Serializer):
 
 
 class LeadPaymentLinkSerializer(serializers.Serializer):
-    channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="SMS")
+    channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="WHATSAPP")
 
 
 class LeadManualPaymentSerializer(serializers.Serializer):

@@ -407,7 +407,13 @@ class AdminSettingsView(APIView):
             "otp_provider": settings.OTP_AUTH_PROVIDER,
             "notification_provider": getattr(settings, "NOTIFICATION_PROVIDER", ""),
             "razorpay_configured": bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET),
-            "msg91_configured": bool(settings.MSG91_AUTH_KEY and settings.MSG91_TEMPLATE_ID),
+            "msg91_configured": bool(
+                settings.MSG91_AUTH_KEY
+                and settings.MSG91_TEMPLATE_ID
+                and settings.MSG91_WHATSAPP_INTEGRATED_NUMBER
+                and settings.MSG91_WHATSAPP_TEMPLATE_NAME
+                and settings.MSG91_WHATSAPP_TEMPLATE_NAMESPACE
+            ),
             "firebase_configured": bool(getattr(settings, "FIREBASE_CREDENTIALS_JSON", "")),
             "cloudinary_media_enabled": bool(getattr(settings, "USE_CLOUDINARY_MEDIA", False)),
             "cloudinary_media_configured": bool(

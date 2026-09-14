@@ -113,3 +113,17 @@ class CartItem(BaseModel):
     class Meta:
         ordering = ("created_at", "id")
         constraints = [models.UniqueConstraint(fields=["customer", "service"], name="unique_customer_cart_service")]
+
+
+class CheckoutRequest(BaseModel):
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="checkout_requests")
+    idempotency_key = models.CharField(max_length=128)
+    request_fingerprint = models.CharField(max_length=64)
+    booking_ids = models.JSONField(default=list, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["customer", "idempotency_key"], name="unique_customer_checkout_key")
+        ]
+        indexes = [models.Index(fields=["customer", "created_at"])]

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.accounts.models import CustomerProfile, CustomerSupportNote, User
+from apps.accounts.models import CustomerProfile, CustomerSupportNote, OtpDeliveryChannel, User
 
 
 class FirebaseLoginRequestSerializer(serializers.Serializer):
@@ -28,11 +28,13 @@ class PasswordLoginRequestSerializer(serializers.Serializer):
 
 class OtpSendRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
+    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.SMS)
 
 
 class OtpSendResponseSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     request_id = serializers.CharField(allow_blank=True)
+    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices)
 
 
 class OtpVerifyRequestSerializer(serializers.Serializer):

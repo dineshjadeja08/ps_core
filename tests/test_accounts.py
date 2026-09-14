@@ -28,17 +28,19 @@ class FakeProvider:
 
 class FakeOtpProvider:
     sent_mobile = ""
+    sent_channel = ""
     verified_mobile = ""
     verified_otp = ""
     fail_send = False
     fail_verify = False
 
-    def send_otp(self, *, mobile):
+    def send_otp(self, *, mobile, channel):
         if self.fail_send:
             from rest_framework import serializers
 
             raise serializers.ValidationError("Could not send OTP.")
         self.__class__.sent_mobile = mobile
+        self.__class__.sent_channel = channel
         return type("Result", (), {"request_id": "otp-request-id"})()
 
     def verify_otp(self, *, mobile, otp):
@@ -59,6 +61,7 @@ def fake_provider(monkeypatch):
     FakeProvider.phone_number = "+919876543210"
     FakeProvider.error = None
     FakeOtpProvider.sent_mobile = ""
+    FakeOtpProvider.sent_channel = ""
     FakeOtpProvider.verified_mobile = ""
     FakeOtpProvider.verified_otp = ""
     FakeOtpProvider.fail_send = False
@@ -121,13 +124,34 @@ def test_missing_phone_claim():
 
 
 @pytest.mark.django_db
-def test_otp_send_uses_backend_provider():
-    response = APIClient().post("/api/v1/auth/otp/send/", {"phone_number": "+919629025814"}, format="json")
+def test_otp_send_uses_selected_backend_provider_channel():
+    response = APIClient().post(
+        "/api/v1/auth/otp/send/",
+        {"phone_number": "+919629025814", "channel": "WHATSAPP"},
+        format="json",
+    )
 
     assert response.status_code == 200
     assert response.json()["phone_number"] == "+919629025814"
     assert response.json()["request_id"] == "otp-request-id"
+    assert response.json()["channel"] == "WHATSAPP"
     assert FakeOtpProvider.sent_mobile == "919629025814"
+    assert FakeOtpProvider.sent_channel == "WHATSAPP"
+
+
+def test_otp_send_defaults_to_sms_and_rejects_unknown_channel():
+    client = APIClient()
+    default_response = client.post("/api/v1/auth/otp/send/", {"phone_number": "+919629025814"}, format="json")
+    invalid_response = client.post(
+        "/api/v1/auth/otp/send/",
+        {"phone_number": "+919629025814", "channel": "EMAIL"},
+        format="json",
+    )
+
+    assert default_response.status_code == 200
+    assert default_response.json()["channel"] == "SMS"
+    assert FakeOtpProvider.sent_channel == "SMS"
+    assert invalid_response.status_code == 400
 
 
 @pytest.mark.django_db

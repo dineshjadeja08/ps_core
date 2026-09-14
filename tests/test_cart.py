@@ -59,6 +59,21 @@ def test_checkout_retry_reuses_booking(authenticated_client, service, address, s
     assert Booking.objects.count() == 1
     assert Decimal(first.data["cart"]["total"]) == service.effective_price
 
+
+def test_checkout_idempotency_key_cannot_be_reused_for_different_input(authenticated_client, service, address, slot):
+    add(authenticated_client, service)
+    first_body = {"items": [booking_payload(service, address, slot)]}
+    second_item = booking_payload(service, address, slot)
+    second_item["problem_description"] = "A different service issue"
+    headers = {"HTTP_IDEMPOTENCY_KEY": "checkout-request-0001"}
+
+    first = authenticated_client.post("/api/v1/cart/checkout/", first_body, format="json", **headers)
+    second = authenticated_client.post("/api/v1/cart/checkout/", {"items": [second_item]}, format="json", **headers)
+
+    assert first.status_code == 200
+    assert second.status_code == 400
+    assert Booking.objects.count() == 1
+
 def test_checkout_batch_rolls_back_if_capacity_is_insufficient(authenticated_client, service, address, slot):
     second = Service.objects.create(category=service.category, name="Second", slug="second", base_price=499, advance_amount=99, estimated_duration_minutes=60)
     add(authenticated_client, service, second)

@@ -17,6 +17,7 @@ class NotificationEvent(models.TextChoices):
     BOOKING_RECEIVED = "BOOKING_RECEIVED", "Booking received"
     PAYMENT_PENDING = "PAYMENT_PENDING", "Payment pending"
     PAYMENT_SUCCESSFUL = "PAYMENT_SUCCESSFUL", "Payment successful"
+    PAYMENT_FAILED = "PAYMENT_FAILED", "Payment failed"
     BOOKING_CONFIRMED = "BOOKING_CONFIRMED", "Booking confirmed"
     BOOKING_RESCHEDULED = "BOOKING_RESCHEDULED", "Booking rescheduled"
     TECHNICIAN_ASSIGNED = "TECHNICIAN_ASSIGNED", "Technician assigned"
@@ -36,6 +37,8 @@ class NotificationEvent(models.TextChoices):
 class NotificationStatus(models.TextChoices):
     QUEUED = "QUEUED", "Queued"
     SENT = "SENT", "Sent"
+    DELIVERED = "DELIVERED", "Delivered"
+    READ = "READ", "Read"
     FAILED = "FAILED", "Failed"
     CANCELLED = "CANCELLED", "Cancelled"
 

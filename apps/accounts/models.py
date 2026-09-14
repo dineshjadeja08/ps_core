@@ -93,8 +93,14 @@ class CustomerSupportNote(BaseModel):
         return f"Support note for {self.customer.phone_number}"
 
 
+class OtpDeliveryChannel(models.TextChoices):
+    SMS = "SMS", "SMS"
+    WHATSAPP = "WHATSAPP", "WhatsApp"
+
+
 class LoginOtpChallenge(BaseModel):
     mobile = models.CharField(max_length=15, unique=True)
+    channel = models.CharField(max_length=16, choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.SMS)
     code_hash = models.CharField(max_length=64, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     sent_at = models.DateTimeField(null=True, blank=True)

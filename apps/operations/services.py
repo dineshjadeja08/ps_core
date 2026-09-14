@@ -217,7 +217,7 @@ def upsert_lead(
 
 
 @transaction.atomic
-def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.SMS):
+def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.WHATSAPP):
     if lead.payment_status == LeadPaymentStatus.PAID:
         raise serializers.ValidationError("Lead is already paid.")
     if not lead.advance_amount or lead.advance_amount <= Decimal("0.00"):

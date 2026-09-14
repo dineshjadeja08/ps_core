@@ -10,10 +10,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.bookings.models import CartItem, BookingStatus, PaymentStatus
+from apps.bookings.idempotency import begin_checkout_request, complete_checkout_request
 from apps.bookings.serializers import BookingCreateSerializer, BookingSerializer
 from apps.bookings.services import create_booking
 from apps.catalogue.models import Service
 from apps.operations.services import mark_cart_added
+from common.idempotency import idempotency_key_from_request, request_fingerprint
 
 
 class CartAddSerializer(serializers.Serializer):
@@ -133,6 +135,20 @@ class CartCheckoutView(APIView):
         serializer = CartCheckoutSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         lock_customer(request.user)
+        fingerprint = request_fingerprint(request.data)
+        idempotency_key = idempotency_key_from_request(request, fallback=f"cart-{fingerprint}")
+        checkout_request, previous_bookings = begin_checkout_request(
+            customer=request.user,
+            key=idempotency_key,
+            fingerprint=fingerprint,
+        )
+        if previous_bookings:
+            return Response(
+                {
+                    "bookings": BookingSerializer(previous_bookings, many=True).data,
+                    "cart": cart_response(request.user),
+                }
+            )
         selections = serializer.validated_data["items"]
         rows = {row.service_id: row for row in CartItem.objects.filter(customer=request.user).select_related("booking")}
         # Lock slot rows in deterministic order before creating any booking.
@@ -152,4 +168,5 @@ class CartCheckoutView(APIView):
                 row.booking = booking
                 row.save(update_fields=["booking", "updated_at"])
             bookings.append(booking)
+        complete_checkout_request(checkout_request, bookings)
         return Response({"bookings": BookingSerializer(bookings, many=True).data, "cart": cart_response(request.user)})

@@ -18,10 +18,18 @@ from apps.payments.serializers import (
     PaymentOrderResponseSerializer,
     PaymentVerifyRequestSerializer,
     PaymentVerifyResponseSerializer,
+    RefundCreateSerializer,
     WebhookResponseSerializer,
 )
 from apps.payments.models import Payment
-from apps.payments.services import create_advance_payment_order, process_razorpay_webhook, verify_razorpay_payment
+from apps.payments.services import (
+    create_advance_payment_order,
+    create_refund,
+    process_razorpay_webhook,
+    reconcile_refund,
+    verify_razorpay_payment,
+)
+from common.idempotency import idempotency_key_from_request
 
 
 MAX_WEBHOOK_BODY_BYTES = 256 * 1024
@@ -47,7 +55,12 @@ class BookingAdvancePaymentOrderView(APIView):
                 {"error": {"code": "BOOKING_NOT_FOUND", "message": "Booking was not found.", "details": {}}},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        payment, response_data = create_advance_payment_order(booking=booking, user=request.user)
+        idempotency_key = idempotency_key_from_request(request, fallback=f"payment-{booking.id}")
+        payment, response_data = create_advance_payment_order(
+            booking=booking,
+            user=request.user,
+            idempotency_key=idempotency_key,
+        )
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
@@ -95,7 +108,12 @@ class AdminPaymentViewSet(
                 {"error": {"code": "BOOKING_NOT_FOUND", "message": "Booking was not found.", "details": {}}},
                 status=status.HTTP_404_NOT_FOUND,
             )
-        payment, response_data = create_advance_payment_order(booking=booking, user=booking.customer)
+        idempotency_key = idempotency_key_from_request(request, fallback=f"admin-payment-{booking.id}")
+        payment, response_data = create_advance_payment_order(
+            booking=booking,
+            user=booking.customer,
+            idempotency_key=idempotency_key,
+        )
         audit_event(
             action=AuditAction.ADMIN_PAYMENT_LINK_CREATED,
             actor=request.user,
@@ -105,6 +123,53 @@ class AdminPaymentViewSet(
             metadata={"payment_id": str(payment.id)},
         )
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary="Refund a successful Razorpay payment",
+        request=RefundCreateSerializer,
+        responses={status.HTTP_201_CREATED: PaymentSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="refund")
+    def refund(self, request, *args, **kwargs):
+        source = self.get_object()
+        serializer = RefundCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        idempotency_key = idempotency_key_from_request(request, fallback=f"refund-{source.id}")
+        refund = create_refund(
+            payment_id=source.id,
+            amount=serializer.validated_data["amount"],
+            idempotency_key=idempotency_key,
+            requested_by=request.user,
+            reason=serializer.validated_data.get("reason", ""),
+        )
+        audit_event(
+            action=AuditAction.ADMIN_REFUND_CREATED,
+            actor=request.user,
+            request=request,
+            resource_type="payment",
+            resource_id=refund.id,
+            metadata={"source_payment_id": str(source.id), "amount": str(refund.amount)},
+        )
+        return Response(PaymentSerializer(refund).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        summary="Reconcile a refund with Razorpay",
+        request=None,
+        responses={status.HTTP_200_OK: PaymentSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="reconcile-refund")
+    def reconcile_refund_action(self, request, *args, **kwargs):
+        payment = self.get_object()
+        refund = reconcile_refund(refund_id=payment.id)
+        audit_event(
+            action=AuditAction.ADMIN_REFUND_RECONCILED,
+            actor=request.user,
+            request=request,
+            resource_type="payment",
+            resource_id=refund.id,
+            metadata={"status": refund.status},
+        )
+        return Response(PaymentSerializer(refund).data)
 
 
 class PaymentVerifyView(APIView):

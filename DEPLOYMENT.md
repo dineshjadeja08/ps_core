@@ -39,15 +39,21 @@ CSRF_TRUSTED_ORIGINS=https://ps-core.onrender.com,https://FRONTEND_DOMAIN.vercel
 
 OTP_AUTH_PROVIDER=apps.accounts.otp.providers.Msg91OtpProvider
 MSG91_AUTH_KEY=<MSG91 auth key, backend secret only>
-MSG91_TEMPLATE_ID=<approved MSG91 OTP template id>
+MSG91_TEMPLATE_ID=<approved MSG91 SMS OTP template id>
 MSG91_OTP_EXPIRY_MINUTES=5
+MSG91_WHATSAPP_INTEGRATED_NUMBER=<connected WhatsApp Business number with country code>
+MSG91_WHATSAPP_TEMPLATE_NAME=<approved WhatsApp authentication template name>
+MSG91_WHATSAPP_TEMPLATE_NAMESPACE=<approved template namespace>
+MSG91_WHATSAPP_TEMPLATE_LANGUAGE=en
+MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME=<approved booking update template name>
+MSG91_WEBHOOK_SECRET=<long random callback secret>
 
 RAZORPAY_KEY_ID=<test or live key id>
 RAZORPAY_KEY_SECRET=<test or live secret>
 RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook signing secret>
 RAZORPAY_ADAPTER=apps.payments.providers.RazorpayApiAdapter
 
-NOTIFICATION_PROVIDER=apps.notifications.providers.LocalNotificationProvider
+NOTIFICATION_PROVIDER=apps.notifications.providers.Msg91WhatsAppNotificationProvider
 DEV_PHONE_LOGIN_ENABLED=false
 SHOW_API_DOCS=false
 LOG_LEVEL=INFO
@@ -78,16 +84,17 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 5. Set Vercel preview/staging frontend origin in `CORS_ALLOWED_ORIGINS`.
 6. Set backend/frontend HTTPS origins in `CSRF_TRUSTED_ORIGINS`.
 7. Revoke every Firebase Admin key that was pasted during development.
-8. Add MSG91 auth key and approved OTP template ID only as backend secrets.
-9. Confirm MSG91 DLT/sender/template setup is approved for India.
-10. Add Razorpay test keys and webhook secret.
-11. Deploy.
-12. Confirm `/api/v1/health/` returns `200`.
-13. Run `python manage.py seed_service_areas` for Chennai, Bangalore, and Coimbatore launch coverage.
-14. Run `python manage.py seed_catalogue` for the Purple Squad service catalogue.
-15. Create a staging superuser.
-16. Run the backend acceptance flow with test payments.
-17. Confirm duplicate webhook handling and audit logs.
+8. Add the MSG91 auth key, SMS template, integrated WhatsApp number, and WhatsApp template values only as backend secrets.
+9. Confirm MSG91 DLT/SMS setup and the Meta WhatsApp authentication template are approved for India.
+10. Add Razorpay test keys and webhook secret. Configure Razorpay to post payment and refund events to `/api/v1/payments/webhooks/razorpay/`.
+11. Configure the MSG91 delivery-report webhook as `/api/v1/notifications/webhooks/msg91/` and send the secret in `X-MSG91-Webhook-Secret`.
+12. Deploy.
+13. Confirm `/api/v1/health/` returns `200`.
+14. Run `python manage.py seed_service_areas` for Chennai, Bangalore, and Coimbatore launch coverage.
+15. Run `python manage.py seed_catalogue` for the Purple Squad service catalogue.
+16. Create a staging superuser.
+17. Run the backend acceptance flow with test payments.
+18. Confirm duplicate payment/refund webhooks, WhatsApp delivery callbacks, and audit logs.
 
 ## Production Checklist
 
@@ -104,6 +111,14 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 11. Verify health endpoint.
 12. Run acceptance flow with a controlled live payment.
 13. Enable monitoring and backup alerts.
+
+## Payment Safety and Refund Operations
+
+Checkout and payment-order creation accept an `Idempotency-Key` header. Clients should generate one stable key for each user action and reuse it only when retrying that same action. The backend locks the booking while creating an order and enforces one active advance payment (`CREATED`, `PENDING`, or `SUCCESS`) per booking at the database level.
+
+Razorpay webhook deliveries are signature-verified and persisted before processing. Failed attempts remain retryable, while successfully processed duplicate payloads are acknowledged without applying state twice. Subscribe the webhook to payment captured/failed and refund created/processed/failed events.
+
+Admins can create a full or partial refund from the Payments screen and reconcile refund state with Razorpay. Use a unique refund reason/operation per customer request; retries of the same operation reuse the same backend idempotency key. Review refund records that remain pending or failed before settlement close.
 
 ## Superuser Creation
 
@@ -157,8 +172,8 @@ After creating the superuser:
 
 Run this once in staging with test/sandbox credentials and once in production with a controlled live payment:
 
-1. Customer opens frontend and requests phone OTP.
-2. Frontend calls `POST /api/v1/auth/otp/send/`.
+1. Customer opens frontend and chooses SMS or WhatsApp OTP.
+2. Frontend calls `POST /api/v1/auth/otp/send/` with `channel: "SMS"` or `channel: "WHATSAPP"`.
 3. Customer enters OTP.
 4. Frontend calls `POST /api/v1/auth/otp/verify/` and receives Purple Squad JWT credentials.
 5. Customer adds or selects a serviceable address.

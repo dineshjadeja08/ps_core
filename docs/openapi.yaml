@@ -990,9 +990,76 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/admin/leads/{id}/activities/:
+    get:
+      operationId: api_v1_admin_leads_activities_list
+      summary: List lead activities
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedLeadActivityList'
+          description: ''
   /api/v1/admin/leads/{id}/convert/:
     post:
       operationId: api_v1_admin_leads_convert_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/{id}/convert-to-booking/:
+    post:
+      operationId: api_v1_admin_leads_convert_to_booking_create
       summary: Convert lead by linking booking
       parameters:
       - in: path
@@ -1023,6 +1090,136 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/{id}/record-contact/:
+    post:
+      operationId: api_v1_admin_leads_record_contact_create
+      summary: Record lead contact
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadContactRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadContactRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadContactRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/{id}/record-manual-payment/:
+    post:
+      operationId: api_v1_admin_leads_record_manual_payment_create
+      summary: Record audited manual lead payment
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadManualPaymentRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadManualPaymentRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadManualPaymentRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/{id}/send-payment-link/:
+    post:
+      operationId: api_v1_admin_leads_send_payment_link_create
+      summary: Send payment link for unpaid lead
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadPaymentLinkRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadPaymentLinkRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadPaymentLinkRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/export/:
+    get:
+      operationId: api_v1_admin_leads_export_retrieve
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/summary/:
+    get:
+      operationId: api_v1_admin_leads_summary_retrieve
+      summary: Get lead summary
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeadSummary'
           description: ''
   /api/v1/admin/notifications/:
     get:
@@ -1248,6 +1445,62 @@ paths:
               schema:
                 $ref: '#/components/schemas/Payment'
           description: ''
+  /api/v1/admin/payments/{id}/reconcile-refund/:
+    post:
+      operationId: api_v1_admin_payments_reconcile_refund_create
+      summary: Reconcile a refund with Razorpay
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          description: ''
+  /api/v1/admin/payments/{id}/refund/:
+    post:
+      operationId: api_v1_admin_payments_refund_create
+      summary: Refund a successful Razorpay payment
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/RefundCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/RefundCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+          description: ''
   /api/v1/admin/payments/booking/{booking_id}/advance-order/:
     post:
       operationId: api_v1_admin_payments_booking_advance_order_create
@@ -1366,6 +1619,126 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminReview'
           description: ''
+  /api/v1/admin/service-areas/:
+    get:
+      operationId: api_v1_admin_service_areas_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - Admin - Service Areas
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminServiceAreaList'
+          description: ''
+    post:
+      operationId: api_v1_admin_service_areas_create
+      tags:
+      - Admin - Service Areas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminServiceAreaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminServiceAreaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminServiceAreaRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceArea'
+          description: ''
+  /api/v1/admin/service-areas/{id}/:
+    get:
+      operationId: api_v1_admin_service_areas_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Service Areas
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceArea'
+          description: ''
+    patch:
+      operationId: api_v1_admin_service_areas_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Service Areas
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceAreaRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceAreaRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminServiceAreaRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminServiceArea'
+          description: ''
+    delete:
+      operationId: api_v1_admin_service_areas_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Service Areas
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/v1/admin/service-categories/:
     get:
       operationId: api_v1_admin_service_categories_list
@@ -1402,10 +1775,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdminServiceCategoryRequest'
-          application/x-www-form-urlencoded:
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/AdminServiceCategoryRequest'
-          multipart/form-data:
+          application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/AdminServiceCategoryRequest'
         required: true
@@ -1455,10 +1828,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/AdminServiceCategoryRequest'
-          application/x-www-form-urlencoded:
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/AdminServiceCategoryRequest'
-          multipart/form-data:
+          application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/AdminServiceCategoryRequest'
         required: true
@@ -1487,10 +1860,10 @@ paths:
           application/json:
             schema:
               $ref: '#/components/schemas/PatchedAdminServiceCategoryRequest'
-          application/x-www-form-urlencoded:
+          multipart/form-data:
             schema:
               $ref: '#/components/schemas/PatchedAdminServiceCategoryRequest'
-          multipart/form-data:
+          application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/PatchedAdminServiceCategoryRequest'
       security:
@@ -2202,6 +2575,60 @@ paths:
               schema:
                 $ref: '#/components/schemas/AuthLoginResponse'
           description: ''
+  /api/v1/auth/password/login/:
+    post:
+      operationId: api_v1_auth_password_login_create
+      description: Temporary phone-password customer login while OTP delivery is being
+        configured.
+      summary: Login with phone and password
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordLoginRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+          description: ''
+  /api/v1/auth/password/signup/:
+    post:
+      operationId: api_v1_auth_password_signup_create
+      description: Temporary phone-password customer account creation while OTP delivery
+        is being configured.
+      summary: Create account with phone and password
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordSignupRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PasswordSignupRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PasswordSignupRequestRequest'
+        required: true
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+          description: ''
   /api/v1/auth/refresh/:
     post:
       operationId: api_v1_auth_refresh_create
@@ -2455,6 +2882,104 @@ paths:
               schema:
                 $ref: '#/components/schemas/Booking'
           description: ''
+  /api/v1/cart/:
+    get:
+      operationId: api_v1_cart_retrieve
+      tags:
+      - Cart
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+          description: ''
+    post:
+      operationId: api_v1_cart_create
+      tags:
+      - Cart
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartAddRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CartAddRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CartAddRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+          description: ''
+  /api/v1/cart/checkout/:
+    post:
+      operationId: api_v1_cart_checkout_create
+      tags:
+      - Cart
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartCheckoutRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CartCheckoutRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CartCheckoutRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartCheckoutResponse'
+          description: ''
+  /api/v1/cart/items/{service_id}/:
+    delete:
+      operationId: api_v1_cart_items_destroy
+      parameters:
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Cart
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/faqs/:
+    get:
+      operationId: api_v1_faqs_list
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/FAQ'
+          description: ''
   /api/v1/health/:
     get:
       operationId: api_v1_health_retrieve
@@ -2472,6 +2997,43 @@ paths:
                 Healthy:
                   value:
                     status: ok
+          description: ''
+  /api/v1/notifications/webhooks/msg91/:
+    post:
+      operationId: api_v1_notifications_webhooks_msg91_create
+      description: Reconciles sent, delivered, read, and failed WhatsApp notification
+        states.
+      summary: MSG91 WhatsApp delivery callback
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: {}
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: {}
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
           description: ''
   /api/v1/payments/verify/:
     post:
@@ -2603,7 +3165,7 @@ paths:
     get:
       operationId: api_v1_services_list
       description: Returns active public services with optional category, featured,
-        and name search filters.
+        name search, and postal-code availability filters.
       summary: List services
       parameters:
       - in: query
@@ -2628,6 +3190,11 @@ paths:
         description: Number of results to return per page.
         schema:
           type: integer
+      - in: query
+        name: postal_code
+        schema:
+          type: string
+        description: Only return services available at this postal code.
       - in: query
         name: search
         schema:
@@ -2717,6 +3284,7 @@ paths:
       tags:
       - api
       security:
+      - jwtAuth: []
       - {}
       responses:
         '200':
@@ -2798,80 +3366,6 @@ paths:
           description: ''
 components:
   schemas:
-    ActionEnum:
-      enum:
-      - ADMIN_BOOKING_START
-      - ADMIN_BOOKING_COMPLETE
-      - ADMIN_BOOKING_CANCEL
-      - ADMIN_RECORD_BALANCE
-      - ADMIN_PAYMENT_LINK_CREATED
-      - TECHNICIAN_ASSIGN
-      - TECHNICIAN_CREATED
-      - TECHNICIAN_UPDATED
-      - TECHNICIAN_VERIFICATION_CHANGED
-      - TECHNICIAN_AVAILABILITY_CHANGED
-      - TECHNICIAN_ASSIGNMENT_REMOVED
-      - TECHNICIAN_LEAVE_CREATED
-      - PAYMENT_WEBHOOK_RECEIVED
-      - PAYMENT_WEBHOOK_REJECTED
-      - PERMISSION_DENIED
-      - SERVICE_CREATED
-      - SERVICE_UPDATED
-      - SERVICE_DEACTIVATED
-      - SERVICE_PRICE_CHANGED
-      - SERVICE_IMAGE_CHANGED
-      - CATEGORY_CREATED
-      - CATEGORY_UPDATED
-      - CATEGORY_DEACTIVATED
-      - LEAD_CREATED
-      - LEAD_UPDATED
-      - LEAD_STATUS_CHANGED
-      - LEAD_CONVERTED
-      - BANNER_CREATED
-      - BANNER_UPDATED
-      - BANNER_PUBLICATION_CHANGED
-      - FAQ_CREATED
-      - FAQ_UPDATED
-      - REVIEW_UPDATED
-      - CUSTOMER_SUPPORT_NOTE_CREATED
-      - STAFF_UPDATED
-      type: string
-      description: |-
-        * `ADMIN_BOOKING_START` - Admin booking start
-        * `ADMIN_BOOKING_COMPLETE` - Admin booking complete
-        * `ADMIN_BOOKING_CANCEL` - Admin booking cancel
-        * `ADMIN_RECORD_BALANCE` - Admin record balance
-        * `ADMIN_PAYMENT_LINK_CREATED` - Admin payment link created
-        * `TECHNICIAN_ASSIGN` - Technician assign
-        * `TECHNICIAN_CREATED` - Technician created
-        * `TECHNICIAN_UPDATED` - Technician updated
-        * `TECHNICIAN_VERIFICATION_CHANGED` - Technician verification changed
-        * `TECHNICIAN_AVAILABILITY_CHANGED` - Technician availability changed
-        * `TECHNICIAN_ASSIGNMENT_REMOVED` - Technician assignment removed
-        * `TECHNICIAN_LEAVE_CREATED` - Technician leave created
-        * `PAYMENT_WEBHOOK_RECEIVED` - Payment webhook received
-        * `PAYMENT_WEBHOOK_REJECTED` - Payment webhook rejected
-        * `PERMISSION_DENIED` - Permission denied
-        * `SERVICE_CREATED` - Service created
-        * `SERVICE_UPDATED` - Service updated
-        * `SERVICE_DEACTIVATED` - Service deactivated
-        * `SERVICE_PRICE_CHANGED` - Service price changed
-        * `SERVICE_IMAGE_CHANGED` - Service image changed
-        * `CATEGORY_CREATED` - Category created
-        * `CATEGORY_UPDATED` - Category updated
-        * `CATEGORY_DEACTIVATED` - Category deactivated
-        * `LEAD_CREATED` - Lead created
-        * `LEAD_UPDATED` - Lead updated
-        * `LEAD_STATUS_CHANGED` - Lead status changed
-        * `LEAD_CONVERTED` - Lead converted
-        * `BANNER_CREATED` - Banner created
-        * `BANNER_UPDATED` - Banner updated
-        * `BANNER_PUBLICATION_CHANGED` - Banner publication changed
-        * `FAQ_CREATED` - FAQ created
-        * `FAQ_UPDATED` - FAQ updated
-        * `REVIEW_UPDATED` - Review updated
-        * `CUSTOMER_SUPPORT_NOTE_CREATED` - Customer support note created
-        * `STAFF_UPDATED` - Staff updated
     Address:
       type: object
       properties:
@@ -3367,6 +3861,89 @@ components:
       - name
       - slug
       - updated_at
+    AdminServiceArea:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        city:
+          type: string
+          maxLength: 100
+        state:
+          type: string
+          maxLength: 100
+        country:
+          type: string
+          default: India
+          maxLength: 100
+        postal_code:
+          type: string
+          maxLength: 20
+        is_active:
+          type: boolean
+        services:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - city
+      - created_at
+      - id
+      - name
+      - postal_code
+      - services
+      - state
+      - updated_at
+    AdminServiceAreaRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        state:
+          type: string
+          minLength: 1
+          maxLength: 100
+        country:
+          type: string
+          minLength: 1
+          default: India
+          maxLength: 100
+        postal_code:
+          type: string
+          minLength: 1
+          maxLength: 20
+        is_active:
+          type: boolean
+        service_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+            writeOnly: true
+          writeOnly: true
+      required:
+      - city
+      - name
+      - postal_code
+      - state
     AdminServiceCategory:
       type: object
       properties:
@@ -3383,10 +3960,12 @@ components:
           pattern: ^[-a-zA-Z0-9_]+$
         description:
           type: string
-        image_url:
+        image:
           type: string
           format: uri
-          maxLength: 200
+        image_url:
+          type: string
+          readOnly: true
         display_order:
           type: integer
           maximum: 9223372036854775807
@@ -3405,6 +3984,7 @@ components:
       required:
       - created_at
       - id
+      - image_url
       - name
       - slug
       - updated_at
@@ -3422,10 +4002,13 @@ components:
           pattern: ^[-a-zA-Z0-9_]+$
         description:
           type: string
-        image_url:
+        image:
+          type: string
+          format: binary
+        external_image_url:
           type: string
           format: uri
-          maxLength: 200
+          writeOnly: true
         display_order:
           type: integer
           maximum: 9223372036854775807
@@ -3530,11 +4113,17 @@ components:
           type: boolean
         firebase_configured:
           type: boolean
+        cloudinary_media_enabled:
+          type: boolean
+        cloudinary_media_configured:
+          type: boolean
         booking_require_balance_before_completion:
           type: boolean
       required:
       - allowed_hosts
       - booking_require_balance_before_completion
+      - cloudinary_media_configured
+      - cloudinary_media_enabled
       - cors_allowed_origins
       - csrf_trusted_origins
       - debug
@@ -3684,7 +4273,7 @@ components:
           readOnly: true
         action:
           allOf:
-          - $ref: '#/components/schemas/ActionEnum'
+          - $ref: '#/components/schemas/AuditLogActionEnum'
           readOnly: true
         resource_type:
           type: string
@@ -3725,6 +4314,84 @@ components:
       - resource_type
       - updated_at
       - user_agent
+    AuditLogActionEnum:
+      enum:
+      - ADMIN_BOOKING_START
+      - ADMIN_BOOKING_COMPLETE
+      - ADMIN_BOOKING_CANCEL
+      - ADMIN_RECORD_BALANCE
+      - ADMIN_PAYMENT_LINK_CREATED
+      - ADMIN_REFUND_CREATED
+      - ADMIN_REFUND_RECONCILED
+      - TECHNICIAN_ASSIGN
+      - TECHNICIAN_CREATED
+      - TECHNICIAN_UPDATED
+      - TECHNICIAN_VERIFICATION_CHANGED
+      - TECHNICIAN_AVAILABILITY_CHANGED
+      - TECHNICIAN_ASSIGNMENT_REMOVED
+      - TECHNICIAN_LEAVE_CREATED
+      - PAYMENT_WEBHOOK_RECEIVED
+      - PAYMENT_WEBHOOK_REJECTED
+      - PERMISSION_DENIED
+      - SERVICE_CREATED
+      - SERVICE_UPDATED
+      - SERVICE_DEACTIVATED
+      - SERVICE_PRICE_CHANGED
+      - SERVICE_IMAGE_CHANGED
+      - CATEGORY_CREATED
+      - CATEGORY_UPDATED
+      - CATEGORY_DEACTIVATED
+      - LEAD_CREATED
+      - LEAD_UPDATED
+      - LEAD_STATUS_CHANGED
+      - LEAD_CONVERTED
+      - BANNER_CREATED
+      - BANNER_UPDATED
+      - BANNER_PUBLICATION_CHANGED
+      - FAQ_CREATED
+      - FAQ_UPDATED
+      - REVIEW_UPDATED
+      - CUSTOMER_SUPPORT_NOTE_CREATED
+      - STAFF_UPDATED
+      type: string
+      description: |-
+        * `ADMIN_BOOKING_START` - Admin booking start
+        * `ADMIN_BOOKING_COMPLETE` - Admin booking complete
+        * `ADMIN_BOOKING_CANCEL` - Admin booking cancel
+        * `ADMIN_RECORD_BALANCE` - Admin record balance
+        * `ADMIN_PAYMENT_LINK_CREATED` - Admin payment link created
+        * `ADMIN_REFUND_CREATED` - Admin refund created
+        * `ADMIN_REFUND_RECONCILED` - Admin refund reconciled
+        * `TECHNICIAN_ASSIGN` - Technician assign
+        * `TECHNICIAN_CREATED` - Technician created
+        * `TECHNICIAN_UPDATED` - Technician updated
+        * `TECHNICIAN_VERIFICATION_CHANGED` - Technician verification changed
+        * `TECHNICIAN_AVAILABILITY_CHANGED` - Technician availability changed
+        * `TECHNICIAN_ASSIGNMENT_REMOVED` - Technician assignment removed
+        * `TECHNICIAN_LEAVE_CREATED` - Technician leave created
+        * `PAYMENT_WEBHOOK_RECEIVED` - Payment webhook received
+        * `PAYMENT_WEBHOOK_REJECTED` - Payment webhook rejected
+        * `PERMISSION_DENIED` - Permission denied
+        * `SERVICE_CREATED` - Service created
+        * `SERVICE_UPDATED` - Service updated
+        * `SERVICE_DEACTIVATED` - Service deactivated
+        * `SERVICE_PRICE_CHANGED` - Service price changed
+        * `SERVICE_IMAGE_CHANGED` - Service image changed
+        * `CATEGORY_CREATED` - Category created
+        * `CATEGORY_UPDATED` - Category updated
+        * `CATEGORY_DEACTIVATED` - Category deactivated
+        * `LEAD_CREATED` - Lead created
+        * `LEAD_UPDATED` - Lead updated
+        * `LEAD_STATUS_CHANGED` - Lead status changed
+        * `LEAD_CONVERTED` - Lead converted
+        * `BANNER_CREATED` - Banner created
+        * `BANNER_UPDATED` - Banner updated
+        * `BANNER_PUBLICATION_CHANGED` - Banner publication changed
+        * `FAQ_CREATED` - FAQ created
+        * `FAQ_UPDATED` - FAQ updated
+        * `REVIEW_UPDATED` - Review updated
+        * `CUSTOMER_SUPPORT_NOTE_CREATED` - Customer support note created
+        * `STAFF_UPDATED` - Staff updated
     AuthLoginResponse:
       type: object
       properties:
@@ -3766,6 +4433,18 @@ components:
         * `VERIFIED` - Verified
         * `REJECTED` - Rejected
         * `SUSPENDED` - Suspended
+    BalanceCollectionMethodEnum:
+      enum:
+      - CASH
+      - UPI
+      - CARD_OFFLINE
+      - OTHER
+      type: string
+      description: |-
+        * `CASH` - Cash
+        * `UPI` - UPI
+        * `CARD_OFFLINE` - Card offline
+        * `OTHER` - Other
     BalanceCollectionRequest:
       type: object
       properties:
@@ -3774,7 +4453,7 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
         method:
-          $ref: '#/components/schemas/MethodEnum'
+          $ref: '#/components/schemas/BalanceCollectionMethodEnum'
         notes:
           type: string
       required:
@@ -3968,20 +4647,86 @@ components:
       - created_at
       - id
       - to_status
-    ChannelEnum:
+    CartAddRequest:
+      type: object
+      properties:
+        service_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          maxItems: 100
+          minItems: 1
+        merge:
+          type: boolean
+          default: false
+        booking_ids:
+          type: object
+          additionalProperties:
+            type: string
+            format: uuid
+      required:
+      - service_ids
+    CartCheckoutRequest:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingCreateRequest'
+      required:
+      - items
+    CartCheckoutResponse:
+      type: object
+      properties:
+        bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+          readOnly: true
+        cart:
+          allOf:
+          - $ref: '#/components/schemas/CartResponse'
+          readOnly: true
+      required:
+      - bookings
+      - cart
+    CartResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+          readOnly: true
+        count:
+          type: integer
+          readOnly: true
+        total:
+          type: string
+          readOnly: true
+        advance_total:
+          type: string
+          readOnly: true
+        unavailable_service_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required:
+      - advance_total
+      - count
+      - items
+      - total
+    ChannelD63Enum:
       enum:
       - SMS
-      - EMAIL
       - WHATSAPP
-      - IN_APP
-      - PUSH
       type: string
       description: |-
         * `SMS` - SMS
-        * `EMAIL` - Email
         * `WHATSAPP` - WhatsApp
-        * `IN_APP` - In-app
-        * `PUSH` - Push
     CustomerProfile:
       type: object
       properties:
@@ -4065,6 +4810,7 @@ components:
       - BOOKING_RECEIVED
       - PAYMENT_PENDING
       - PAYMENT_SUCCESSFUL
+      - PAYMENT_FAILED
       - BOOKING_CONFIRMED
       - BOOKING_RESCHEDULED
       - TECHNICIAN_ASSIGNED
@@ -4084,6 +4830,7 @@ components:
         * `BOOKING_RECEIVED` - Booking received
         * `PAYMENT_PENDING` - Payment pending
         * `PAYMENT_SUCCESSFUL` - Payment successful
+        * `PAYMENT_FAILED` - Payment failed
         * `BOOKING_CONFIRMED` - Booking confirmed
         * `BOOKING_RESCHEDULED` - Booking rescheduled
         * `TECHNICIAN_ASSIGNED` - Technician assigned
@@ -4185,6 +4932,24 @@ components:
           minLength: 1
       required:
       - id_token
+    FunnelStatusEnum:
+      enum:
+      - VISITED
+      - CART_ADDED
+      - UNPAID
+      - PAID
+      - BOOKED
+      - CANCELLED
+      - LOST
+      type: string
+      description: |-
+        * `VISITED` - Visited
+        * `CART_ADDED` - Cart added
+        * `UNPAID` - Unpaid
+        * `PAID` - Paid
+        * `BOOKED` - Booked
+        * `CANCELLED` - Cancelled
+        * `LOST` - Lost
     HealthResponse:
       type: object
       properties:
@@ -4318,6 +5083,10 @@ components:
           type: string
           format: uuid
           readOnly: true
+        customer:
+          type: string
+          format: uuid
+          nullable: true
         customer_name:
           type: string
           maxLength: 255
@@ -4335,6 +5104,9 @@ components:
           type: string
           format: uuid
           nullable: true
+        service_name:
+          type: string
+          readOnly: true
         package:
           type: string
           maxLength: 180
@@ -4350,11 +5122,57 @@ components:
           $ref: '#/components/schemas/SourceEnum'
         status:
           $ref: '#/components/schemas/LeadStatusEnum'
+        funnel_status:
+          $ref: '#/components/schemas/FunnelStatusEnum'
+        payment_status:
+          $ref: '#/components/schemas/LeadPaymentStatusEnum'
+        lead_temperature:
+          $ref: '#/components/schemas/LeadTemperatureEnum'
         assigned_staff:
           type: string
           format: uuid
           nullable: true
+        assigned_staff_phone:
+          type: string
+          readOnly: true
         preferred_callback_at:
+          type: string
+          format: date-time
+          nullable: true
+        preferred_date:
+          type: string
+          format: date
+          nullable: true
+        preferred_slot:
+          type: string
+          maxLength: 120
+        quoted_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        balance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        payment_link_url:
+          type: string
+          format: uri
+          maxLength: 200
+        payment_link_provider_id:
+          type: string
+          readOnly: true
+        payment_link_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_contacted_at:
           type: string
           format: date-time
           nullable: true
@@ -4366,10 +5184,24 @@ components:
           type: string
         internal_notes:
           type: string
+        admin_notes:
+          type: string
+        lost_reason:
+          type: string
+          maxLength: 255
+        first_seen_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
         converted_booking:
           type: string
           format: uuid
           nullable: true
+        booking_number:
+          type: string
+          readOnly: true
         created_by:
           type: string
           format: uuid
@@ -4388,14 +5220,109 @@ components:
           items:
             $ref: '#/components/schemas/LeadStatusHistory'
           readOnly: true
+        activities:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadActivity'
+          readOnly: true
       required:
+      - activities
+      - assigned_staff_phone
+      - booking_number
       - created_at
       - created_by
       - customer_name
       - id
+      - payment_link_provider_id
       - primary_mobile
+      - service_name
       - status_history
       - updated_at
+    LeadActivity:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        action:
+          allOf:
+          - $ref: '#/components/schemas/LeadActivityActionEnum'
+          readOnly: true
+        previous_value:
+          readOnly: true
+        new_value:
+          readOnly: true
+        note:
+          type: string
+          readOnly: true
+        performed_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        performed_by_phone:
+          type: string
+          readOnly: true
+        ip_address:
+          type: string
+          readOnly: true
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - created_at
+      - id
+      - ip_address
+      - new_value
+      - note
+      - performed_by
+      - performed_by_phone
+      - previous_value
+    LeadActivityActionEnum:
+      enum:
+      - SERVICE_VIEWED
+      - ADDED_TO_CART
+      - CHECKOUT_STARTED
+      - BOOKING_CREATED
+      - PAYMENT_LINK_CREATED
+      - PAYMENT_LINK_SENT
+      - PAYMENT_CONFIRMED
+      - STATUS_CHANGED
+      - CALL_COMPLETED
+      - NOTE_ADDED
+      - LEAD_ASSIGNED
+      - LEAD_MERGED
+      - MANUAL_PAYMENT_RECORDED
+      type: string
+      description: |-
+        * `SERVICE_VIEWED` - Service viewed
+        * `ADDED_TO_CART` - Added to cart
+        * `CHECKOUT_STARTED` - Checkout started
+        * `BOOKING_CREATED` - Booking created
+        * `PAYMENT_LINK_CREATED` - Payment link created
+        * `PAYMENT_LINK_SENT` - Payment link sent
+        * `PAYMENT_CONFIRMED` - Payment confirmed
+        * `STATUS_CHANGED` - Status changed
+        * `CALL_COMPLETED` - Call completed
+        * `NOTE_ADDED` - Note added
+        * `LEAD_ASSIGNED` - Lead assigned
+        * `LEAD_MERGED` - Lead merged
+        * `MANUAL_PAYMENT_RECORDED` - Manual payment recorded
+    LeadContactRequest:
+      type: object
+      properties:
+        note:
+          type: string
+          minLength: 1
+        next_follow_up_at:
+          type: string
+          format: date-time
+      required:
+      - note
     LeadConvertRequest:
       type: object
       properties:
@@ -4406,9 +5333,79 @@ components:
           type: string
       required:
       - booking_id
+    LeadManualPaymentMethodEnum:
+      enum:
+      - MANUAL_CASH
+      - MANUAL_UPI
+      - MANUAL_CARD
+      - MANUAL_BANK_TRANSFER
+      type: string
+      description: |-
+        * `MANUAL_CASH` - Manual cash
+        * `MANUAL_UPI` - Manual UPI
+        * `MANUAL_CARD` - Manual card
+        * `MANUAL_BANK_TRANSFER` - Manual bank transfer
+    LeadManualPaymentRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        method:
+          $ref: '#/components/schemas/LeadManualPaymentMethodEnum'
+        reference:
+          type: string
+        payment_date:
+          type: string
+          format: date
+        note:
+          type: string
+        confirm:
+          type: boolean
+      required:
+      - amount
+      - confirm
+      - method
+      - payment_date
+    LeadPaymentLinkChannelEnum:
+      enum:
+      - SMS
+      - WHATSAPP
+      type: string
+      description: |-
+        * `SMS` - SMS
+        * `WHATSAPP` - WHATSAPP
+    LeadPaymentLinkRequest:
+      type: object
+      properties:
+        channel:
+          allOf:
+          - $ref: '#/components/schemas/LeadPaymentLinkChannelEnum'
+          default: WHATSAPP
+    LeadPaymentStatusEnum:
+      enum:
+      - NOT_REQUIRED
+      - PENDING
+      - LINK_SENT
+      - PAID
+      - FAILED
+      - REFUNDED
+      type: string
+      description: |-
+        * `NOT_REQUIRED` - Not required
+        * `PENDING` - Pending
+        * `LINK_SENT` - Link sent
+        * `PAID` - Paid
+        * `FAILED` - Failed
+        * `REFUNDED` - Refunded
     LeadRequest:
       type: object
       properties:
+        customer:
+          type: string
+          format: uuid
+          nullable: true
         customer_name:
           type: string
           minLength: 1
@@ -4443,11 +5440,51 @@ components:
           $ref: '#/components/schemas/SourceEnum'
         status:
           $ref: '#/components/schemas/LeadStatusEnum'
+        funnel_status:
+          $ref: '#/components/schemas/FunnelStatusEnum'
+        payment_status:
+          $ref: '#/components/schemas/LeadPaymentStatusEnum'
+        lead_temperature:
+          $ref: '#/components/schemas/LeadTemperatureEnum'
         assigned_staff:
           type: string
           format: uuid
           nullable: true
         preferred_callback_at:
+          type: string
+          format: date-time
+          nullable: true
+        preferred_date:
+          type: string
+          format: date
+          nullable: true
+        preferred_slot:
+          type: string
+          maxLength: 120
+        quoted_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        balance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        payment_link_url:
+          type: string
+          format: uri
+          maxLength: 200
+        payment_link_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_contacted_at:
           type: string
           format: date-time
           nullable: true
@@ -4459,6 +5496,17 @@ components:
           type: string
         internal_notes:
           type: string
+        admin_notes:
+          type: string
+        lost_reason:
+          type: string
+          maxLength: 255
+        first_seen_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
         converted_booking:
           type: string
           format: uuid
@@ -4517,18 +5565,41 @@ components:
       - id
       - notes
       - to_status
-    MethodEnum:
+    LeadSummary:
+      type: object
+      properties:
+        all_leads:
+          type: integer
+        visited:
+          type: integer
+        cart_added:
+          type: integer
+        unpaid:
+          type: integer
+        paid:
+          type: integer
+        booked:
+          type: integer
+        follow_ups_due_today:
+          type: integer
+      required:
+      - all_leads
+      - booked
+      - cart_added
+      - follow_ups_due_today
+      - paid
+      - unpaid
+      - visited
+    LeadTemperatureEnum:
       enum:
-      - CASH
-      - UPI
-      - CARD_OFFLINE
-      - OTHER
+      - HOT
+      - WARM
+      - COLD
       type: string
       description: |-
-        * `CASH` - Cash
-        * `UPI` - UPI
-        * `CARD_OFFLINE` - Card offline
-        * `OTHER` - Other
+        * `HOT` - Hot
+        * `WARM` - Warm
+        * `COLD` - Cold
     Notification:
       type: object
       properties:
@@ -4553,7 +5624,7 @@ components:
         event:
           $ref: '#/components/schemas/EventEnum'
         channel:
-          $ref: '#/components/schemas/ChannelEnum'
+          $ref: '#/components/schemas/NotificationChannelEnum'
         status:
           $ref: '#/components/schemas/NotificationStatusEnum'
         title:
@@ -4607,6 +5678,20 @@ components:
       properties:
         reason:
           type: string
+    NotificationChannelEnum:
+      enum:
+      - SMS
+      - EMAIL
+      - WHATSAPP
+      - IN_APP
+      - PUSH
+      type: string
+      description: |-
+        * `SMS` - SMS
+        * `EMAIL` - Email
+        * `WHATSAPP` - WhatsApp
+        * `IN_APP` - In-app
+        * `PUSH` - Push
     NotificationRequest:
       type: object
       properties:
@@ -4621,7 +5706,7 @@ components:
         event:
           $ref: '#/components/schemas/EventEnum'
         channel:
-          $ref: '#/components/schemas/ChannelEnum'
+          $ref: '#/components/schemas/NotificationChannelEnum'
         status:
           $ref: '#/components/schemas/NotificationStatusEnum'
         title:
@@ -4641,12 +5726,16 @@ components:
       enum:
       - QUEUED
       - SENT
+      - DELIVERED
+      - READ
       - FAILED
       - CANCELLED
       type: string
       description: |-
         * `QUEUED` - Queued
         * `SENT` - Sent
+        * `DELIVERED` - Delivered
+        * `READ` - Read
         * `FAILED` - Failed
         * `CANCELLED` - Cancelled
     OtpSendRequestRequest:
@@ -4655,6 +5744,10 @@ components:
         phone_number:
           type: string
           minLength: 1
+        channel:
+          allOf:
+          - $ref: '#/components/schemas/ChannelD63Enum'
+          default: SMS
       required:
       - phone_number
     OtpSendResponse:
@@ -4664,7 +5757,10 @@ components:
           type: string
         request_id:
           type: string
+        channel:
+          $ref: '#/components/schemas/ChannelD63Enum'
       required:
+      - channel
       - phone_number
       - request_id
     OtpVerifyRequestRequest:
@@ -4749,6 +5845,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminReview'
+    PaginatedAdminServiceAreaList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminServiceArea'
     PaginatedAdminServiceCategoryList:
       type: object
       required:
@@ -4910,6 +6029,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/HomepageBanner'
+    PaginatedLeadActivityList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/LeadActivity'
     PaginatedLeadList:
       type: object
       required:
@@ -5071,6 +6213,43 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StaffGroup'
+    PasswordLoginRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+      required:
+      - password
+      - phone_number
+    PasswordSignupRequestRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+          maxLength: 128
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        email:
+          type: string
+          format: email
+          nullable: true
+      required:
+      - password
+      - phone_number
     PatchedAddressRequest:
       type: object
       properties:
@@ -5139,6 +6318,39 @@ components:
           minLength: 1
         is_visible:
           type: boolean
+    PatchedAdminServiceAreaRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 150
+        city:
+          type: string
+          minLength: 1
+          maxLength: 100
+        state:
+          type: string
+          minLength: 1
+          maxLength: 100
+        country:
+          type: string
+          minLength: 1
+          default: India
+          maxLength: 100
+        postal_code:
+          type: string
+          minLength: 1
+          maxLength: 20
+        is_active:
+          type: boolean
+        service_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+            writeOnly: true
+          writeOnly: true
     PatchedAdminServiceCategoryRequest:
       type: object
       properties:
@@ -5153,10 +6365,13 @@ components:
           pattern: ^[-a-zA-Z0-9_]+$
         description:
           type: string
-        image_url:
+        image:
+          type: string
+          format: binary
+        external_image_url:
           type: string
           format: uri
-          maxLength: 200
+          writeOnly: true
         display_order:
           type: integer
           maximum: 9223372036854775807
@@ -5327,6 +6542,10 @@ components:
     PatchedLeadRequest:
       type: object
       properties:
+        customer:
+          type: string
+          format: uuid
+          nullable: true
         customer_name:
           type: string
           minLength: 1
@@ -5361,11 +6580,51 @@ components:
           $ref: '#/components/schemas/SourceEnum'
         status:
           $ref: '#/components/schemas/LeadStatusEnum'
+        funnel_status:
+          $ref: '#/components/schemas/FunnelStatusEnum'
+        payment_status:
+          $ref: '#/components/schemas/LeadPaymentStatusEnum'
+        lead_temperature:
+          $ref: '#/components/schemas/LeadTemperatureEnum'
         assigned_staff:
           type: string
           format: uuid
           nullable: true
         preferred_callback_at:
+          type: string
+          format: date-time
+          nullable: true
+        preferred_date:
+          type: string
+          format: date
+          nullable: true
+        preferred_slot:
+          type: string
+          maxLength: 120
+        quoted_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        balance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        payment_link_url:
+          type: string
+          format: uri
+          maxLength: 200
+        payment_link_expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_contacted_at:
           type: string
           format: date-time
           nullable: true
@@ -5377,6 +6636,17 @@ components:
           type: string
         internal_notes:
           type: string
+        admin_notes:
+          type: string
+        lost_reason:
+          type: string
+          maxLength: 255
+        first_seen_at:
+          type: string
+          format: date-time
+        last_activity_at:
+          type: string
+          format: date-time
         converted_booking:
           type: string
           format: uuid
@@ -5445,6 +6715,15 @@ components:
           type: string
           readOnly: true
           nullable: true
+        provider_refund_id:
+          type: string
+          readOnly: true
+          nullable: true
+        parent_payment:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
         amount:
           type: string
           format: decimal
@@ -5472,6 +6751,11 @@ components:
           format: date-time
           readOnly: true
           nullable: true
+        refunded_at:
+          type: string
+          format: date-time
+          readOnly: true
+          nullable: true
         created_at:
           type: string
           format: date-time
@@ -5490,10 +6774,13 @@ components:
       - id
       - idempotency_key
       - paid_at
+      - parent_payment
       - payment_type
       - provider
       - provider_order_id
       - provider_payment_id
+      - provider_refund_id
+      - refunded_at
       - signature_verified
       - status
       - updated_at
@@ -5618,6 +6905,18 @@ components:
       description: |-
         * `RAZORPAY` - Razorpay
         * `OFFLINE` - Offline
+    RefundCreateRequest:
+      type: object
+      properties:
+        amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        reason:
+          type: string
+          maxLength: 500
+      required:
+      - amount
     RemoveTechnicianAssignmentRequestRequest:
       type: object
       properties:
@@ -5727,8 +7026,7 @@ components:
           type: string
         image_url:
           type: string
-          format: uri
-          maxLength: 200
+          readOnly: true
         display_order:
           type: integer
           maximum: 9223372036854775807
@@ -5736,6 +7034,7 @@ components:
           format: int64
       required:
       - id
+      - image_url
       - name
       - slug
     ServiceCategoryRequest:
@@ -5752,10 +7051,6 @@ components:
           pattern: ^[-a-zA-Z0-9_]+$
         description:
           type: string
-        image_url:
-          type: string
-          format: uri
-          maxLength: 200
         display_order:
           type: integer
           maximum: 9223372036854775807
@@ -5962,6 +7257,12 @@ components:
       - slug
     SourceEnum:
       enum:
+      - SERVICE_VIEW
+      - CART
+      - CHECKOUT
+      - ADMIN
+      - PHONE_CALL
+      - CAMPAIGN
       - PHONE
       - WHATSAPP
       - WEBSITE
@@ -5972,6 +7273,12 @@ components:
       - OTHER
       type: string
       description: |-
+        * `SERVICE_VIEW` - Service view
+        * `CART` - Cart
+        * `CHECKOUT` - Checkout
+        * `ADMIN` - Admin
+        * `PHONE_CALL` - Phone call
+        * `CAMPAIGN` - Campaign
         * `PHONE` - Phone
         * `WHATSAPP` - WhatsApp
         * `WEBSITE` - Website
@@ -6234,6 +7541,8 @@ components:
       type: object
       properties:
         processed:
+          type: boolean
+        duplicate:
           type: boolean
         event:
           type: string

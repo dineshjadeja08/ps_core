@@ -26,12 +26,13 @@ def authenticate_with_firebase(id_token: str):
     return authenticate_verified_phone(phone_number)
 
 
-def send_login_otp(phone_number: str):
+def send_login_otp(phone_number: str, channel: str):
     phone_number = normalize_phone_number(phone_number)
     mobile = phone_number.replace("+", "")
     return {
         "phone_number": phone_number,
-        "request_id": get_otp_auth_provider().send_otp(mobile=mobile).request_id,
+        "request_id": get_otp_auth_provider().send_otp(mobile=mobile, channel=channel).request_id,
+        "channel": channel,
     }
 
 

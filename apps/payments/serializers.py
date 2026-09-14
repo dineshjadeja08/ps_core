@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 
 from apps.payments.models import Payment
@@ -17,6 +19,8 @@ class PaymentSerializer(serializers.ModelSerializer):
             "provider",
             "provider_order_id",
             "provider_payment_id",
+            "provider_refund_id",
+            "parent_payment",
             "amount",
             "currency",
             "payment_type",
@@ -24,6 +28,7 @@ class PaymentSerializer(serializers.ModelSerializer):
             "signature_verified",
             "idempotency_key",
             "paid_at",
+            "refunded_at",
             "created_at",
             "updated_at",
         )
@@ -55,4 +60,10 @@ class PaymentVerifyResponseSerializer(serializers.Serializer):
 
 class WebhookResponseSerializer(serializers.Serializer):
     processed = serializers.BooleanField()
+    duplicate = serializers.BooleanField(required=False)
     event = serializers.CharField(allow_blank=True, required=False)
+
+
+class RefundCreateSerializer(serializers.Serializer):
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=Decimal("0.01"))
+    reason = serializers.CharField(required=False, allow_blank=True, max_length=500)

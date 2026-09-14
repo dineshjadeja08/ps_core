@@ -267,6 +267,12 @@ def reschedule_booking(*, booking_id, slot_id, changed_by, notes=""):
         notes=notes
         or f"Booking rescheduled from {previous_service_date} slot {previous_slot_id} to {slot.date} slot {slot.id}.",
     )
+    emit_notification_event(
+        event=NotificationEvent.BOOKING_RESCHEDULED,
+        recipient=booking.customer,
+        booking=booking,
+        payload={"previous_service_date": str(previous_service_date), "previous_slot_id": previous_slot_id},
+    )
     return booking
 
 

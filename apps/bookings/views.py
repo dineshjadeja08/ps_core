@@ -1,4 +1,5 @@
 from drf_spectacular.utils import OpenApiExample, extend_schema
+from django.db import transaction
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.views import APIView
@@ -9,6 +10,8 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
+from apps.bookings.cart import lock_customer
+from apps.bookings.idempotency import begin_checkout_request, complete_checkout_request
 from apps.bookings.serializers import (
     BalanceCollectionSerializer,
     BookingCreateSerializer,
@@ -17,6 +20,7 @@ from apps.bookings.serializers import (
     BookingSerializer,
 )
 from apps.bookings.services import cancel_booking, complete_booking, start_booking
+from common.idempotency import idempotency_key_from_request, request_fingerprint
 
 
 class AdminBookingViewSet(
@@ -112,7 +116,19 @@ class BookingViewSet(
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        booking = serializer.save()
+        fingerprint = request_fingerprint(request.data)
+        idempotency_key = idempotency_key_from_request(request, fallback=f"booking-{fingerprint}")
+        with transaction.atomic():
+            lock_customer(request.user)
+            checkout_request, previous_bookings = begin_checkout_request(
+                customer=request.user,
+                key=idempotency_key,
+                fingerprint=fingerprint,
+            )
+            if previous_bookings:
+                return Response(BookingSerializer(previous_bookings[0]).data, status=status.HTTP_201_CREATED)
+            booking = serializer.save()
+            complete_checkout_request(checkout_request, [booking])
         return Response(BookingSerializer(booking).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(

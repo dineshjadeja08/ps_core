@@ -1,7 +1,13 @@
+import hmac
+
+from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 from django.db.models import Q
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -10,6 +16,71 @@ from apps.accounts.permissions import IsAdminRole
 from apps.notifications.models import Notification, NotificationStatus
 from apps.notifications.serializers import NotificationActionSerializer, NotificationSerializer
 from apps.notifications.services import send_notification
+
+
+@extend_schema(
+    summary="MSG91 WhatsApp delivery callback",
+    description="Reconciles sent, delivered, read, and failed WhatsApp notification states.",
+    request=OpenApiTypes.OBJECT,
+    responses={status.HTTP_200_OK: OpenApiTypes.OBJECT, status.HTTP_403_FORBIDDEN: OpenApiTypes.OBJECT},
+)
+@api_view(["POST"])
+@authentication_classes([])
+@permission_classes([])
+def msg91_delivery_webhook(request):
+    expected_secret = getattr(settings, "MSG91_WEBHOOK_SECRET", "")
+    supplied_secret = request.headers.get("X-MSG91-Webhook-Secret", "")
+    if not expected_secret or not hmac.compare_digest(expected_secret, supplied_secret):
+        return Response({"detail": "Invalid webhook secret."}, status=status.HTTP_403_FORBIDDEN)
+
+    payload = request.data if isinstance(request.data, dict) else {}
+    correlation_id = str(payload.get("CRQID") or payload.get("crqid") or "")
+    provider_ids = [
+        str(value)
+        for value in (
+            payload.get("request_id"),
+            payload.get("message_uuid"),
+            payload.get("campaign_request_id"),
+        )
+        if value
+    ]
+    provider_status = str(payload.get("status", "")).lower()
+    mapped_status = {
+        "submitted": NotificationStatus.SENT,
+        "sent": NotificationStatus.SENT,
+        "delivered": NotificationStatus.DELIVERED,
+        "read": NotificationStatus.READ,
+        "failed": NotificationStatus.FAILED,
+    }.get(provider_status)
+    with transaction.atomic():
+        queryset = Notification.objects.select_for_update()
+        notification = queryset.filter(id=correlation_id).first() if correlation_id else None
+        if notification is None and provider_ids:
+            notification = queryset.filter(provider_message_id__in=provider_ids).first()
+        if notification is None:
+            return Response({"processed": False, "reason": "notification_not_found"})
+
+        delivery_rank = {
+            NotificationStatus.QUEUED: 0,
+            NotificationStatus.SENT: 1,
+            NotificationStatus.DELIVERED: 2,
+            NotificationStatus.READ: 3,
+        }
+        if mapped_status == NotificationStatus.FAILED:
+            if notification.status not in {NotificationStatus.DELIVERED, NotificationStatus.READ}:
+                notification.status = mapped_status
+        elif mapped_status and delivery_rank.get(mapped_status, 0) >= delivery_rank.get(notification.status, 0):
+            notification.status = mapped_status
+        if provider_ids and not notification.provider_message_id:
+            notification.provider_message_id = provider_ids[0]
+        notification.payload = {**notification.payload, "delivery_callback": payload}
+        notification.error_message = (
+            "MSG91 reported delivery failure." if notification.status == NotificationStatus.FAILED else ""
+        )
+        notification.save(
+            update_fields=["status", "provider_message_id", "payload", "error_message", "updated_at"]
+        )
+    return Response({"processed": True, "notification_id": str(notification.id), "status": notification.status})
 
 
 class AdminNotificationViewSet(

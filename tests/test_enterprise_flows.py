@@ -147,7 +147,7 @@ def test_invalid_razorpay_signature_flow(customer_client, booking_context):
 
     assert response.status_code == 400
     assert Payment.objects.get().status == PaymentRecordStatus.FAILED
-    assert Booking.objects.get(id=booking_id).booking_status == BookingStatus.PENDING_PAYMENT
+    assert Booking.objects.get(id=booking_id).booking_status == BookingStatus.PAYMENT_FAILED
 
 
 @pytest.mark.django_db

@@ -86,12 +86,21 @@ if REQUIRE_OTP_PROVIDER_CONFIG and OTP_AUTH_PROVIDER.endswith("Msg91OtpProvider"
         raise RuntimeError("MSG91_AUTH_KEY must be set in production.")
     if not MSG91_TEMPLATE_ID:  # noqa: F405
         raise RuntimeError("MSG91_TEMPLATE_ID must be set in production.")
+    if not MSG91_WHATSAPP_INTEGRATED_NUMBER:  # noqa: F405
+        raise RuntimeError("MSG91_WHATSAPP_INTEGRATED_NUMBER must be set in production.")
+    if not MSG91_WHATSAPP_TEMPLATE_NAME:  # noqa: F405
+        raise RuntimeError("MSG91_WHATSAPP_TEMPLATE_NAME must be set in production.")
+    if not MSG91_WHATSAPP_TEMPLATE_NAMESPACE:  # noqa: F405
+        raise RuntimeError("MSG91_WHATSAPP_TEMPLATE_NAMESPACE must be set in production.")
+
+if REQUIRE_OTP_PROVIDER_CONFIG and NOTIFICATION_PROVIDER.endswith("Msg91WhatsAppNotificationProvider"):  # noqa: F405
+    if not MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME:  # noqa: F405
+        raise RuntimeError("MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME must be set in production.")
+    if not MSG91_WEBHOOK_SECRET:  # noqa: F405
+        raise RuntimeError("MSG91_WEBHOOK_SECRET must be set in production.")
 
 if OTP_AUTH_PROVIDER.endswith("FirebaseAdminAuthProvider") and not (  # noqa: F405
     os.environ.get("FIREBASE_CREDENTIALS_JSON")
     or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
 ):
     raise RuntimeError("Firebase Admin credentials must be configured server-side in production.")
-
-if REQUIRE_OTP_PROVIDER_CONFIG and OTP_AUTH_PROVIDER.endswith("Fast2SmsOtpProvider") and not FAST2SMS_API_KEY:  # noqa: F405
-    raise RuntimeError("FAST2SMS_API_KEY must be set in production.")

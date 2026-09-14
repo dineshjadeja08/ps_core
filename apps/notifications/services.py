@@ -11,7 +11,7 @@ from apps.notifications.models import Notification, NotificationChannel, Notific
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_CHANNELS = (NotificationChannel.PUSH,)
+DEFAULT_CHANNELS = (NotificationChannel.WHATSAPP,)
 
 
 def emit_notification_event(*, event, recipient, booking=None, channels=None, payload=None):
@@ -69,6 +69,7 @@ def _title_for_event(event):
         NotificationEvent.BOOKING_RECEIVED: "Booking received",
         NotificationEvent.PAYMENT_PENDING: "Payment pending",
         NotificationEvent.PAYMENT_SUCCESSFUL: "Payment successful",
+        NotificationEvent.PAYMENT_FAILED: "Payment failed",
         NotificationEvent.BOOKING_CONFIRMED: "Booking confirmed",
         NotificationEvent.BOOKING_RESCHEDULED: "Booking rescheduled",
         NotificationEvent.TECHNICIAN_ASSIGNED: "Technician assigned",
@@ -93,6 +94,7 @@ def _message_for_event(event, booking):
         NotificationEvent.BOOKING_RECEIVED: "Your booking has been received. Our Purple Squad team will contact you within 10 minutes to confirm the service and technician details.",
         NotificationEvent.PAYMENT_PENDING: f"{booking_number} is awaiting advance payment.",
         NotificationEvent.PAYMENT_SUCCESSFUL: f"Payment for {booking_number} was received.",
+        NotificationEvent.PAYMENT_FAILED: f"Payment for {booking_number} was not completed. You can safely try again.",
         NotificationEvent.BOOKING_CONFIRMED: f"{booking_number} is confirmed.",
         NotificationEvent.BOOKING_RESCHEDULED: f"{booking_number} has been rescheduled.",
         NotificationEvent.TECHNICIAN_ASSIGNED: f"A technician has been assigned to {booking_number}.",
