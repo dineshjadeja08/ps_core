@@ -15,6 +15,7 @@ from apps.notifications.services import emit_notification_event
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
 from apps.scheduling.models import TimeSlot
 from apps.scheduling.services import SlotNotAvailable, lock_slot_for_reservation
+from common.monitoring import report_operational_failure
 
 
 ADMIN_CANCELLABLE_STATUSES = {
@@ -63,8 +64,13 @@ def create_booking(*, customer, service_id, address_id, slot_id, problem_descrip
             from apps.operations.services import link_booking_to_lead
 
             link_booking_to_lead(booking=booking)
-        except Exception:
-            pass
+        except Exception as exc:
+            report_operational_failure(
+                "booking",
+                "Booking could not be linked to the operations lead",
+                exception=exc,
+                context={"booking_id": booking.id},
+            )
         return booking
 
 

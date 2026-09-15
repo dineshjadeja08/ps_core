@@ -9,8 +9,39 @@ def test_health_endpoint(client):
     response = client.get("/api/v1/health/")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json() == {
+        "status": "ok",
+        "checks": {"database": "ok", "migrations": "ok", "cache": "ok"},
+    }
     assert response["X-Request-ID"]
+
+
+@pytest.mark.django_db
+def test_health_endpoint_reports_pending_migrations(client, monkeypatch):
+    class FakeGraph:
+        @staticmethod
+        def leaf_nodes():
+            return [("accounts", "9999_pending")]
+
+    class FakeLoader:
+        graph = FakeGraph()
+
+    class FakeExecutor:
+        loader = FakeLoader()
+
+        def __init__(self, connection):
+            self.connection = connection
+
+        @staticmethod
+        def migration_plan(nodes):
+            return [(nodes[0], False)]
+
+    monkeypatch.setattr("common.views.MigrationExecutor", FakeExecutor)
+    response = client.get("/api/v1/health/")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+    assert response.json()["checks"]["migrations"] == "pending"
 
 
 @pytest.mark.django_db

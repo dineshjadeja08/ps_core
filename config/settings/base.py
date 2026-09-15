@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 import environ
@@ -114,6 +115,13 @@ DATABASES = {
     )
 }
 
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "purple-squad-local",
+    }
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -148,7 +156,7 @@ CSRF_TRUSTED_ORIGINS = csv_env("CSRF_TRUSTED_ORIGINS", strip_trailing_slash=True
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "apps.accounts.authentication.MfaEnforcedJWTAuthentication",
     ],
     "DEFAULT_PAGINATION_CLASS": "common.pagination.StandardResultsSetPagination",
     "PAGE_SIZE": 20,
@@ -172,7 +180,16 @@ REST_FRAMEWORK = {
         "auth": env("DRF_THROTTLE_AUTH", default="10/min"),
         "payment": env("DRF_THROTTLE_PAYMENT", default="30/min"),
         "webhook": env("DRF_THROTTLE_WEBHOOK", default="120/min"),
+        "login_ip": env("DRF_THROTTLE_LOGIN_IP", default="10/min"),
+        "login_phone": env("DRF_THROTTLE_LOGIN_PHONE", default="5/min"),
+        "otp_send_ip": env("DRF_THROTTLE_OTP_SEND_IP", default="10/hour"),
+        "otp_send_phone": env("DRF_THROTTLE_OTP_SEND_PHONE", default="5/hour"),
+        "otp_verify_ip": env("DRF_THROTTLE_OTP_VERIFY_IP", default="30/hour"),
+        "otp_verify_phone": env("DRF_THROTTLE_OTP_VERIFY_PHONE", default="10/hour"),
+        "payment_ip": env("DRF_THROTTLE_PAYMENT_IP", default="30/min"),
+        "payment_user": env("DRF_THROTTLE_PAYMENT_USER", default="20/min"),
     },
+    "NUM_PROXIES": env.int("DRF_NUM_PROXIES", default=0),
 }
 
 SPECTACULAR_SETTINGS = {
@@ -191,6 +208,15 @@ SPECTACULAR_SETTINGS = {
 }
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": False,
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": env("JWT_SIGNING_KEY", default=SECRET_KEY),
+    "ISSUER": env("JWT_ISSUER", default="purple-squad-api"),
+    "CHECK_REVOKE_TOKEN": True,
 }
 
 FIREBASE_AUTH_PROVIDER = env(
@@ -202,6 +228,7 @@ MSG91_AUTH_KEY = env("MSG91_AUTH_KEY", default="")
 MSG91_TEMPLATE_ID = env("MSG91_TEMPLATE_ID", default="")
 MSG91_SEND_OTP_URL = env("MSG91_SEND_OTP_URL", default="https://control.msg91.com/api/v5/otp")
 MSG91_OTP_EXPIRY_MINUTES = env.int("MSG91_OTP_EXPIRY_MINUTES", default=5)
+ADMIN_MFA_TTL_MINUTES = env.int("ADMIN_MFA_TTL_MINUTES", default=5)
 MSG91_WHATSAPP_OTP_URL = env(
     "MSG91_WHATSAPP_OTP_URL",
     default="https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
@@ -235,9 +262,21 @@ NOTIFICATION_PROVIDER = env(
     default="apps.notifications.providers.LocalNotificationProvider",
 )
 SHOW_API_DOCS = env.bool("SHOW_API_DOCS", default=DEBUG)
+ENABLE_DJANGO_ADMIN = env.bool("ENABLE_DJANGO_ADMIN", default=DEBUG)
 
 REQUEST_ID_HEADER = env("REQUEST_ID_HEADER", default="HTTP_X_REQUEST_ID")
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")
+SENTRY_DSN = env("SENTRY_DSN", default="")
+SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="local")
+SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.05)
+SENTRY_PROFILES_SAMPLE_RATE = env.float("SENTRY_PROFILES_SAMPLE_RATE", default=0.0)
+
+BACKUP_S3_ENDPOINT_URL = env("BACKUP_S3_ENDPOINT_URL", default="")
+BACKUP_S3_BUCKET = env("BACKUP_S3_BUCKET", default="")
+BACKUP_S3_ACCESS_KEY_ID = env("BACKUP_S3_ACCESS_KEY_ID", default="")
+BACKUP_S3_SECRET_ACCESS_KEY = env("BACKUP_S3_SECRET_ACCESS_KEY", default="")
+BACKUP_S3_REGION = env("BACKUP_S3_REGION", default="auto")
+BACKUP_RETENTION_DAYS = env.int("BACKUP_RETENTION_DAYS", default=30)
 
 LOGGING = {
     "version": 1,

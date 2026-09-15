@@ -21,8 +21,17 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(  # noqa: F405
         "auth": "10000/min",
         "payment": "10000/min",
         "webhook": "10000/min",
+        "login_ip": "10000/min",
+        "login_phone": "10000/min",
+        "otp_send_ip": "10000/min",
+        "otp_send_phone": "10000/min",
+        "otp_verify_ip": "10000/min",
+        "otp_verify_phone": "10000/min",
+        "payment_ip": "10000/min",
+        "payment_user": "10000/min",
     }
 )
 
 # Schema tests must not depend on a developer's production-like .env.
 SHOW_API_DOCS = True
+ENABLE_DJANGO_ADMIN = True

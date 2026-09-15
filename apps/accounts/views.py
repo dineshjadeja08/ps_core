@@ -17,6 +17,7 @@ from apps.accounts.serializers import (
     AdminCustomerSerializer,
     AdminStaffSerializer,
     AdminStaffUpdateSerializer,
+    AdminMfaVerifyRequestSerializer,
     CustomerSupportNoteSerializer,
     DevPhoneLoginRequestSerializer,
     FirebaseLoginRequestSerializer,
@@ -25,6 +26,7 @@ from apps.accounts.serializers import (
     OtpSendResponseSerializer,
     OtpVerifyRequestSerializer,
     PasswordLoginRequestSerializer,
+    PasswordLoginResponseSerializer,
     PasswordSignupRequestSerializer,
     StaffGroupSerializer,
     UserSerializer,
@@ -39,16 +41,27 @@ from apps.accounts.services import (
     authenticate_with_firebase,
     authenticate_with_otp,
     authenticate_with_password,
+    complete_admin_mfa,
     register_with_password,
     send_login_otp,
 )
 from django.conf import settings
+from common.throttles import (
+    LoginIPThrottle,
+    LoginPhoneThrottle,
+    MfaChallengeThrottle,
+    OtpSendIPThrottle,
+    OtpSendPhoneThrottle,
+    OtpVerifyIPThrottle,
+    OtpVerifyPhoneThrottle,
+)
 
 
 class FirebaseLoginView(APIView):
     authentication_classes = []
     permission_classes = []
     throttle_scope = "auth"
+    throttle_classes = [LoginIPThrottle]
 
     @extend_schema(
         summary="Authenticate with Firebase phone token",
@@ -112,6 +125,7 @@ class DevPhoneLoginView(APIView):
     authentication_classes = []
     permission_classes = []
     throttle_scope = "auth"
+    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
 
     @extend_schema(
         summary="Development phone login",
@@ -149,6 +163,7 @@ class PasswordSignupView(APIView):
     authentication_classes = []
     permission_classes = []
     throttle_scope = "auth"
+    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
 
     @extend_schema(
         summary="Create account with phone and password",
@@ -174,17 +189,44 @@ class PasswordLoginView(APIView):
     authentication_classes = []
     permission_classes = []
     throttle_scope = "auth"
+    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
 
     @extend_schema(
         summary="Login with phone and password",
         description="Temporary phone-password customer login while OTP delivery is being configured.",
         request=PasswordLoginRequestSerializer,
-        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
+        responses={status.HTTP_200_OK: PasswordLoginResponseSerializer},
     )
     def post(self, request):
         serializer = PasswordLoginRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         result = authenticate_with_password(**serializer.validated_data)
+        if result.get("mfa_required"):
+            return Response(result)
+        return Response(
+            {
+                "user": UserSerializer(result["user"]).data,
+                "tokens": result["tokens"],
+                "created": result["created"],
+            }
+        )
+
+
+class AdminMfaVerifyView(APIView):
+    authentication_classes = []
+    permission_classes = []
+    throttle_classes = [OtpVerifyIPThrottle, MfaChallengeThrottle]
+
+    @extend_schema(
+        summary="Complete administrator MFA",
+        description="Verifies the OTP for a short-lived password-authenticated administrator challenge.",
+        request=AdminMfaVerifyRequestSerializer,
+        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
+    )
+    def post(self, request):
+        serializer = AdminMfaVerifyRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = complete_admin_mfa(**serializer.validated_data)
         return Response(
             {
                 "user": UserSerializer(result["user"]).data,
@@ -198,6 +240,7 @@ class OtpSendView(APIView):
     authentication_classes = []
     permission_classes = []
     throttle_scope = "auth"
+    throttle_classes = [OtpSendIPThrottle, OtpSendPhoneThrottle]
 
     @extend_schema(
         summary="Send phone OTP",
@@ -219,6 +262,7 @@ class OtpVerifyView(APIView):
     authentication_classes = []
     permission_classes = []
     throttle_scope = "auth"
+    throttle_classes = [OtpVerifyIPThrottle, OtpVerifyPhoneThrottle]
 
     @extend_schema(
         summary="Verify phone OTP",
@@ -302,6 +346,7 @@ class LogoutView(APIView):
 class RefreshView(TokenRefreshView):
     serializer_class = TokenRefreshSerializer
     throttle_scope = "auth"
+    throttle_classes = [LoginIPThrottle]
 
     @extend_schema(
         summary="Refresh JWT access token",

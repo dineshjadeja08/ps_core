@@ -21,6 +21,7 @@ from apps.payments.models import (
     PaymentWebhookEvent,
     WebhookProcessingStatus,
 )
+from common.monitoring import report_operational_failure
 
 
 ACTIVE_ADVANCE_STATUSES = (
@@ -256,6 +257,12 @@ def process_razorpay_webhook(*, raw_body, signature):
             status=WebhookProcessingStatus.FAILED,
             last_error=type(exc).__name__,
         )
+        report_operational_failure(
+            "payment",
+            "Razorpay webhook processing failed",
+            exception=exc,
+            context={"event": event_name, "webhook_record_id": record.id},
+        )
         raise
 
     PaymentWebhookEvent.objects.filter(pk=record.pk).update(
@@ -370,6 +377,12 @@ def _mark_payment_failed(*, payment, booking, provider_payment_id=None, payload=
         booking.payment_status = PaymentStatus.FAILED
         booking.save(update_fields=["booking_status", "payment_status", "updated_at"])
     if transitioned_to_failed:
+        report_operational_failure(
+            "payment",
+            "Advance payment failed",
+            context={"payment_id": payment.id, "booking_id": booking.id},
+            level="warning",
+        )
         emit_notification_event(
             event=NotificationEvent.PAYMENT_FAILED,
             recipient=booking.customer,
@@ -419,8 +432,13 @@ def _confirm_booking_after_payment(*, booking, payment, changed_by):
         from apps.operations.services import mark_booking_payment_paid
 
         mark_booking_payment_paid(booking=booking, payment=payment, performed_by=changed_by)
-    except Exception:
-        pass
+    except Exception as exc:
+        report_operational_failure(
+            "booking",
+            "Paid booking could not be synchronized to the operations lead",
+            exception=exc,
+            context={"booking_id": booking.id, "payment_id": payment.id},
+        )
 
 
 def _apply_refund_state(*, booking, source):

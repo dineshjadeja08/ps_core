@@ -5,9 +5,10 @@ from django.core.cache import cache
 from django.core.management import call_command
 from django.test import override_settings
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.auth.providers import FirebaseTokenError
-from apps.accounts.models import CustomerProfile, User, UserRole
+from apps.accounts.models import AdminMfaChallenge, CustomerProfile, User, UserRole
 
 
 @dataclass(frozen=True)
@@ -139,6 +140,7 @@ def test_otp_send_uses_selected_backend_provider_channel():
     assert FakeOtpProvider.sent_channel == "WHATSAPP"
 
 
+@pytest.mark.django_db
 def test_otp_send_defaults_to_sms_and_rejects_unknown_channel():
     client = APIClient()
     default_response = client.post("/api/v1/auth/otp/send/", {"phone_number": "+919629025814"}, format="json")
@@ -277,6 +279,99 @@ def test_password_login_rejects_bad_credentials():
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+@pytest.mark.django_db
+def test_admin_password_login_requires_one_time_mfa_before_tokens_are_issued():
+    user = User.objects.create_user(
+        phone_number="+919629025814",
+        password="StrongPass123",
+        role=UserRole.ADMIN,
+        is_staff=True,
+        is_verified=True,
+    )
+    client = APIClient()
+    first = client.post(
+        "/api/v1/auth/password/login/",
+        {"phone_number": user.phone_number, "password": "StrongPass123", "channel": "WHATSAPP"},
+        format="json",
+    )
+
+    assert first.status_code == 200
+    assert first.json()["mfa_required"] is True
+    assert "tokens" not in first.json()
+    assert FakeOtpProvider.sent_mobile == "919629025814"
+    assert AdminMfaChallenge.objects.filter(user=user, consumed_at__isnull=True).count() == 1
+
+    verified = client.post(
+        "/api/v1/auth/admin-mfa/verify/",
+        {"challenge_id": first.json()["challenge_id"], "otp": "123456"},
+        format="json",
+    )
+    repeated = client.post(
+        "/api/v1/auth/admin-mfa/verify/",
+        {"challenge_id": first.json()["challenge_id"], "otp": "123456"},
+        format="json",
+    )
+
+    assert verified.status_code == 200
+    assert verified.json()["user"]["role"] == UserRole.ADMIN
+    assert verified.json()["tokens"]["refresh"]
+    assert repeated.status_code == 400
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {verified.json()['tokens']['access']}")
+    assert client.get("/api/v1/auth/me/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_admin_cannot_bypass_mfa_with_customer_otp_endpoints():
+    user = User.objects.create_user(
+        phone_number="+919629025814",
+        password="StrongPass123",
+        role=UserRole.SUPER_ADMIN,
+        is_staff=True,
+        is_superuser=True,
+        is_verified=True,
+    )
+    client = APIClient()
+
+    send = client.post("/api/v1/auth/otp/send/", {"phone_number": user.phone_number}, format="json")
+    verify = client.post(
+        "/api/v1/auth/otp/verify/",
+        {"phone_number": user.phone_number, "otp": "123456"},
+        format="json",
+    )
+
+    assert send.status_code == 400
+    assert verify.status_code == 400
+    assert FakeOtpProvider.verified_mobile == ""
+
+    legacy_access = str(RefreshToken.for_user(user).access_token)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {legacy_access}")
+    assert client.get("/api/v1/auth/me/").status_code == 401
+
+
+@pytest.mark.django_db
+def test_refresh_token_rotates_and_old_token_is_blacklisted():
+    User.objects.create_user(
+        phone_number="+919629025814",
+        password="StrongPass123",
+        role=UserRole.CUSTOMER,
+        is_verified=True,
+    )
+    client = APIClient()
+    login = client.post(
+        "/api/v1/auth/password/login/",
+        {"phone_number": "+919629025814", "password": "StrongPass123"},
+        format="json",
+    )
+    original_refresh = login.json()["tokens"]["refresh"]
+
+    rotated = client.post("/api/v1/auth/refresh/", {"refresh": original_refresh}, format="json")
+    replay = client.post("/api/v1/auth/refresh/", {"refresh": original_refresh}, format="json")
+
+    assert rotated.status_code == 200
+    assert rotated.json()["refresh"] != original_refresh
+    assert replay.status_code == 401
 
 
 @pytest.mark.django_db

@@ -34,6 +34,8 @@ SECRET_KEY=<long random secret>
 DEBUG=False
 ALLOWED_HOSTS=ps-core.onrender.com
 DATABASE_URL=<Neon pooled PostgreSQL URL with sslmode=require>
+REDIS_URL=<Render Key Value internal connection URL>
+JWT_SIGNING_KEY=<dedicated random secret, different from SECRET_KEY>
 CORS_ALLOWED_ORIGINS=https://FRONTEND_DOMAIN.vercel.app
 CSRF_TRUSTED_ORIGINS=https://ps-core.onrender.com,https://FRONTEND_DOMAIN.vercel.app
 
@@ -48,6 +50,17 @@ MSG91_WHATSAPP_TEMPLATE_LANGUAGE=en
 MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME=<approved booking update template name>
 MSG91_WEBHOOK_SECRET=<long random callback secret>
 
+SENTRY_DSN=<backend Sentry project DSN>
+SENTRY_ENVIRONMENT=production
+SENTRY_TRACES_SAMPLE_RATE=0.05
+
+BACKUP_S3_ENDPOINT_URL=<Cloudflare R2 or S3-compatible endpoint>
+BACKUP_S3_BUCKET=<private backup bucket>
+BACKUP_S3_ACCESS_KEY_ID=<backup-only access key>
+BACKUP_S3_SECRET_ACCESS_KEY=<backup-only secret>
+BACKUP_S3_REGION=auto
+BACKUP_RETENTION_DAYS=30
+
 RAZORPAY_KEY_ID=<test or live key id>
 RAZORPAY_KEY_SECRET=<test or live secret>
 RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook signing secret>
@@ -57,6 +70,7 @@ NOTIFICATION_PROVIDER=apps.notifications.providers.Msg91WhatsAppNotificationProv
 DEV_PHONE_LOGIN_ENABLED=false
 SHOW_API_DOCS=false
 LOG_LEVEL=INFO
+DRF_NUM_PROXIES=1
 ```
 
 Copy Neon's pooled connection string into Render's `DATABASE_URL` environment variable. It should look like:
@@ -68,6 +82,10 @@ postgresql://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DATABASE?sslmode=req
 Do not commit that URL. Replace `FRONTEND_DOMAIN` after Vercel gives you the actual frontend domain. Do not include trailing slashes in `CORS_ALLOWED_ORIGINS` or `CSRF_TRUSTED_ORIGINS`.
 
 Start with MSG91/Razorpay sandbox or test credentials where available. Switch to live credentials only after acceptance testing passes. Never use the Firebase Admin keys that were pasted during development; revoke them in Google Cloud first.
+
+Administrator API tokens are accepted only when they carry an MFA claim issued by the password-plus-MSG91 OTP flow. The production deployment disables Django's built-in `/admin/` route so it cannot provide a password-only bypass; operators must use the frontend operations portal.
+
+Redis is mandatory in production. DRF uses it as the shared cache for login, OTP, and payment limits across all Gunicorn workers. Keep `DRF_NUM_PROXIES` aligned with the number of trusted reverse proxies and add an upstream Cloudflare rate limit because application throttling is not DDoS protection.
 
 ## Static and Media Strategy
 
@@ -107,10 +125,24 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 7. Confirm the Render start command runs migrations, collectstatic, and Gunicorn successfully.
 8. Run `python manage.py seed_service_areas` and `python manage.py seed_catalogue`.
 9. Create production superuser.
-10. Verify admin login at `/admin/`.
+10. Verify the frontend `/admin/login` password-plus-OTP flow and confirm a legacy/non-MFA admin JWT is rejected.
 11. Verify health endpoint.
 12. Run acceptance flow with a controlled live payment.
 13. Enable monitoring and backup alerts.
+
+## Error Monitoring and Alert Rules
+
+Production refuses to start without `SENTRY_DSN`. Application errors and explicit operational failures are tagged with `failure.category` values `payment`, `notification`, or `booking`.
+
+Create these Sentry alert rules before launch:
+
+1. Immediate alert when `failure.category:payment` occurs, routed to the on-call phone/Slack channel.
+2. Immediate alert for five or more `failure.category:notification` events in five minutes.
+3. Immediate alert for any unhandled booking exception; warning alert for five `failure.category:booking` events in ten minutes.
+4. Uptime alert when `/api/v1/health/` is non-200 for two consecutive checks.
+5. Cron-job failure alert for `purple-squad-database-backup` and an alert if no successful run exists within 26 hours.
+
+Do not send customer PII to Sentry. The SDK is configured with `send_default_pii=False`; operational contexts contain internal record IDs only.
 
 ## Payment Safety and Refund Operations
 
@@ -161,8 +193,8 @@ Do not put `DJANGO_SUPERUSER_PASSWORD` permanently in Render environment variabl
 
 After creating the superuser:
 
-1. Open `/admin/`.
-2. Log in with the superuser phone number and password.
+1. Open the frontend `/admin/login` route.
+2. Log in with the superuser phone number and password, then complete the MSG91 OTP factor.
 3. Confirm access to Users and Customer profiles.
 4. Confirm service categories can be created/edited.
 5. Confirm services can be created/edited with prices, descriptions, advance settings, and cover images.
@@ -211,15 +243,28 @@ Review and freeze:
 
 After this point, change API contracts only for bugs or explicit versioned changes.
 
-## Backup Strategy
+## Backup and Tested Restore Strategy
 
-Use Render PostgreSQL automated backups for daily point-in-time recovery where available for the selected plan. Before major releases:
+The Render Blueprint includes `purple-squad-database-backup`, a daily 18:30 UTC (midnight India time) cron job. It creates a compressed custom-format `pg_dump`, uploads it with server-side encryption to private S3-compatible storage, removes the temporary local file, and deletes objects older than `BACKUP_RETENTION_DAYS`.
+
+Trigger and verify a backup manually:
 
 ```bash
-pg_dump "$DATABASE_URL" > purple_squad_backup_$(date +%Y%m%d_%H%M%S).sql
+DJANGO_SETTINGS_MODULE=config.settings.backup python manage.py backup_database
 ```
 
-Store manual backups in encrypted storage with access limited to operators. Test restore procedures before production launch.
+Perform a restore drill at least monthly. Create a new isolated Neon database or branch with no production traffic, then run:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.backup python manage.py restore_database_backup \
+  --backup-key postgres/YYYY/MM/DD/purple-squad-YYYYMMDDTHHMMSSZ.dump \
+  --target-database-url 'postgresql://USER:PASSWORD@RESTORE_HOST/restore_drill?sslmode=require' \
+  --confirm-restore
+```
+
+The restore command refuses to target the configured `DATABASE_URL`, runs `pg_restore --clean --if-exists --exit-on-error`, and validates migration history plus booking-table readability. Record the backup key, start/end times, row counts, operator, and result in the incident runbook. Delete the isolated restore database only after validation. Keep Neon point-in-time recovery enabled as a second recovery layer; the object-storage dump protects against provider/account-level loss.
+
+Recovery targets: daily dump RPO up to 24 hours, restore-drill RTO target under 60 minutes. Choose a shorter cron interval if those targets are insufficient.
 
 ## Deployment Checks
 

@@ -30,6 +30,7 @@ from apps.payments.services import (
     verify_razorpay_payment,
 )
 from common.idempotency import idempotency_key_from_request
+from common.throttles import PaymentIPThrottle, PaymentUserThrottle
 
 
 MAX_WEBHOOK_BODY_BYTES = 256 * 1024
@@ -39,6 +40,7 @@ class BookingAdvancePaymentOrderView(APIView):
     permission_classes = [IsAuthenticated]
     serializer_class = PaymentOrderResponseSerializer
     throttle_scope = "payment"
+    throttle_classes = [PaymentUserThrottle, PaymentIPThrottle]
 
     @extend_schema(
         summary="Create Razorpay advance order",
@@ -99,7 +101,12 @@ class AdminPaymentViewSet(
         summary="Create or reuse advance payment order for admin",
         responses={status.HTTP_201_CREATED: PaymentOrderResponseSerializer},
     )
-    @action(detail=False, methods=["post"], url_path="booking/(?P<booking_id>[0-9a-f-]{36})/advance-order")
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="booking/(?P<booking_id>[0-9a-f-]{36})/advance-order",
+        throttle_classes=[PaymentUserThrottle, PaymentIPThrottle],
+    )
     def create_advance_order(self, request, booking_id=None):
         try:
             booking = Booking.objects.select_related("customer").get(id=booking_id)
@@ -129,7 +136,12 @@ class AdminPaymentViewSet(
         request=RefundCreateSerializer,
         responses={status.HTTP_201_CREATED: PaymentSerializer},
     )
-    @action(detail=True, methods=["post"], url_path="refund")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="refund",
+        throttle_classes=[PaymentUserThrottle, PaymentIPThrottle],
+    )
     def refund(self, request, *args, **kwargs):
         source = self.get_object()
         serializer = RefundCreateSerializer(data=request.data)
@@ -157,7 +169,12 @@ class AdminPaymentViewSet(
         request=None,
         responses={status.HTTP_200_OK: PaymentSerializer},
     )
-    @action(detail=True, methods=["post"], url_path="reconcile-refund")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="reconcile-refund",
+        throttle_classes=[PaymentUserThrottle, PaymentIPThrottle],
+    )
     def reconcile_refund_action(self, request, *args, **kwargs):
         payment = self.get_object()
         refund = reconcile_refund(refund_id=payment.id)
@@ -175,6 +192,7 @@ class AdminPaymentViewSet(
 class PaymentVerifyView(APIView):
     permission_classes = [IsAuthenticated]
     throttle_scope = "payment"
+    throttle_classes = [PaymentUserThrottle, PaymentIPThrottle]
 
     @extend_schema(
         summary="Verify Razorpay payment",

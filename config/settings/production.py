@@ -3,6 +3,7 @@ from .base import *  # noqa: F403
 import os
 
 import dj_database_url
+import sentry_sdk
 
 DEBUG = bool_env("DJANGO_DEBUG", "DEBUG", default=False)  # noqa: F405
 
@@ -20,6 +21,38 @@ DATABASES = {
     )
 }
 
+REDIS_URL = env("REDIS_URL", default="")  # noqa: F405
+if not REDIS_URL:
+    raise RuntimeError("REDIS_URL must be set in production for shared throttling.")
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "SOCKET_CONNECT_TIMEOUT": 5,
+            "SOCKET_TIMEOUT": 5,
+            "IGNORE_EXCEPTIONS": False,
+        },
+        "KEY_PREFIX": "purple-squad",
+        "TIMEOUT": 300,
+    }
+}
+
+JWT_SIGNING_KEY = env("JWT_SIGNING_KEY", default="")  # noqa: F405
+if not JWT_SIGNING_KEY or JWT_SIGNING_KEY == SECRET_KEY:  # noqa: F405
+    raise RuntimeError("JWT_SIGNING_KEY must be set to a dedicated production secret.")
+SIMPLE_JWT["SIGNING_KEY"] = JWT_SIGNING_KEY  # noqa: F405
+
+if SENTRY_DSN:  # noqa: F405
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,  # noqa: F405
+        environment=SENTRY_ENVIRONMENT,  # noqa: F405
+        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,  # noqa: F405
+        profiles_sample_rate=SENTRY_PROFILES_SAMPLE_RATE,  # noqa: F405
+        send_default_pii=False,
+    )
+
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
@@ -33,6 +66,20 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SHOW_API_DOCS = env.bool("SHOW_API_DOCS", default=False)  # noqa: F405
+ENABLE_DJANGO_ADMIN = False
+
+if not SENTRY_DSN:  # noqa: F405
+    raise RuntimeError("SENTRY_DSN must be set in production for error monitoring.")
+
+if not all(  # noqa: F405
+    [
+        BACKUP_S3_ENDPOINT_URL,
+        BACKUP_S3_BUCKET,
+        BACKUP_S3_ACCESS_KEY_ID,
+        BACKUP_S3_SECRET_ACCESS_KEY,
+    ]
+):
+    raise RuntimeError("S3-compatible backup storage must be configured in production.")
 
 if SECRET_KEY == "unsafe-local-development-key":  # noqa: F405
     raise RuntimeError("DJANGO_SECRET_KEY must be set in production.")

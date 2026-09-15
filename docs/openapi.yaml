@@ -2369,6 +2369,33 @@ paths:
                 items:
                   $ref: '#/components/schemas/TechnicianProfile'
           description: ''
+  /api/v1/auth/admin-mfa/verify/:
+    post:
+      operationId: api_v1_auth_admin_mfa_verify_create
+      description: Verifies the OTP for a short-lived password-authenticated administrator
+        challenge.
+      summary: Complete administrator MFA
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminMfaVerifyRequestRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminMfaVerifyRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminMfaVerifyRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+          description: ''
   /api/v1/auth/dev-phone/:
     post:
       operationId: api_v1_auth_dev_phone_create
@@ -2600,7 +2627,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthLoginResponse'
+                $ref: '#/components/schemas/PasswordLoginResponse'
           description: ''
   /api/v1/auth/password/signup/:
     post:
@@ -2983,7 +3010,8 @@ paths:
   /api/v1/health/:
     get:
       operationId: api_v1_health_retrieve
-      description: Returns a lightweight health response for uptime probes.
+      description: Checks database connectivity, migration state, and the shared cache
+        used for throttling.
       summary: Health check
       tags:
       - api
@@ -2997,6 +3025,16 @@ paths:
                 Healthy:
                   value:
                     status: ok
+                    checks:
+                      database: ok
+                      migrations: ok
+                      cache: ok
+          description: ''
+        '503':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
           description: ''
   /api/v1/notifications/webhooks/msg91/:
     post:
@@ -3658,6 +3696,19 @@ components:
       - role
       - support_notes
       - updated_at
+    AdminMfaVerifyRequestRequest:
+      type: object
+      properties:
+        challenge_id:
+          type: string
+          format: uuid
+        otp:
+          type: string
+          minLength: 1
+          pattern: ^\d{4,8}$
+      required:
+      - challenge_id
+      - otp
     AdminReportSummary:
       type: object
       properties:
@@ -4875,6 +4926,7 @@ components:
           format: int64
         is_active:
           type: boolean
+          default: true
         created_at:
           type: string
           format: date-time
@@ -4885,11 +4937,9 @@ components:
           readOnly: true
       required:
       - answer
-      - category
       - created_at
       - id
       - question
-      - service
       - updated_at
     FAQRequest:
       type: object
@@ -4919,11 +4969,10 @@ components:
           format: int64
         is_active:
           type: boolean
+          default: true
       required:
       - answer
-      - category
       - question
-      - service
     FirebaseLoginRequestRequest:
       type: object
       properties:
@@ -4955,7 +5004,12 @@ components:
       properties:
         status:
           type: string
+        checks:
+          type: object
+          additionalProperties:
+            type: string
       required:
+      - checks
       - status
     HomepageBanner:
       type: object
@@ -6223,9 +6277,31 @@ components:
           type: string
           writeOnly: true
           minLength: 1
+        channel:
+          allOf:
+          - $ref: '#/components/schemas/ChannelD63Enum'
+          default: WHATSAPP
       required:
       - password
       - phone_number
+    PasswordLoginResponse:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        tokens:
+          $ref: '#/components/schemas/TokenPair'
+        created:
+          type: boolean
+        mfa_required:
+          type: boolean
+        challenge_id:
+          type: string
+          format: uuid
+        channel:
+          $ref: '#/components/schemas/ChannelD63Enum'
+        expires_in:
+          type: integer
     PasswordSignupRequestRequest:
       type: object
       properties:
@@ -6495,6 +6571,7 @@ components:
           format: int64
         is_active:
           type: boolean
+          default: true
     PatchedHomepageBannerRequest:
       type: object
       properties:
@@ -6740,6 +6817,7 @@ components:
           allOf:
           - $ref: '#/components/schemas/PaymentRecordStatusEnum'
           readOnly: true
+          default: CREATED
         signature_verified:
           type: boolean
           readOnly: true
@@ -7475,14 +7553,16 @@ components:
         access:
           type: string
           readOnly: true
+        refresh:
+          type: string
       required:
       - access
+      - refresh
     TokenRefreshRequest:
       type: object
       properties:
         refresh:
           type: string
-          writeOnly: true
           minLength: 1
       required:
       - refresh
@@ -7553,3 +7633,4 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: Administrator tokens must be issued after MFA verification.

@@ -5,9 +5,11 @@ from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("api/v1/", include("config.v1_urls")),
 ]
+
+if settings.ENABLE_DJANGO_ADMIN:
+    urlpatterns += [path("admin/", admin.site.urls)]
 
 if settings.SHOW_API_DOCS:
     urlpatterns += [

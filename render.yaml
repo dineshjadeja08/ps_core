@@ -1,4 +1,9 @@
 services:
+  - type: keyvalue
+    name: purple-squad-cache
+    plan: free
+    ipAllowList: []
+
   - type: web
     name: purple-squad-backend
     runtime: docker
@@ -19,6 +24,13 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: purple-squad-cache
+          property: connectionString
+      - key: JWT_SIGNING_KEY
+        generateValue: true
       - key: CORS_ALLOWED_ORIGINS
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
@@ -59,3 +71,45 @@ services:
         value: "false"
       - key: LOG_LEVEL
         value: INFO
+      - key: DRF_NUM_PROXIES
+        value: "1"
+      - key: SENTRY_DSN
+        sync: false
+      - key: SENTRY_ENVIRONMENT
+        value: production
+      - key: BACKUP_S3_ENDPOINT_URL
+        sync: false
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BACKUP_S3_REGION
+        value: auto
+
+  - type: cron
+    name: purple-squad-database-backup
+    runtime: docker
+    plan: 0.5c-512mb
+    branch: main
+    schedule: "30 18 * * *"
+    dockerfilePath: ./Dockerfile
+    dockerCommand: python manage.py backup_database
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.backup
+      - key: DATABASE_URL
+        sync: false
+      - key: BACKUP_S3_ENDPOINT_URL
+        sync: false
+      - key: BACKUP_S3_BUCKET
+        sync: false
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        sync: false
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: BACKUP_S3_REGION
+        value: auto
+      - key: BACKUP_RETENTION_DAYS
+        value: "30"

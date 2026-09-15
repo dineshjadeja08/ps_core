@@ -106,3 +106,17 @@ class LoginOtpChallenge(BaseModel):
     sent_at = models.DateTimeField(null=True, blank=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     consumed_at = models.DateTimeField(null=True, blank=True)
+
+
+class AdminMfaChallenge(BaseModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="admin_mfa_challenges")
+    channel = models.CharField(max_length=16, choices=OtpDeliveryChannel.choices)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["user", "expires_at"]),
+            models.Index(fields=["expires_at", "consumed_at"]),
+        ]

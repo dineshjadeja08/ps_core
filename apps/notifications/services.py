@@ -6,6 +6,7 @@ from django.utils import timezone
 from django.utils.module_loading import import_string
 
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, NotificationStatus
+from common.monitoring import report_operational_failure
 
 
 logger = logging.getLogger(__name__)
@@ -31,8 +32,14 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
                     payload=payload,
                 )
                 send_notification(notification)
-            except Exception:
+            except Exception as exc:
                 logger.exception("notification_event_failed event=%s channel=%s", event, channel)
+                report_operational_failure(
+                    "notification",
+                    "Notification event creation or delivery failed",
+                    exception=exc,
+                    context={"event": event, "channel": channel, "booking_id": getattr(booking, "id", "")},
+                )
 
     transaction.on_commit(_create_and_send)
 
@@ -48,6 +55,12 @@ def send_notification(notification):
         notification.error_message = str(exc)
         notification.save(update_fields=["status", "provider", "send_attempts", "error_message", "updated_at"])
         logger.exception("notification_send_failed notification_id=%s", notification.id)
+        report_operational_failure(
+            "notification",
+            "Notification provider delivery failed",
+            exception=exc,
+            context={"notification_id": notification.id, "event": notification.event, "channel": notification.channel},
+        )
         return notification
 
     notification.status = NotificationStatus.SENT

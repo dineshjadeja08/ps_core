@@ -6,7 +6,11 @@ Keep `DJANGO_SECRET_KEY`, Razorpay secrets, Firebase credentials, database passw
 
 ## Authentication Architecture
 
-Clients authenticate with Firebase phone verification first. The backend verifies the Firebase ID token server-side, then issues Purple Squad JWT access and refresh tokens. Backend authorization is role based with explicit admin and super-admin permission classes.
+Customers can authenticate through the configured phone/OTP or password flow. Administrators must first verify their password and then complete an MSG91 SMS or WhatsApp OTP challenge. Admin JWTs require an `mfa=true` claim, so older tokens and tokens issued outside the MFA flow cannot access any authenticated endpoint. The built-in Django admin route is disabled in production to prevent a password-only bypass.
+
+Access tokens expire after 10 minutes and refresh tokens after seven days. Refresh tokens rotate on every successful refresh and the submitted token is blacklisted, so clients must persist the replacement refresh token. A dedicated `JWT_SIGNING_KEY` is required in production.
+
+Login, OTP send/verify, and payment endpoints have separate per-IP, per-phone, and per-user limits. Production uses Redis so limits are shared across workers. These application limits supplement, rather than replace, Cloudflare/WAF rate limits.
 
 ## Payment Security
 

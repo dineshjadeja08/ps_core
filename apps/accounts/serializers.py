@@ -24,6 +24,12 @@ class PasswordSignupRequestSerializer(serializers.Serializer):
 class PasswordLoginRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
+    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.WHATSAPP)
+
+
+class AdminMfaVerifyRequestSerializer(serializers.Serializer):
+    challenge_id = serializers.UUIDField()
+    otp = serializers.RegexField(regex=r"^\d{4,8}$")
 
 
 class OtpSendRequestSerializer(serializers.Serializer):
@@ -109,6 +115,16 @@ class AuthLoginResponseSerializer(serializers.Serializer):
     user = UserSerializer()
     tokens = TokenPairSerializer()
     created = serializers.BooleanField()
+
+
+class PasswordLoginResponseSerializer(serializers.Serializer):
+    user = UserSerializer(required=False)
+    tokens = TokenPairSerializer(required=False)
+    created = serializers.BooleanField(required=False)
+    mfa_required = serializers.BooleanField(required=False)
+    challenge_id = serializers.UUIDField(required=False)
+    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, required=False)
+    expires_in = serializers.IntegerField(required=False)
 
 
 class CustomerSupportNoteSerializer(serializers.ModelSerializer):
