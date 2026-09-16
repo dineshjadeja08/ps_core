@@ -54,13 +54,6 @@ SENTRY_DSN=<backend Sentry project DSN>
 SENTRY_ENVIRONMENT=production
 SENTRY_TRACES_SAMPLE_RATE=0.05
 
-BACKUP_S3_ENDPOINT_URL=<Cloudflare R2 or S3-compatible endpoint>
-BACKUP_S3_BUCKET=<private backup bucket>
-BACKUP_S3_ACCESS_KEY_ID=<backup-only access key>
-BACKUP_S3_SECRET_ACCESS_KEY=<backup-only secret>
-BACKUP_S3_REGION=auto
-BACKUP_RETENTION_DAYS=30
-
 RAZORPAY_KEY_ID=<test or live key id>
 RAZORPAY_KEY_SECRET=<test or live secret>
 RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook signing secret>
@@ -128,7 +121,7 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 10. Verify the frontend `/admin/login` password-plus-OTP flow and confirm a legacy/non-MFA admin JWT is rejected.
 11. Verify health endpoint.
 12. Run acceptance flow with a controlled live payment.
-13. Enable monitoring and backup alerts.
+13. Enable monitoring alerts.
 
 ## Error Monitoring and Alert Rules
 
@@ -140,7 +133,6 @@ Create these Sentry alert rules before launch:
 2. Immediate alert for five or more `failure.category:notification` events in five minutes.
 3. Immediate alert for any unhandled booking exception; warning alert for five `failure.category:booking` events in ten minutes.
 4. Uptime alert when `/api/v1/health/` is non-200 for two consecutive checks.
-5. Cron-job failure alert for `purple-squad-database-backup` and an alert if no successful run exists within 26 hours.
 
 Do not send customer PII to Sentry. The SDK is configured with `send_default_pii=False`; operational contexts contain internal record IDs only.
 
@@ -242,29 +234,6 @@ Review and freeze:
 - Field naming
 
 After this point, change API contracts only for bugs or explicit versioned changes.
-
-## Backup and Tested Restore Strategy
-
-The Render Blueprint includes `purple-squad-database-backup`, a daily 18:30 UTC (midnight India time) cron job. It creates a compressed custom-format `pg_dump`, uploads it with server-side encryption to private S3-compatible storage, removes the temporary local file, and deletes objects older than `BACKUP_RETENTION_DAYS`.
-
-Trigger and verify a backup manually:
-
-```bash
-DJANGO_SETTINGS_MODULE=config.settings.backup python manage.py backup_database
-```
-
-Perform a restore drill at least monthly. Create a new isolated Neon database or branch with no production traffic, then run:
-
-```bash
-DJANGO_SETTINGS_MODULE=config.settings.backup python manage.py restore_database_backup \
-  --backup-key postgres/YYYY/MM/DD/purple-squad-YYYYMMDDTHHMMSSZ.dump \
-  --target-database-url 'postgresql://USER:PASSWORD@RESTORE_HOST/restore_drill?sslmode=require' \
-  --confirm-restore
-```
-
-The restore command refuses to target the configured `DATABASE_URL`, runs `pg_restore --clean --if-exists --exit-on-error`, and validates migration history plus booking-table readability. Record the backup key, start/end times, row counts, operator, and result in the incident runbook. Delete the isolated restore database only after validation. Keep Neon point-in-time recovery enabled as a second recovery layer; the object-storage dump protects against provider/account-level loss.
-
-Recovery targets: daily dump RPO up to 24 hours, restore-drill RTO target under 60 minutes. Choose a shorter cron interval if those targets are insufficient.
 
 ## Deployment Checks
 

@@ -89,17 +89,6 @@ services:
         sync: false
       - key: SENTRY_ENVIRONMENT
         value: production
-      - key: BACKUP_S3_ENDPOINT_URL
-        sync: false
-      - key: BACKUP_S3_BUCKET
-        sync: false
-      - key: BACKUP_S3_ACCESS_KEY_ID
-        sync: false
-      - key: BACKUP_S3_SECRET_ACCESS_KEY
-        sync: false
-      - key: BACKUP_S3_REGION
-        value: auto
-
   - type: worker
     name: purple-squad-worker
     runtime: docker
@@ -184,39 +173,3 @@ services:
         value: "true"
       - key: CLOUDINARY_URL
         fromService: { type: web, name: purple-squad-backend, envVarKey: CLOUDINARY_URL }
-      - key: BACKUP_S3_ENDPOINT_URL
-        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_ENDPOINT_URL }
-      - key: BACKUP_S3_BUCKET
-        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_BUCKET }
-      - key: BACKUP_S3_ACCESS_KEY_ID
-        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_ACCESS_KEY_ID }
-      - key: BACKUP_S3_SECRET_ACCESS_KEY
-        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_SECRET_ACCESS_KEY }
-      - key: BACKUP_S3_REGION
-        value: auto
-
-  - type: cron
-    name: purple-squad-database-backup
-    runtime: docker
-    plan: 0.5c-512mb
-    branch: main
-    schedule: "30 18 * * *"
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python manage.py backup_database
-    envVars:
-      - key: DJANGO_SETTINGS_MODULE
-        value: config.settings.backup
-      - key: DATABASE_URL
-        sync: false
-      - key: BACKUP_S3_ENDPOINT_URL
-        sync: false
-      - key: BACKUP_S3_BUCKET
-        sync: false
-      - key: BACKUP_S3_ACCESS_KEY_ID
-        sync: false
-      - key: BACKUP_S3_SECRET_ACCESS_KEY
-        sync: false
-      - key: BACKUP_S3_REGION
-        value: auto
-      - key: BACKUP_RETENTION_DAYS
-        value: "30"

@@ -71,16 +71,6 @@ ENABLE_DJANGO_ADMIN = False
 if not SENTRY_DSN:  # noqa: F405
     raise RuntimeError("SENTRY_DSN must be set in production for error monitoring.")
 
-if not all(  # noqa: F405
-    [
-        BACKUP_S3_ENDPOINT_URL,
-        BACKUP_S3_BUCKET,
-        BACKUP_S3_ACCESS_KEY_ID,
-        BACKUP_S3_SECRET_ACCESS_KEY,
-    ]
-):
-    raise RuntimeError("S3-compatible backup storage must be configured in production.")
-
 if SECRET_KEY == "unsafe-local-development-key":  # noqa: F405
     raise RuntimeError("DJANGO_SECRET_KEY must be set in production.")
 

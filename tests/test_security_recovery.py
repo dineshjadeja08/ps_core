@@ -1,8 +1,5 @@
-import pytest
 from unittest.mock import Mock
 from django.core.cache import cache
-from django.core.management import call_command
-from django.core.management.base import CommandError
 from rest_framework.test import APIClient, APIRequestFactory
 from rest_framework.request import Request
 from rest_framework.parsers import JSONParser
@@ -91,37 +88,3 @@ def test_otp_send_accepts_valid_turnstile(settings, monkeypatch):
     )
 
     assert response.status_code == 200
-
-
-def test_restore_requires_explicit_confirmation(settings):
-    settings.BACKUP_S3_ENDPOINT_URL = "https://storage.example.test"
-    settings.BACKUP_S3_BUCKET = "backups"
-    settings.BACKUP_S3_ACCESS_KEY_ID = "access"
-    settings.BACKUP_S3_SECRET_ACCESS_KEY = "secret"
-    with pytest.raises(CommandError, match="confirm-restore"):
-        call_command(
-            "restore_database_backup",
-            backup_key="postgres/test.dump",
-            target_database_url="postgresql://user:pass@localhost/restore_test",
-        )
-
-
-def test_restore_refuses_to_overwrite_configured_database(settings, monkeypatch):
-    settings.BACKUP_S3_ENDPOINT_URL = "https://storage.example.test"
-    settings.BACKUP_S3_BUCKET = "backups"
-    settings.BACKUP_S3_ACCESS_KEY_ID = "access"
-    settings.BACKUP_S3_SECRET_ACCESS_KEY = "secret"
-    production_url = "postgresql://user:pass@localhost/production"
-    monkeypatch.setenv("DATABASE_URL", production_url)
-    with pytest.raises(CommandError, match="Refusing to restore"):
-        call_command(
-            "restore_database_backup",
-            backup_key="postgres/test.dump",
-            target_database_url=production_url,
-            confirm_restore=True,
-        )
-
-
-def test_backup_command_rejects_non_postgresql_database():
-    with pytest.raises(CommandError, match="require PostgreSQL"):
-        call_command("backup_database")
