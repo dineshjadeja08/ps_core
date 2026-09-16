@@ -141,6 +141,43 @@ def test_admin_assignment(admin_client, booking, service_area):
 
 
 @pytest.mark.django_db
+def test_technician_portal_lists_only_assigned_jobs_and_updates_progress(booking, service_area):
+    technician = create_technician(service_area=service_area)
+    booking.assigned_technician = technician.user
+    booking.booking_status = BookingStatus.TECHNICIAN_ASSIGNED
+    booking.save(update_fields=["assigned_technician", "booking_status", "updated_at"])
+    client = APIClient()
+    client.force_authenticate(user=technician.user)
+
+    listed = client.get("/api/v1/technician/jobs/")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    assert listed.json()["results"][0]["customer_phone"] == booking.customer.phone_number
+
+    en_route = client.post(f"/api/v1/technician/jobs/{booking.id}/en-route/", {}, format="json")
+    assert en_route.status_code == 200
+    assert en_route.json()["booking_status"] == BookingStatus.TECHNICIAN_EN_ROUTE
+
+    started = client.post(f"/api/v1/technician/jobs/{booking.id}/start/", {}, format="json")
+    assert started.status_code == 200
+    assert started.json()["booking_status"] == BookingStatus.IN_PROGRESS
+
+
+@pytest.mark.django_db
+def test_technician_cannot_access_another_technicians_job(booking, service_area):
+    assigned = create_technician(code="TECH-A", phone="+919876543301", service_area=service_area)
+    other = create_technician(code="TECH-B", phone="+919876543302", service_area=service_area)
+    booking.assigned_technician = assigned.user
+    booking.booking_status = BookingStatus.TECHNICIAN_ASSIGNED
+    booking.save(update_fields=["assigned_technician", "booking_status", "updated_at"])
+    client = APIClient()
+    client.force_authenticate(user=other.user)
+
+    response = client.post(f"/api/v1/technician/jobs/{booking.id}/start/", {}, format="json")
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
 def test_customer_forbidden(customer_client, booking, service_area):
     technician = create_technician(service_area=service_area)
 

@@ -37,6 +37,18 @@ services:
         sync: false
       - key: OTP_AUTH_PROVIDER
         value: apps.accounts.otp.providers.Msg91OtpProvider
+      - key: REQUIRE_OTP_PROVIDER_CONFIG
+        value: "true"
+      - key: REQUIRE_TURNSTILE_FOR_OTP
+        value: "true"
+      - key: TURNSTILE_SECRET_KEY
+        sync: false
+      - key: BUSINESS_LEGAL_NAME
+        sync: false
+      - key: BUSINESS_GSTIN
+        sync: false
+      - key: BUSINESS_ADDRESS
+        sync: false
       - key: MSG91_AUTH_KEY
         sync: false
       - key: MSG91_TEMPLATE_ID
@@ -85,6 +97,101 @@ services:
         sync: false
       - key: BACKUP_S3_SECRET_ACCESS_KEY
         sync: false
+      - key: BACKUP_S3_REGION
+        value: auto
+
+  - type: worker
+    name: purple-squad-worker
+    runtime: docker
+    plan: 0.5c-512mb
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerCommand: celery -A config worker --beat --loglevel=INFO --concurrency=2
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      - key: DEBUG
+        value: "False"
+      - key: CELERY_TASK_ALWAYS_EAGER
+        value: "false"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: purple-squad-cache
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: purple-squad-cache
+          property: connectionString
+      - key: CELERY_RESULT_BACKEND
+        fromService:
+          type: keyvalue
+          name: purple-squad-cache
+          property: connectionString
+      - key: SECRET_KEY
+        fromService: { type: web, name: purple-squad-backend, envVarKey: SECRET_KEY }
+      - key: JWT_SIGNING_KEY
+        fromService: { type: web, name: purple-squad-backend, envVarKey: JWT_SIGNING_KEY }
+      - key: DATABASE_URL
+        fromService: { type: web, name: purple-squad-backend, envVarKey: DATABASE_URL }
+      - key: ALLOWED_HOSTS
+        fromService: { type: web, name: purple-squad-backend, envVarKey: ALLOWED_HOSTS }
+      - key: CORS_ALLOWED_ORIGINS
+        fromService: { type: web, name: purple-squad-backend, envVarKey: CORS_ALLOWED_ORIGINS }
+      - key: CSRF_TRUSTED_ORIGINS
+        fromService: { type: web, name: purple-squad-backend, envVarKey: CSRF_TRUSTED_ORIGINS }
+      - key: SENTRY_DSN
+        fromService: { type: web, name: purple-squad-backend, envVarKey: SENTRY_DSN }
+      - key: SENTRY_ENVIRONMENT
+        value: production-worker
+      - key: OTP_AUTH_PROVIDER
+        value: apps.accounts.otp.providers.Msg91OtpProvider
+      - key: NOTIFICATION_PROVIDER
+        value: apps.notifications.providers.Msg91WhatsAppNotificationProvider
+      - key: REQUIRE_OTP_PROVIDER_CONFIG
+        value: "true"
+      - key: MSG91_AUTH_KEY
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_AUTH_KEY }
+      - key: MSG91_TEMPLATE_ID
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_TEMPLATE_ID }
+      - key: MSG91_WHATSAPP_INTEGRATED_NUMBER
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_WHATSAPP_INTEGRATED_NUMBER }
+      - key: MSG91_WHATSAPP_TEMPLATE_NAME
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_WHATSAPP_TEMPLATE_NAME }
+      - key: MSG91_WHATSAPP_TEMPLATE_NAMESPACE
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_WHATSAPP_TEMPLATE_NAMESPACE }
+      - key: MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME }
+      - key: MSG91_WEBHOOK_SECRET
+        fromService: { type: web, name: purple-squad-backend, envVarKey: MSG91_WEBHOOK_SECRET }
+      - key: RAZORPAY_KEY_ID
+        fromService: { type: web, name: purple-squad-backend, envVarKey: RAZORPAY_KEY_ID }
+      - key: RAZORPAY_KEY_SECRET
+        fromService: { type: web, name: purple-squad-backend, envVarKey: RAZORPAY_KEY_SECRET }
+      - key: RAZORPAY_WEBHOOK_SECRET
+        fromService: { type: web, name: purple-squad-backend, envVarKey: RAZORPAY_WEBHOOK_SECRET }
+      - key: RAZORPAY_ADAPTER
+        value: apps.payments.providers.RazorpayApiAdapter
+      - key: BUSINESS_LEGAL_NAME
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BUSINESS_LEGAL_NAME }
+      - key: BUSINESS_GSTIN
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BUSINESS_GSTIN }
+      - key: BUSINESS_ADDRESS
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BUSINESS_ADDRESS }
+      - key: USE_CLOUDINARY_MEDIA
+        value: "true"
+      - key: CLOUDINARY_URL
+        fromService: { type: web, name: purple-squad-backend, envVarKey: CLOUDINARY_URL }
+      - key: BACKUP_S3_ENDPOINT_URL
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_ENDPOINT_URL }
+      - key: BACKUP_S3_BUCKET
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_BUCKET }
+      - key: BACKUP_S3_ACCESS_KEY_ID
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_ACCESS_KEY_ID }
+      - key: BACKUP_S3_SECRET_ACCESS_KEY
+        fromService: { type: web, name: purple-squad-backend, envVarKey: BACKUP_S3_SECRET_ACCESS_KEY }
       - key: BACKUP_S3_REGION
         value: auto
 

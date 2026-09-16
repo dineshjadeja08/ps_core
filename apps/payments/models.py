@@ -96,3 +96,29 @@ class PaymentWebhookEvent(BaseModel):
     class Meta:
         ordering = ("-created_at",)
         indexes = [models.Index(fields=["status", "created_at"])]
+
+
+class InvoiceSequence(models.Model):
+    financial_year = models.CharField(max_length=9, unique=True)
+    current_number = models.PositiveIntegerField(default=0)
+
+
+class Invoice(BaseModel):
+    booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name="invoice")
+    invoice_number = models.CharField(max_length=32, unique=True)
+    financial_year = models.CharField(max_length=9)
+    seller_name = models.CharField(max_length=255)
+    seller_gstin = models.CharField(max_length=32, blank=True)
+    seller_address = models.TextField()
+    customer_name = models.CharField(max_length=255)
+    customer_phone = models.CharField(max_length=32)
+    taxable_value = models.DecimalField(max_digits=10, decimal_places=2)
+    cgst_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    sgst_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    igst_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    issued_at = models.DateTimeField()
+
+    class Meta:
+        ordering = ("-issued_at",)
+        indexes = [models.Index(fields=["financial_year", "invoice_number"])]

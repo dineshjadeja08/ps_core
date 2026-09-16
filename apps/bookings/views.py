@@ -1,4 +1,5 @@
 from drf_spectacular.utils import OpenApiExample, extend_schema
+from django.db.models import Q
 from django.db import transaction
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -13,6 +14,7 @@ from apps.bookings.models import Booking
 from apps.bookings.cart import lock_customer
 from apps.bookings.idempotency import begin_checkout_request, complete_checkout_request
 from apps.bookings.serializers import (
+    AdminBookingSerializer,
     BalanceCollectionSerializer,
     BookingCreateSerializer,
     BookingOperationSerializer,
@@ -29,13 +31,13 @@ class AdminBookingViewSet(
     viewsets.GenericViewSet,
 ):
     permission_classes = [IsAuthenticated, IsAdminRole]
-    serializer_class = BookingSerializer
+    serializer_class = AdminBookingSerializer
     lookup_field = "id"
     lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_queryset(self):
         queryset = (
-            Booking.objects.select_related("customer", "service", "time_slot", "assigned_technician")
+            Booking.objects.select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician")
             .prefetch_related("status_history")
             .order_by("-created_at")
         )
@@ -46,14 +48,21 @@ class AdminBookingViewSet(
 
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(booking_number__icontains=search.strip())
+            term = search.strip()
+            queryset = queryset.filter(
+                Q(booking_number__icontains=term)
+                | Q(customer__phone_number__icontains=term)
+                | Q(customer__first_name__icontains=term)
+                | Q(customer__last_name__icontains=term)
+                | Q(customer__customer_profile__display_name__icontains=term)
+            )
 
         return queryset
 
     @extend_schema(
         summary="List all bookings for admin",
         description="Returns all customer bookings for admin operations with optional status and booking number search.",
-        responses={status.HTTP_200_OK: BookingSerializer(many=True)},
+        responses={status.HTTP_200_OK: AdminBookingSerializer(many=True)},
     )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
@@ -61,7 +70,7 @@ class AdminBookingViewSet(
     @extend_schema(
         summary="Get any booking for admin",
         description="Returns one booking by id for admin operations.",
-        responses={status.HTTP_200_OK: BookingSerializer},
+        responses={status.HTTP_200_OK: AdminBookingSerializer},
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)

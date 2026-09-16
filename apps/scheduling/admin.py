@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.scheduling.models import TimeSlot
+from apps.scheduling.models import ScheduleClosure, TimeSlot
 
 
 @admin.register(TimeSlot)
@@ -10,3 +10,10 @@ class TimeSlotAdmin(admin.ModelAdmin):
     search_fields = ("service_area__name", "service_area__postal_code", "service_area__city")
     readonly_fields = ("created_at", "updated_at")
     ordering = ("date", "start_time")
+
+
+@admin.register(ScheduleClosure)
+class ScheduleClosureAdmin(admin.ModelAdmin):
+    list_display = ("closure_type", "service_area", "start_date", "end_date", "reason", "is_active")
+    list_filter = ("closure_type", "is_active", "service_area")
+    search_fields = ("reason", "service_area__name", "service_area__postal_code")

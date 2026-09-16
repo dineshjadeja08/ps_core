@@ -1,16 +1,36 @@
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
-from rest_framework import status
+from rest_framework import status, viewsets
 from rest_framework.generics import ListAPIView
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.catalogue.models import Service
 from apps.locations.models import normalize_postal_code
 from apps.locations.services import get_active_service_area
-from apps.scheduling.models import TimeSlot
-from apps.scheduling.serializers import TimeSlotSerializer
-from apps.scheduling.services import ensure_daily_slots, get_available_capacity, is_slot_expired
+from apps.accounts.permissions import IsAdminRole
+from apps.scheduling.models import ScheduleClosure, TimeSlot
+from apps.scheduling.serializers import AdminTimeSlotSerializer, ScheduleClosureSerializer, TimeSlotSerializer
+from apps.scheduling.services import ensure_daily_slots, get_available_capacity, is_service_area_closed, is_slot_expired
+
+
+class AdminTimeSlotViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = AdminTimeSlotSerializer
+
+    def get_queryset(self):
+        queryset = TimeSlot.objects.select_related("service_area").order_by("date", "start_time")
+        if self.request.query_params.get("service_area"):
+            queryset = queryset.filter(service_area_id=self.request.query_params["service_area"])
+        if self.request.query_params.get("date"):
+            queryset = queryset.filter(date=self.request.query_params["date"])
+        return queryset
+
+
+class AdminScheduleClosureViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = ScheduleClosureSerializer
+    queryset = ScheduleClosure.objects.select_related("service_area").all()
 
 
 class SlotListView(ListAPIView):
@@ -32,6 +52,8 @@ class SlotListView(ListAPIView):
 
         service_date = self._parse_date(self.request.query_params.get("date"))
         if service_date is None:
+            return TimeSlot.objects.none()
+        if is_service_area_closed(service_area, service_date):
             return TimeSlot.objects.none()
         ensure_daily_slots(service_area, service_date)
 

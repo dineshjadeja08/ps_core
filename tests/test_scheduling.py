@@ -4,10 +4,13 @@ from decimal import Decimal
 import pytest
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from rest_framework.test import APIClient
 
+from apps.accounts.models import UserRole
 from apps.catalogue.models import Service, ServiceCategory
 from apps.locations.models import ServiceArea
-from apps.scheduling.models import TimeSlot
+from apps.scheduling.models import ClosureType, ScheduleClosure, TimeSlot
+from tests.factories import user_factory
 from apps.scheduling.services import lock_slot_for_reservation
 
 
@@ -140,3 +143,48 @@ def test_slot_validation(service_area):
 
     with pytest.raises(ValidationError):
         create_slot(service_area, start_time=time(13, 0), end_time=time(14, 0), capacity=0)
+
+
+@pytest.mark.django_db
+def test_active_closure_hides_slots_and_prevents_generation(client, service, service_area):
+    service_date = timezone.localdate() + timedelta(days=4)
+    ScheduleClosure.objects.create(
+        service_area=service_area,
+        closure_type=ClosureType.HOLIDAY,
+        start_date=service_date,
+        end_date=service_date,
+        reason="Regional holiday",
+    )
+
+    response = client.get(f"/api/v1/slots/?service_id={service.id}&date={service_date}&postal_code=635601")
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert not TimeSlot.objects.filter(service_area=service_area, date=service_date).exists()
+
+
+@pytest.mark.django_db
+def test_admin_can_create_closure_and_change_slot_capacity(service_area):
+    admin = user_factory("+919620000077", role=UserRole.ADMIN, is_staff=True)
+    client = APIClient()
+    client.force_authenticate(user=admin)
+    service_date = timezone.localdate() + timedelta(days=2)
+
+    closure = client.post(
+        "/api/v1/admin/schedule-closures/",
+        {
+            "service_area": str(service_area.id),
+            "closure_type": "BLACKOUT",
+            "start_date": service_date,
+            "end_date": service_date,
+            "reason": "Capacity maintenance",
+            "is_active": True,
+        },
+        format="json",
+    )
+    assert closure.status_code == 201
+
+    slot = create_slot(service_area, date=service_date + timedelta(days=1))
+    updated = client.patch(f"/api/v1/admin/time-slots/{slot.id}/", {"capacity": 7}, format="json")
+    assert updated.status_code == 200
+    assert updated.json()["capacity"] == 7

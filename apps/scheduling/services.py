@@ -2,9 +2,10 @@ from datetime import time
 
 from django.apps import apps
 from django.db import transaction
+from django.db import models
 from django.utils import timezone
 
-from apps.scheduling.models import TimeSlot
+from apps.scheduling.models import ScheduleClosure, TimeSlot
 
 
 DEFAULT_DAILY_SLOT_WINDOWS = (
@@ -50,7 +51,7 @@ def get_available_capacity(slot):
 
 
 def ensure_daily_slots(service_area, service_date):
-    if service_date < timezone.localdate():
+    if service_date < timezone.localdate() or is_service_area_closed(service_area, service_date):
         return
 
     for start_hour, end_hour in DEFAULT_DAILY_SLOT_WINDOWS:
@@ -68,6 +69,7 @@ def is_slot_bookable(slot):
         slot.is_active
         and slot.service_area.is_active
         and slot.capacity > 0
+        and not is_service_area_closed(slot.service_area, slot.date)
         and not is_slot_expired(slot)
         and get_available_capacity(slot) > 0
     )
@@ -83,3 +85,11 @@ def lock_slot_for_reservation(slot_id):
 
 class SlotNotAvailable(Exception):
     pass
+
+
+def is_service_area_closed(service_area, service_date):
+    return ScheduleClosure.objects.filter(
+        is_active=True,
+        start_date__lte=service_date,
+        end_date__gte=service_date,
+    ).filter(models.Q(service_area__isnull=True) | models.Q(service_area=service_area)).exists()

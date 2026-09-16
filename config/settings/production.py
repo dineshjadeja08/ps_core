@@ -146,6 +146,12 @@ if REQUIRE_OTP_PROVIDER_CONFIG and NOTIFICATION_PROVIDER.endswith("Msg91WhatsApp
     if not MSG91_WEBHOOK_SECRET:  # noqa: F405
         raise RuntimeError("MSG91_WEBHOOK_SECRET must be set in production.")
 
+if REQUIRE_TURNSTILE_FOR_OTP and not TURNSTILE_SECRET_KEY:  # noqa: F405
+    raise RuntimeError("TURNSTILE_SECRET_KEY must be set when OTP CAPTCHA protection is enabled.")
+
+if not BUSINESS_GSTIN:  # noqa: F405
+    raise RuntimeError("BUSINESS_GSTIN must be set in production for GST invoices.")
+
 if OTP_AUTH_PROVIDER.endswith("FirebaseAdminAuthProvider") and not (  # noqa: F405
     os.environ.get("FIREBASE_CREDENTIALS_JSON")
     or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")

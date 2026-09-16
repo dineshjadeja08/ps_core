@@ -1,15 +1,17 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
-from rest_framework import generics, status
+from rest_framework import generics, mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.permissions import IsAdminRole
+from apps.accounts.permissions import IsAdminRole, IsTechnicianRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
-from apps.bookings.serializers import BookingSerializer
+from apps.bookings.serializers import AdminBookingSerializer, BookingOperationSerializer, BookingSerializer
+from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
 from apps.technicians.models import TechnicianProfile
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
@@ -17,6 +19,50 @@ from apps.technicians.serializers import (
     TechnicianProfileSerializer,
 )
 from apps.technicians.services import assign_technician, get_eligible_technicians, remove_technician_assignment
+
+
+class TechnicianJobViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = AdminBookingSerializer
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self):
+        return (
+            Booking.objects.filter(assigned_technician=self.request.user)
+            .select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician")
+            .prefetch_related("status_history")
+            .order_by("service_date", "time_slot__start_time")
+        )
+
+    def _operate(self, request, operation):
+        serializer = BookingOperationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notes = serializer.validated_data.get("notes", "")
+        booking = self.get_object()
+        if operation == "en-route":
+            booking = mark_technician_en_route(booking_id=booking.id, changed_by=request.user, notes=notes)
+        elif operation == "start":
+            booking = start_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
+        elif operation == "complete":
+            booking = complete_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
+        return Response(AdminBookingSerializer(booking, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="en-route")
+    def en_route(self, request, *args, **kwargs):
+        return self._operate(request, "en-route")
+
+    @action(detail=True, methods=["post"], url_path="start")
+    def start(self, request, *args, **kwargs):
+        return self._operate(request, "start")
+
+    @action(detail=True, methods=["post"], url_path="complete")
+    def complete(self, request, *args, **kwargs):
+        return self._operate(request, "complete")
 
 
 class AdminTechnicianListView(generics.ListAPIView):

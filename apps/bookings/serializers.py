@@ -128,3 +128,18 @@ class BookingSerializer(serializers.ModelSerializer):
             "start_time": obj.time_slot.start_time.isoformat(),
             "end_time": obj.time_slot.end_time.isoformat(),
         }
+
+
+class AdminBookingSerializer(BookingSerializer):
+    customer_name = serializers.SerializerMethodField()
+    customer_phone = serializers.CharField(source="customer.phone_number", read_only=True)
+
+    class Meta(BookingSerializer.Meta):
+        fields = BookingSerializer.Meta.fields + ("customer_name", "customer_phone")
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_customer_name(self, obj):
+        profile = getattr(obj.customer, "customer_profile", None)
+        display_name = (getattr(profile, "display_name", "") or "").strip()
+        account_name = " ".join(part for part in (obj.customer.first_name, obj.customer.last_name) if part).strip()
+        return display_name or account_name or obj.customer.phone_number

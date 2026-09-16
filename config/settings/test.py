@@ -35,3 +35,5 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(  # noqa: F405
 # Schema tests must not depend on a developer's production-like .env.
 SHOW_API_DOCS = True
 ENABLE_DJANGO_ADMIN = True
+CELERY_TASK_ALWAYS_EAGER = True
+CELERY_TASK_EAGER_PROPAGATES = True

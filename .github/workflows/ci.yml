@@ -1,0 +1,37 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip pip-audit
+      - run: python -m pip install -e ".[dev]"
+      - run: python manage.py check --settings=config.settings.test
+      - run: python manage.py makemigrations --check --dry-run --settings=config.settings.test
+      - run: python manage.py spectacular --settings=config.settings.test --file /tmp/openapi.yaml --validate
+      - run: pytest
+      - run: pip-audit
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: purple-squad-backend:ci

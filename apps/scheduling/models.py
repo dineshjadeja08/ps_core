@@ -41,3 +41,41 @@ class TimeSlot(BaseModel):
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class ClosureType(models.TextChoices):
+    HOLIDAY = "HOLIDAY", "Holiday"
+    BLACKOUT = "BLACKOUT", "Blackout"
+    EMERGENCY = "EMERGENCY", "Emergency closure"
+
+
+class ScheduleClosure(BaseModel):
+    service_area = models.ForeignKey(
+        ServiceArea,
+        on_delete=models.CASCADE,
+        related_name="schedule_closures",
+        null=True,
+        blank=True,
+        help_text="Leave empty to close every service area.",
+    )
+    closure_type = models.CharField(max_length=16, choices=ClosureType.choices, default=ClosureType.BLACKOUT)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    reason = models.CharField(max_length=255)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("start_date", "service_area__name")
+        indexes = [models.Index(fields=["start_date", "end_date", "is_active"])]
+
+    def clean(self):
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValidationError({"end_date": "End date must be on or after the start date."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+    def __str__(self):
+        scope = self.service_area.name if self.service_area else "All service areas"
+        return f"{scope}: {self.start_date} to {self.end_date}"

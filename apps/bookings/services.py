@@ -185,6 +185,25 @@ def start_booking(*, booking_id, changed_by, notes=""):
 
 
 @transaction.atomic
+def mark_technician_en_route(*, booking_id, changed_by, notes=""):
+    booking = _lock_booking(booking_id)
+    if booking.booking_status != BookingStatus.TECHNICIAN_ASSIGNED:
+        raise serializers.ValidationError("Booking must be assigned before the technician can start travelling.")
+    booking = _transition_booking(
+        booking=booking,
+        to_status=BookingStatus.TECHNICIAN_EN_ROUTE,
+        changed_by=changed_by,
+        notes=notes or "Technician is en route.",
+    )
+    emit_notification_event(
+        event=NotificationEvent.TECHNICIAN_EN_ROUTE,
+        recipient=booking.customer,
+        booking=booking,
+    )
+    return booking
+
+
+@transaction.atomic
 def complete_booking(*, booking_id, changed_by, notes=""):
     booking = _lock_booking(booking_id)
     if booking.booking_status not in COMPLETABLE_STATUSES:

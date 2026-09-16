@@ -55,6 +55,7 @@ from common.throttles import (
     OtpVerifyIPThrottle,
     OtpVerifyPhoneThrottle,
 )
+from common.turnstile import verify_turnstile
 
 
 class FirebaseLoginView(APIView):
@@ -251,6 +252,10 @@ class OtpSendView(APIView):
     def post(self, request):
         serializer = OtpSendRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        verify_turnstile(
+            token=serializer.validated_data.get("captcha_token", ""),
+            remote_ip=request.META.get("REMOTE_ADDR", ""),
+        )
         result = send_login_otp(
             serializer.validated_data["phone_number"],
             serializer.validated_data["channel"],

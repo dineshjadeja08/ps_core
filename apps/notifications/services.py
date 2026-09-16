@@ -19,7 +19,7 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
     channels = channels or DEFAULT_CHANNELS
     payload = payload or {}
 
-    def _create_and_send():
+    def _create_and_enqueue():
         for channel in channels:
             try:
                 notification = Notification.objects.create(
@@ -31,7 +31,9 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
                     message=_message_for_event(event, booking),
                     payload=payload,
                 )
-                send_notification(notification)
+                from apps.notifications.tasks import deliver_notification
+
+                deliver_notification.delay(str(notification.id))
             except Exception as exc:
                 logger.exception("notification_event_failed event=%s channel=%s", event, channel)
                 report_operational_failure(
@@ -41,10 +43,10 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
                     context={"event": event, "channel": channel, "booking_id": getattr(booking, "id", "")},
                 )
 
-    transaction.on_commit(_create_and_send)
+    transaction.on_commit(_create_and_enqueue)
 
 
-def send_notification(notification):
+def send_notification(notification, *, raise_on_failure=False):
     provider = get_notification_provider()
     notification.send_attempts += 1
     try:
@@ -61,6 +63,8 @@ def send_notification(notification):
             exception=exc,
             context={"notification_id": notification.id, "event": notification.event, "channel": notification.channel},
         )
+        if raise_on_failure:
+            raise
         return notification
 
     notification.status = NotificationStatus.SENT

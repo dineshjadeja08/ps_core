@@ -1,4 +1,19 @@
 services:
+  worker:
+    build: .
+    command: celery -A config worker --beat --loglevel=INFO --concurrency=2
+    environment:
+      DATABASE_URL: postgresql://purple_squad:purple_squad@db:5432/purple_squad
+      REDIS_URL: redis://cache:6379/0
+      CELERY_BROKER_URL: redis://cache:6379/1
+      CELERY_RESULT_BACKEND: redis://cache:6379/1
+      CELERY_TASK_ALWAYS_EAGER: "false"
+    depends_on:
+      cache:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
   cache:
     image: redis:8-alpine
     ports:

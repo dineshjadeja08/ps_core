@@ -95,6 +95,22 @@ def test_admin_customer_history_and_support_note(admin_client, customer, booking
 
 
 @pytest.mark.django_db
+def test_admin_booking_list_identifies_customer_and_supports_phone_search(admin_client, customer, booking):
+    customer.first_name = "Viknesh"
+    customer.last_name = "B"
+    customer.save(update_fields=["first_name", "last_name"])
+
+    response = admin_client.get(f"/api/v1/admin/bookings/?search={customer.phone_number[-8:]}")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+    payload = response.json()["results"][0]
+    assert payload["booking_number"] == booking.booking_number
+    assert payload["customer_name"] == "Viknesh B"
+    assert payload["customer_phone"] == customer.phone_number
+
+
+@pytest.mark.django_db
 def test_admin_can_list_payments_and_create_advance_order(admin_client, booking):
     Payment.objects.create(
         booking=booking,

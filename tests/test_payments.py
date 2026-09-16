@@ -5,6 +5,7 @@ from decimal import Decimal
 from hashlib import sha256
 
 import pytest
+from unittest.mock import patch
 from django.utils import timezone
 from rest_framework.test import APIClient
 
@@ -13,8 +14,9 @@ from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory, P
 from apps.catalogue.models import Service, ServiceCategory
 from apps.locations.models import Address, ServiceArea
 from apps.notifications.models import Notification, NotificationEvent
-from apps.payments.models import Payment, PaymentRecordStatus, PaymentType, PaymentWebhookEvent, WebhookProcessingStatus
+from apps.payments.models import Invoice, Payment, PaymentRecordStatus, PaymentType, PaymentWebhookEvent, WebhookProcessingStatus
 from apps.payments.services import make_payment_signature
+from apps.payments.tasks import reconcile_pending_refunds
 from apps.scheduling.models import TimeSlot
 
 
@@ -95,6 +97,46 @@ def test_order_creation(authenticated_client, booking):
     assert payload["amount_paise"] == 29900
     assert payload["provider_order_id"].startswith("order_")
     assert Payment.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_paid_customer_can_download_gst_invoice(authenticated_client, booking):
+    booking.payment_status = PaymentStatus.PAID
+    booking.save(update_fields=["payment_status", "updated_at"])
+
+    response = authenticated_client.get(f"/api/v1/bookings/{booking.id}/invoice/")
+
+    assert response.status_code == 200
+    assert response["Content-Type"] == "application/pdf"
+    assert response.content.startswith(b"%PDF")
+    invoice = Invoice.objects.get(booking=booking)
+    assert invoice.invoice_number.startswith("PS/")
+    assert invoice.total_amount == booking.total_amount
+
+
+@pytest.mark.django_db
+def test_unpaid_customer_cannot_download_invoice(authenticated_client, booking):
+    response = authenticated_client.get(f"/api/v1/bookings/{booking.id}/invoice/")
+
+    assert response.status_code == 400
+    assert not Invoice.objects.filter(booking=booking).exists()
+
+
+@pytest.mark.django_db
+@patch("apps.payments.tasks.reconcile_refund_task.delay")
+def test_pending_refunds_are_queued_for_reconciliation(delay, booking):
+    refund = Payment.objects.create(
+        booking=booking,
+        amount=Decimal("100.00"),
+        payment_type=PaymentType.REFUND,
+        status=PaymentRecordStatus.PENDING,
+        provider_refund_id="rfnd_pending_001",
+    )
+
+    queued = reconcile_pending_refunds.run()
+
+    assert queued == 1
+    delay.assert_called_once_with(str(refund.id))
 
 
 @pytest.mark.django_db

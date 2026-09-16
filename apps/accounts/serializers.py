@@ -35,6 +35,7 @@ class AdminMfaVerifyRequestSerializer(serializers.Serializer):
 class OtpSendRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.SMS)
+    captcha_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
 
 
 class OtpSendResponseSerializer(serializers.Serializer):

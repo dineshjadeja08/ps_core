@@ -1,5 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -13,6 +15,7 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
+from apps.payments.invoices import issue_invoice, render_invoice_pdf
 from apps.payments.serializers import (
     PaymentSerializer,
     PaymentOrderResponseSerializer,
@@ -34,6 +37,43 @@ from common.throttles import PaymentIPThrottle, PaymentUserThrottle
 
 
 MAX_WEBHOOK_BODY_BYTES = 256 * 1024
+
+
+class BookingInvoiceDownloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Download GST invoice",
+        responses={(status.HTTP_200_OK, "application/pdf"): OpenApiTypes.BINARY},
+    )
+    def get(self, request, booking_id):
+        booking = get_object_or_404(
+            Booking.objects.select_related("customer", "customer__customer_profile", "service"),
+            id=booking_id,
+            customer=request.user,
+        )
+        invoice = issue_invoice(booking)
+        response = HttpResponse(render_invoice_pdf(invoice), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{invoice.invoice_number.replace("/", "-")}.pdf"'
+        return response
+
+
+class AdminBookingInvoiceDownloadView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(
+        summary="Download a booking GST invoice as an administrator",
+        responses={(status.HTTP_200_OK, "application/pdf"): OpenApiTypes.BINARY},
+    )
+    def get(self, request, booking_id):
+        booking = get_object_or_404(
+            Booking.objects.select_related("customer", "customer__customer_profile", "service"),
+            id=booking_id,
+        )
+        invoice = issue_invoice(booking)
+        response = HttpResponse(render_invoice_pdf(invoice), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{invoice.invoice_number.replace("/", "-")}.pdf"'
+        return response
 
 
 class BookingAdvancePaymentOrderView(APIView):
