@@ -58,14 +58,16 @@ def render_invoice_pdf(invoice):
     output = BytesIO()
     document = canvas.Canvas(output, pagesize=A4, pageCompression=1)
     width, height = A4
-    document.setTitle(f"Invoice {invoice.invoice_number}")
+    document_title = "TAX INVOICE" if invoice.seller_gstin else "PAYMENT RECEIPT"
+    document.setTitle(f"{document_title.title()} {invoice.invoice_number}")
     document.setFont("Helvetica-Bold", 20)
-    document.drawString(48, height - 58, "TAX INVOICE")
+    document.drawString(48, height - 58, document_title)
     document.setFont("Helvetica-Bold", 13)
     document.drawString(48, height - 88, invoice.seller_name)
     document.setFont("Helvetica", 9)
     document.drawString(48, height - 104, invoice.seller_address[:90])
-    document.drawString(48, height - 120, f"GSTIN: {invoice.seller_gstin or 'Not configured'}")
+    if invoice.seller_gstin:
+        document.drawString(48, height - 120, f"GSTIN: {invoice.seller_gstin}")
     document.drawRightString(width - 48, height - 88, invoice.invoice_number)
     document.drawRightString(width - 48, height - 104, invoice.issued_at.strftime("%d %b %Y"))
 
