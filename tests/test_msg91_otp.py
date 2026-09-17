@@ -66,8 +66,9 @@ def test_whatsapp_send_uses_authentication_template(provider):
     assert template["namespace"] == "template-namespace"
     components = template["to_and_components"][0]
     assert components["to"] == [MOBILE]
-    assert components["components"]["body_1"]["value"] == "123456"
-    assert components["components"]["button_1"]["value"] == "123456"
+    assert components["components"] == {
+        "header_1": {"type": "text", "value": "123456"},
+    }
     assert LoginOtpChallenge.objects.get().channel == OtpDeliveryChannel.WHATSAPP
 
 

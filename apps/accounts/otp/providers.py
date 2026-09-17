@@ -106,12 +106,7 @@ class Msg91OtpProvider:
                                     {
                                         "to": [mobile],
                                         "components": {
-                                            "body_1": {"type": "text", "value": code},
-                                            "button_1": {
-                                                "subtype": "url",
-                                                "type": "text",
-                                                "value": code,
-                                            },
+                                            "header_1": {"type": "text", "value": code},
                                         },
                                     }
                                 ],
