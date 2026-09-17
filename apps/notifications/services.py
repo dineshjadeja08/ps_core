@@ -33,7 +33,7 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
                 )
                 from apps.notifications.tasks import deliver_notification
 
-                deliver_notification.delay(str(notification.id))
+                deliver_notification(str(notification.id))
             except Exception as exc:
                 logger.exception("notification_event_failed event=%s channel=%s", event, channel)
                 report_operational_failure(

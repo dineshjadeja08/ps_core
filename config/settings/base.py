@@ -123,23 +123,6 @@ CACHES = {
     }
 }
 
-CELERY_BROKER_URL = env("CELERY_BROKER_URL", default=env("REDIS_URL", default="redis://127.0.0.1:6379/1"))
-CELERY_RESULT_BACKEND = env("CELERY_RESULT_BACKEND", default=CELERY_BROKER_URL)
-CELERY_TASK_ALWAYS_EAGER = env.bool("CELERY_TASK_ALWAYS_EAGER", default=DEBUG)
-CELERY_TASK_EAGER_PROPAGATES = env.bool("CELERY_TASK_EAGER_PROPAGATES", default=False)
-CELERY_TASK_ACKS_LATE = True
-CELERY_TASK_REJECT_ON_WORKER_LOST = True
-CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
-CELERY_BEAT_SCHEDULE = {
-    "reconcile-pending-refunds": {
-        "task": "apps.payments.tasks.reconcile_pending_refunds",
-        "schedule": 900.0,
-    },
-}
-CELERY_TASK_TRACK_STARTED = True
-CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-CELERY_TASK_DEFAULT_QUEUE = "purple-squad"
-
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -290,11 +273,6 @@ ENABLE_DJANGO_ADMIN = env.bool("ENABLE_DJANGO_ADMIN", default=DEBUG)
 
 REQUEST_ID_HEADER = env("REQUEST_ID_HEADER", default="HTTP_X_REQUEST_ID")
 LOG_LEVEL = env("LOG_LEVEL", default="INFO")
-SENTRY_DSN = env("SENTRY_DSN", default="")
-SENTRY_ENVIRONMENT = env("SENTRY_ENVIRONMENT", default="local")
-SENTRY_TRACES_SAMPLE_RATE = env.float("SENTRY_TRACES_SAMPLE_RATE", default=0.05)
-SENTRY_PROFILES_SAMPLE_RATE = env.float("SENTRY_PROFILES_SAMPLE_RATE", default=0.0)
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

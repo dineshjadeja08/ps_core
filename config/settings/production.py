@@ -3,7 +3,6 @@ from .base import *  # noqa: F403
 import os
 
 import dj_database_url
-import sentry_sdk
 
 DEBUG = bool_env("DJANGO_DEBUG", "DEBUG", default=False)  # noqa: F405
 
@@ -44,15 +43,6 @@ if not JWT_SIGNING_KEY or JWT_SIGNING_KEY == SECRET_KEY:  # noqa: F405
     raise RuntimeError("JWT_SIGNING_KEY must be set to a dedicated production secret.")
 SIMPLE_JWT["SIGNING_KEY"] = JWT_SIGNING_KEY  # noqa: F405
 
-if SENTRY_DSN:  # noqa: F405
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,  # noqa: F405
-        environment=SENTRY_ENVIRONMENT,  # noqa: F405
-        traces_sample_rate=SENTRY_TRACES_SAMPLE_RATE,  # noqa: F405
-        profiles_sample_rate=SENTRY_PROFILES_SAMPLE_RATE,  # noqa: F405
-        send_default_pii=False,
-    )
-
 SECURE_SSL_REDIRECT = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
@@ -67,9 +57,6 @@ SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
 SHOW_API_DOCS = env.bool("SHOW_API_DOCS", default=False)  # noqa: F405
 ENABLE_DJANGO_ADMIN = False
-
-if not SENTRY_DSN:  # noqa: F405
-    raise RuntimeError("SENTRY_DSN must be set in production for error monitoring.")
 
 if SECRET_KEY == "unsafe-local-development-key":  # noqa: F405
     raise RuntimeError("DJANGO_SECRET_KEY must be set in production.")

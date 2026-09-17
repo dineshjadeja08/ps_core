@@ -123,8 +123,8 @@ def test_unpaid_customer_cannot_download_invoice(authenticated_client, booking):
 
 
 @pytest.mark.django_db
-@patch("apps.payments.tasks.reconcile_refund_task.delay")
-def test_pending_refunds_are_queued_for_reconciliation(delay, booking):
+@patch("apps.payments.tasks.reconcile_refund_task")
+def test_pending_refunds_are_reconciled_synchronously(reconcile, booking):
     refund = Payment.objects.create(
         booking=booking,
         amount=Decimal("100.00"),
@@ -133,10 +133,10 @@ def test_pending_refunds_are_queued_for_reconciliation(delay, booking):
         provider_refund_id="rfnd_pending_001",
     )
 
-    queued = reconcile_pending_refunds.run()
+    queued = reconcile_pending_refunds()
 
     assert queued == 1
-    delay.assert_called_once_with(str(refund.id))
+    reconcile.assert_called_once_with(str(refund.id))
 
 
 @pytest.mark.django_db

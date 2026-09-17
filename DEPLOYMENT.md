@@ -50,10 +50,6 @@ MSG91_WHATSAPP_TEMPLATE_LANGUAGE=en
 MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME=<approved booking update template name>
 MSG91_WEBHOOK_SECRET=<long random callback secret>
 
-SENTRY_DSN=<backend Sentry project DSN>
-SENTRY_ENVIRONMENT=production
-SENTRY_TRACES_SAMPLE_RATE=0.05
-
 RAZORPAY_KEY_ID=<test or live key id>
 RAZORPAY_KEY_SECRET=<test or live secret>
 RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook signing secret>
@@ -121,20 +117,20 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 10. Verify the frontend `/admin/login` password-plus-OTP flow and confirm a legacy/non-MFA admin JWT is rejected.
 11. Verify health endpoint.
 12. Run acceptance flow with a controlled live payment.
-13. Enable monitoring alerts.
+13. Review Render application logs during the controlled launch period.
 
-## Error Monitoring and Alert Rules
+## Temporary Error Monitoring
 
-Production refuses to start without `SENTRY_DSN`. Application errors and explicit operational failures are tagged with `failure.category` values `payment`, `notification`, or `booking`.
+Sentry and the Celery worker are intentionally disabled during development. Operational failures continue to be written to Render application logs with `failure.category` values such as `payment`, `notification`, and `booking`.
 
-Create these Sentry alert rules before launch:
+Before a full production launch, restore durable error monitoring and background jobs, then configure alerts for:
 
 1. Immediate alert when `failure.category:payment` occurs, routed to the on-call phone/Slack channel.
 2. Immediate alert for five or more `failure.category:notification` events in five minutes.
 3. Immediate alert for any unhandled booking exception; warning alert for five `failure.category:booking` events in ten minutes.
 4. Uptime alert when `/api/v1/health/` is non-200 for two consecutive checks.
 
-Do not send customer PII to Sentry. The SDK is configured with `send_default_pii=False`; operational contexts contain internal record IDs only.
+Do not include customer PII in monitoring events when external monitoring is restored.
 
 ## Payment Safety and Refund Operations
 
@@ -142,7 +138,7 @@ Checkout and payment-order creation accept an `Idempotency-Key` header. Clients 
 
 Razorpay webhook deliveries are signature-verified and persisted before processing. Failed attempts remain retryable, while successfully processed duplicate payloads are acknowledged without applying state twice. Subscribe the webhook to payment captured/failed and refund created/processed/failed events.
 
-Admins can create a full or partial refund from the Payments screen and reconcile refund state with Razorpay. Use a unique refund reason/operation per customer request; retries of the same operation reuse the same backend idempotency key. Review refund records that remain pending or failed before settlement close.
+Admins can create a full or partial refund from the Payments screen and reconcile refund state with Razorpay. Use a unique refund reason/operation per customer request; retries of the same operation reuse the same backend idempotency key. While Celery is disabled, pending refund reconciliation is not scheduled automatically, so review and reconcile pending or failed refund records manually before settlement close.
 
 ## Superuser Creation
 
