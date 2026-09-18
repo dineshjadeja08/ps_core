@@ -10,5 +10,5 @@ class MfaEnforcedJWTAuthenticationScheme(OpenApiAuthenticationExtension):
             "type": "http",
             "scheme": "bearer",
             "bearerFormat": "JWT",
-            "description": "Administrator tokens must be issued after MFA verification.",
+            "description": "JWT authentication. Administrator MFA is enforced when ADMIN_MFA_ENABLED is true.",
         }

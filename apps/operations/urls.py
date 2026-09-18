@@ -2,7 +2,16 @@ from rest_framework.routers import SimpleRouter
 
 from django.urls import path
 
-from apps.operations.views import AdminFAQViewSet, AdminHomepageBannerViewSet, AdminLeadViewSet, AdminReportsSummaryView, AdminSettingsView, PublicFAQListView
+from apps.operations.views import (
+    AdminDashboardSummaryView,
+    AdminFAQViewSet,
+    AdminGlobalSearchView,
+    AdminHomepageBannerViewSet,
+    AdminLeadViewSet,
+    AdminReportsSummaryView,
+    AdminSettingsView,
+    PublicFAQListView,
+)
 
 router = SimpleRouter()
 router.register("admin/leads", AdminLeadViewSet, basename="admin-lead")
@@ -11,6 +20,8 @@ router.register("admin/homepage-banners", AdminHomepageBannerViewSet, basename="
 
 urlpatterns = [
     path("faqs/", PublicFAQListView.as_view(), name="public-faq-list"),
+    path("admin/dashboard/summary/", AdminDashboardSummaryView.as_view(), name="admin-dashboard-summary"),
+    path("admin/search/", AdminGlobalSearchView.as_view(), name="admin-global-search"),
     path("admin/reports/summary/", AdminReportsSummaryView.as_view(), name="admin-reports-summary"),
     path("admin/settings/", AdminSettingsView.as_view(), name="admin-settings"),
 ] + router.urls

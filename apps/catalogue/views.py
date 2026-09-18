@@ -9,8 +9,9 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
-from apps.catalogue.models import Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import Package, Service, ServiceCategory, ServiceImage
 from apps.catalogue.serializers import (
+    AdminPackageSerializer,
     AdminServiceCategorySerializer,
     AdminServiceSerializer,
     ServiceCategorySerializer,
@@ -18,7 +19,6 @@ from apps.catalogue.serializers import (
     ServiceImageSerializer,
     ServiceListSerializer,
 )
-from apps.operations.services import capture_authenticated_service_view
 from apps.locations.services import get_active_service_area
 
 
@@ -166,12 +166,7 @@ class ServiceDetailView(generics.RetrieveAPIView):
         ],
     )
     def get(self, request, *args, **kwargs):
-        response = super().get(request, *args, **kwargs)
-        try:
-            capture_authenticated_service_view(user=request.user, service=self.get_object(), request=request)
-        except Exception:
-            pass
-        return response
+        return super().get(request, *args, **kwargs)
 
 
 @extend_schema(tags=["Admin - Categories"])
@@ -339,4 +334,59 @@ class AdminServiceImageViewSet(viewsets.ModelViewSet):
             resource_type="service",
             resource_id=service_id,
             metadata={"image_id": str(image_id), "operation": "deleted"},
+        )
+
+
+@extend_schema(tags=["Admin - Packages"])
+class AdminPackageViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = AdminPackageSerializer
+    parser_classes = [JSONParser]
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self):
+        queryset = Package.objects.prefetch_related("items__service", "items__service__category").order_by("name")
+        active = self.request.query_params.get("is_active")
+        if active is not None:
+            queryset = queryset.filter(is_active=active.lower() in {"1", "true", "yes"})
+        return queryset
+
+    def perform_create(self, serializer):
+        package = serializer.save()
+        audit_event(
+            action=AuditAction.PACKAGE_CREATED,
+            actor=self.request.user,
+            request=self.request,
+            resource_type="package",
+            resource_id=package.id,
+            metadata={"slug": package.slug, "bundle_price": package.bundle_price},
+        )
+
+    def perform_update(self, serializer):
+        package = serializer.save()
+        audit_event(
+            action=AuditAction.PACKAGE_UPDATED,
+            actor=self.request.user,
+            request=self.request,
+            resource_type="package",
+            resource_id=package.id,
+            metadata={
+                "slug": package.slug,
+                "bundle_price": package.bundle_price,
+                "is_active": package.is_active,
+            },
+        )
+
+    def perform_destroy(self, instance):
+        package_id = instance.id
+        slug = instance.slug
+        instance.delete()
+        audit_event(
+            action=AuditAction.PACKAGE_DELETED,
+            actor=self.request.user,
+            request=self.request,
+            resource_type="package",
+            resource_id=package_id,
+            metadata={"slug": slug},
         )

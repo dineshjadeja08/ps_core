@@ -50,6 +50,8 @@ class Service(BaseModel):
     )
     advance_payment_value = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     advance_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    training_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    training_fee_per_unit = models.BooleanField(default=False)
     estimated_duration_minutes = models.PositiveIntegerField()
     cover_image = models.ImageField(upload_to="services/covers/", blank=True)
     is_featured = models.BooleanField(default=False)
@@ -79,6 +81,8 @@ class Service(BaseModel):
             errors["advance_amount"] = "Advance amount cannot be negative."
         if self.advance_payment_value is not None and self.advance_payment_value < Decimal("0.00"):
             errors["advance_payment_value"] = "Advance payment value cannot be negative."
+        if self.training_fee is not None and self.training_fee < Decimal("0.00"):
+            errors["training_fee"] = "Training fee cannot be negative."
         if (
             self.advance_payment_type == AdvancePaymentType.PERCENTAGE
             and self.advance_payment_value is not None
@@ -118,3 +122,65 @@ class ServiceImage(BaseModel):
 
     def __str__(self):
         return f"{self.service.name} image"
+
+
+class Package(BaseModel):
+    name = models.CharField(max_length=180)
+    slug = models.SlugField(max_length=220, unique=True)
+    description = models.TextField(blank=True)
+    bundle_price = models.DecimalField(max_digits=10, decimal_places=2)
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    maximum_usage_limit = models.PositiveIntegerField(default=1)
+    is_active = models.BooleanField(default=True)
+    services = models.ManyToManyField(Service, through="PackageItem", related_name="packages")
+
+    class Meta:
+        ordering = ("name",)
+        indexes = [
+            models.Index(fields=["is_active", "valid_from", "valid_until"]),
+            models.Index(fields=["slug"]),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    def clean(self):
+        errors = {}
+        if self.bundle_price is not None and self.bundle_price < Decimal("0.00"):
+            errors["bundle_price"] = "Bundle price cannot be negative."
+        if self.maximum_usage_limit is not None and self.maximum_usage_limit < 1:
+            errors["maximum_usage_limit"] = "Maximum usage limit must be at least 1."
+        if self.valid_from and self.valid_until and self.valid_from > self.valid_until:
+            errors["valid_until"] = "Validity end date must be on or after the start date."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class PackageItem(BaseModel):
+    package = models.ForeignKey(Package, on_delete=models.CASCADE, related_name="items")
+    service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name="package_items")
+    quantity = models.PositiveIntegerField(default=1)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("display_order", "created_at")
+        constraints = [
+            models.UniqueConstraint(fields=["package", "service"], name="unique_package_service"),
+        ]
+        indexes = [models.Index(fields=["package", "display_order"])]
+
+    def __str__(self):
+        return f"{self.package.name}: {self.quantity} × {self.service.name}"
+
+    def clean(self):
+        if self.quantity is not None and self.quantity < 1:
+            raise ValidationError({"quantity": "Quantity must be at least 1."})
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)

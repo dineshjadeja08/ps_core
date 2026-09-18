@@ -183,6 +183,7 @@ class TechnicianLeave(BaseModel):
         null=True,
         blank=True,
     )
+    review_note = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
 
     class Meta:

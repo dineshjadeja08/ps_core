@@ -13,7 +13,7 @@ from apps.bookings.models import CartItem, BookingStatus, PaymentStatus
 from apps.bookings.idempotency import begin_checkout_request, complete_checkout_request
 from apps.bookings.serializers import BookingCreateSerializer, BookingSerializer
 from apps.bookings.services import create_booking
-from apps.catalogue.models import Service
+from apps.catalogue.models import AdvancePaymentType, Service
 from apps.operations.services import mark_cart_added
 from common.idempotency import idempotency_key_from_request, request_fingerprint
 
@@ -22,6 +22,15 @@ class CartAddSerializer(serializers.Serializer):
     service_ids = serializers.ListField(child=serializers.UUIDField(), min_length=1, max_length=100)
     merge = serializers.BooleanField(default=False)
     booking_ids = serializers.DictField(child=serializers.UUIDField(), required=False, default=dict)
+    quantities = serializers.DictField(
+        child=serializers.IntegerField(min_value=1, max_value=20),
+        required=False,
+        default=dict,
+    )
+
+
+class CartQuantitySerializer(serializers.Serializer):
+    quantity = serializers.IntegerField(min_value=1, max_value=20)
 
 
 class CartResponseSerializer(serializers.Serializer):
@@ -63,14 +72,27 @@ def cart_response(customer):
     advance = Decimal("0.00")
     for row in rows:
         service = row.service
-        price = row.booking.total_amount if row.booking_id else service.effective_price
-        deposit = row.booking.advance_required if row.booking_id else service.advance_amount
+        quantity = row.booking.quantity if row.booking_id else row.quantity
+        training_fee = (
+            row.booking.training_fee
+            if row.booking_id
+            else service.training_fee * quantity if service.training_fee_per_unit else service.training_fee
+        )
+        price = row.booking.total_amount if row.booking_id else (service.effective_price * quantity) + training_fee
+        if row.booking_id:
+            deposit = row.booking.advance_required
+        elif service.advance_payment_type == AdvancePaymentType.PERCENTAGE:
+            deposit = (price * service.advance_payment_value / Decimal("100.00")).quantize(Decimal("0.01"))
+        else:
+            deposit = min(service.advance_amount, price)
         available = service.is_active and service.category.is_active
         total += price
         advance += deposit
         items.append({
             "id": str(service.id), "slug": service.slug, "name": service.name,
             "price": str(price), "advance": str(deposit), "available": available,
+            "basePrice": str(service.base_price * quantity), "trainingFee": str(training_fee),
+            "quantity": quantity,
             "bookingId": str(row.booking_id) if row.booking_id else None,
         })
     return {"items": items, "count": len(items), "total": str(total), "advance_total": str(advance)}
@@ -100,6 +122,10 @@ class CartView(APIView):
             raise serializers.ValidationError("Your cart can contain up to 100 services.")
         for service in services:
             row, created = CartItem.objects.get_or_create(customer=request.user, service=service)
+            requested_quantity = serializer.validated_data["quantities"].get(str(service.id))
+            if requested_quantity and not row.booking_id and row.quantity != requested_quantity:
+                row.quantity = requested_quantity
+                row.save(update_fields=["quantity", "updated_at"])
             if created:
                 mark_cart_added(customer=request.user, service=service, request=request)
             booking_id = serializer.validated_data["booking_ids"].get(str(service.id))
@@ -123,6 +149,21 @@ class CartItemView(APIView):
     def delete(self, request, service_id):
         lock_customer(request.user)
         CartItem.objects.filter(customer=request.user, service_id=service_id).delete()
+        return Response(cart_response(request.user))
+
+    @extend_schema(request=CartQuantitySerializer, responses=CartResponseSerializer, tags=["Cart"])
+    @transaction.atomic
+    def patch(self, request, service_id):
+        serializer = CartQuantitySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        lock_customer(request.user)
+        row = CartItem.objects.filter(customer=request.user, service_id=service_id).first()
+        if row is None:
+            raise serializers.ValidationError("Cart item was not found.")
+        if row.booking_id:
+            raise serializers.ValidationError("Quantity cannot change after a booking has been created.")
+        row.quantity = serializer.validated_data["quantity"]
+        row.save(update_fields=["quantity", "updated_at"])
         return Response(cart_response(request.user))
 
 
@@ -164,6 +205,7 @@ class CartCheckoutView(APIView):
                     raise serializers.ValidationError("A cart booking has already changed. Refresh your cart before continuing.")
                 booking = row.booking
             else:
+                selection["quantity"] = row.quantity
                 booking = create_booking(customer=request.user, **selection)
                 row.booking = booking
                 row.save(update_fields=["booking", "updated_at"])

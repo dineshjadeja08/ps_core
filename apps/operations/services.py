@@ -2,6 +2,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -109,7 +110,7 @@ def link_booking_to_lead(*, booking, request=None):
         request=request,
         note=f"Booking {booking.booking_number} created.",
     )
-    lead.converted_booking = booking
+    lead.pending_booking = booking
     lead.quoted_amount = booking.total_amount
     lead.advance_amount = booking.advance_required
     lead.balance_amount = booking.balance_due
@@ -120,7 +121,7 @@ def link_booking_to_lead(*, booking, request=None):
     lead.preferred_slot = f"{booking.time_slot.start_time:%H:%M}-{booking.time_slot.end_time:%H:%M}"
     lead.save(
         update_fields=[
-            "converted_booking",
+            "pending_booking",
             "quoted_amount",
             "advance_amount",
             "balance_amount",
@@ -136,19 +137,52 @@ def link_booking_to_lead(*, booking, request=None):
 
 
 def mark_booking_payment_paid(*, booking, payment=None, performed_by=None):
-    lead = Lead.objects.filter(converted_booking=booking).order_by("-updated_at").first()
+    lead = Lead.objects.filter(Q(pending_booking=booking) | Q(converted_booking=booking)).order_by("-updated_at").first()
     if not lead:
         lead = link_booking_to_lead(booking=booking)
-    previous = {"payment_status": lead.payment_status, "funnel_status": lead.funnel_status}
+    previous = {
+        "status": lead.status,
+        "payment_status": lead.payment_status,
+        "funnel_status": lead.funnel_status,
+    }
+    previous_status = lead.status
+    lead.status = LeadStatus.CONVERTED
+    lead.converted_booking = booking
+    lead.pending_booking = None
     lead.payment_status = LeadPaymentStatus.PAID
     lead.funnel_status = LeadFunnelStatus.PAID
     lead.last_activity_at = timezone.now()
-    lead.save(update_fields=["payment_status", "funnel_status", "last_activity_at", "updated_at"])
+    lead.save(
+        update_fields=[
+            "status",
+            "converted_booking",
+            "pending_booking",
+            "payment_status",
+            "funnel_status",
+            "last_activity_at",
+            "updated_at",
+        ]
+    )
+    if previous_status != LeadStatus.CONVERTED:
+        from apps.operations.models import LeadStatusHistory
+
+        LeadStatusHistory.objects.create(
+            lead=lead,
+            from_status=previous_status,
+            to_status=LeadStatus.CONVERTED,
+            changed_by=performed_by,
+            notes=f"Payment confirmed for work order {booking.booking_number}.",
+        )
     record_lead_activity(
         lead=lead,
         action=LeadActivityAction.PAYMENT_CONFIRMED,
         previous_value=previous,
-        new_value={"payment_status": lead.payment_status, "funnel_status": lead.funnel_status, "payment_id": str(payment.id) if payment else ""},
+        new_value={
+            "status": lead.status,
+            "payment_status": lead.payment_status,
+            "funnel_status": lead.funnel_status,
+            "payment_id": str(payment.id) if payment else "",
+        },
         performed_by=performed_by,
         note="Payment verified.",
     )

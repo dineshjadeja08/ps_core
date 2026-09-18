@@ -26,6 +26,8 @@ class BookingCreateSerializer(serializers.Serializer):
     slot_id = serializers.UUIDField()
     problem_description = serializers.CharField()
     customer_notes = serializers.CharField(required=False, allow_blank=True)
+    contact_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
+    quantity = serializers.IntegerField(required=False, default=1, min_value=1, max_value=20)
 
     def create(self, validated_data):
         return create_booking(
@@ -35,6 +37,8 @@ class BookingCreateSerializer(serializers.Serializer):
             slot_id=validated_data["slot_id"],
             problem_description=validated_data["problem_description"],
             customer_notes=validated_data.get("customer_notes", ""),
+            contact_phone=validated_data.get("contact_phone", ""),
+            quantity=validated_data.get("quantity", 1),
         )
 
 
@@ -93,8 +97,11 @@ class BookingSerializer(serializers.ModelSerializer):
             "service_date",
             "time_slot",
             "problem_description",
+            "contact_phone",
+            "quantity",
             "subtotal",
             "discount_amount",
+            "training_fee",
             "tax_amount",
             "total_amount",
             "advance_required",
@@ -132,10 +139,19 @@ class BookingSerializer(serializers.ModelSerializer):
 
 class AdminBookingSerializer(BookingSerializer):
     customer_name = serializers.SerializerMethodField()
-    customer_phone = serializers.CharField(source="customer.phone_number", read_only=True)
+    customer_phone = serializers.SerializerMethodField()
+    service_category = serializers.CharField(source="service.category.name", read_only=True)
+    assigned_technician = serializers.SerializerMethodField()
+    paid_at = serializers.SerializerMethodField()
 
     class Meta(BookingSerializer.Meta):
-        fields = BookingSerializer.Meta.fields + ("customer_name", "customer_phone")
+        fields = BookingSerializer.Meta.fields + (
+            "customer_name",
+            "customer_phone",
+            "service_category",
+            "assigned_technician",
+            "paid_at",
+        )
 
     @extend_schema_field(OpenApiTypes.STR)
     def get_customer_name(self, obj):
@@ -143,3 +159,29 @@ class AdminBookingSerializer(BookingSerializer):
         display_name = (getattr(profile, "display_name", "") or "").strip()
         account_name = " ".join(part for part in (obj.customer.first_name, obj.customer.last_name) if part).strip()
         return display_name or account_name or obj.customer.phone_number
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_customer_phone(self, obj):
+        return obj.contact_phone or obj.customer.phone_number
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_assigned_technician(self, obj):
+        user = obj.assigned_technician
+        if not user:
+            return None
+        profile = getattr(user, "technician_profile", None)
+        return {
+            "id": str(profile.id) if profile else None,
+            "user_id": str(user.id),
+            "name": profile.display_name if profile else user.phone_number,
+            "phone": profile.phone if profile else user.phone_number,
+        }
+
+    @extend_schema_field(OpenApiTypes.DATETIME)
+    def get_paid_at(self, obj):
+        payments = getattr(obj, "successful_payments", None)
+        if payments is None:
+            payment = obj.payments.filter(status="SUCCESS").order_by("paid_at", "created_at").first()
+        else:
+            payment = payments[0] if payments else None
+        return payment.paid_at if payment else None

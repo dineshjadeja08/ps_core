@@ -1,13 +1,20 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from apps.bookings.views import AdminBookingBalanceCollectionView, AdminBookingOperationView, AdminBookingViewSet, BookingViewSet
+from apps.bookings.views import (
+    AdminBookingBalanceCollectionView,
+    AdminBookingOperationView,
+    AdminBookingViewSet,
+    AdminWorkOrderViewSet,
+    BookingViewSet,
+)
 
 from apps.bookings.cart import CartView, CartItemView, CartCheckoutView
 
 router = SimpleRouter()
 router.register("bookings", BookingViewSet, basename="booking")
 router.register("admin/bookings", AdminBookingViewSet, basename="admin-booking")
+router.register("admin/work-orders", AdminWorkOrderViewSet, basename="admin-work-order")
 
 urlpatterns = [
     path("cart/", CartView.as_view(), name="cart"),

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.technicians.models import TechnicianAssignment, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
 
 
 class TechnicianSkillSerializer(serializers.ModelSerializer):
@@ -119,3 +119,40 @@ class TechnicianAssignmentSerializer(serializers.ModelSerializer):
             "notes",
         )
         read_only_fields = fields
+
+
+class TechnicianLeaveReviewSerializer(serializers.Serializer):
+    note = serializers.CharField(required=False, allow_blank=True)
+
+
+class TechnicianLeaveSerializer(serializers.ModelSerializer):
+    technician_name = serializers.CharField(source="technician.display_name", read_only=True)
+    technician_employee_code = serializers.CharField(source="technician.employee_code", read_only=True)
+    approved_by_phone = serializers.CharField(source="approved_by.phone_number", read_only=True)
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TechnicianLeave
+        fields = (
+            "id",
+            "technician",
+            "technician_name",
+            "technician_employee_code",
+            "start_at",
+            "end_at",
+            "reason",
+            "status",
+            "approved_by",
+            "approved_by_phone",
+            "review_note",
+            "is_active",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_status(self, obj):
+        if not obj.is_active:
+            return "REJECTED"
+        return "APPROVED" if obj.approved_by_id else "PENDING"

@@ -1,5 +1,5 @@
 from drf_spectacular.utils import OpenApiExample, extend_schema
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.db import transaction
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -21,7 +21,8 @@ from apps.bookings.serializers import (
     BookingRescheduleSerializer,
     BookingSerializer,
 )
-from apps.bookings.services import cancel_booking, complete_booking, start_booking
+from apps.bookings.services import cancel_booking, close_booking, complete_booking, start_booking
+from apps.payments.models import Payment, PaymentRecordStatus
 from common.idempotency import idempotency_key_from_request, request_fingerprint
 
 
@@ -74,6 +75,81 @@ class AdminBookingViewSet(
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+
+class AdminWorkOrderViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = AdminBookingSerializer
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self):
+        successful = Payment.objects.filter(status=PaymentRecordStatus.SUCCESS).order_by("paid_at", "created_at")
+        queryset = (
+            Booking.objects.filter(payments__status=PaymentRecordStatus.SUCCESS)
+            .select_related(
+                "customer",
+                "customer__customer_profile",
+                "service",
+                "service__category",
+                "time_slot",
+                "assigned_technician",
+                "assigned_technician__technician_profile",
+            )
+            .prefetch_related("status_history", Prefetch("payments", queryset=successful, to_attr="successful_payments"))
+            .distinct()
+            .order_by("service_date", "time_slot__start_time", "created_at")
+        )
+        status_filter = self.request.query_params.get("status")
+        if status_filter:
+            queryset = queryset.filter(booking_status=status_filter)
+        payment_status = self.request.query_params.get("payment_status")
+        if payment_status:
+            queryset = queryset.filter(payment_status=payment_status)
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(booking_number__icontains=search)
+                | Q(customer__phone_number__icontains=search)
+                | Q(customer__first_name__icontains=search)
+                | Q(customer__last_name__icontains=search)
+                | Q(customer__customer_profile__display_name__icontains=search)
+            )
+        return queryset
+
+    @extend_schema(summary="List paid work orders", responses={status.HTTP_200_OK: AdminBookingSerializer(many=True)})
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Get paid work order", responses={status.HTTP_200_OK: AdminBookingSerializer})
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Close completed work order",
+        request=BookingOperationSerializer,
+        responses={status.HTTP_200_OK: AdminBookingSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="close")
+    def close(self, request, *args, **kwargs):
+        work_order = self.get_object()
+        serializer = BookingOperationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notes = serializer.validated_data.get("notes", "")
+        work_order = close_booking(booking_id=work_order.id, changed_by=request.user, notes=notes)
+        audit_event(
+            action=AuditAction.ADMIN_WORK_ORDER_CLOSE,
+            actor=request.user,
+            request=request,
+            resource_type="booking",
+            resource_id=work_order.id,
+            metadata={"notes": notes},
+        )
+        return Response(AdminBookingSerializer(work_order, context={"request": request}).data)
 
 
 class BookingViewSet(

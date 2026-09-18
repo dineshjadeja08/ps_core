@@ -1,4 +1,5 @@
 import csv
+from datetime import timedelta
 
 from django.conf import settings
 from django.http import HttpResponse
@@ -12,12 +13,16 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import User, UserRole
 from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking, BookingStatus, PaymentStatus
-from apps.operations.models import FAQ, HomepageBanner, Lead, LeadFunnelStatus, LeadStatus, LeadStatusHistory
+from apps.notifications.models import Notification, NotificationStatus
+from apps.operations.models import ACTIVE_LEAD_STATUSES, FAQ, HomepageBanner, Lead, LeadFunnelStatus, LeadStatus, LeadStatusHistory
 from apps.operations.serializers import (
+    AdminDashboardSummarySerializer,
+    AdminGlobalSearchSerializer,
     AdminReportSummarySerializer,
     AdminSettingsSerializer,
     FAQSerializer,
@@ -33,6 +38,7 @@ from apps.operations.serializers import (
 from apps.operations.services import record_lead_contact, record_manual_lead_payment, send_lead_payment_link
 from apps.payments.models import Payment, PaymentRecordStatus, PaymentType
 from apps.reviews.models import Review
+from apps.technicians.models import TechnicianAvailabilityStatus, TechnicianProfile, TechnicianVerificationStatus
 
 
 class PublicFAQListView(ListAPIView):
@@ -66,6 +72,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             "required_service",
             "assigned_staff",
             "converted_booking",
+            "pending_booking",
             "created_by",
         ).prefetch_related("status_history", "activities")
         status_filter = self.request.query_params.get("status")
@@ -103,6 +110,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
                 | Q(primary_mobile__icontains=term)
                 | Q(id__icontains=term)
                 | Q(converted_booking__booking_number__icontains=term)
+                | Q(pending_booking__booking_number__icontains=term)
                 | Q(required_service__name__icontains=term)
             )
         ordering = self.request.query_params.get("ordering", "-last_activity_at")
@@ -176,8 +184,9 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         previous_status = lead.status
         lead.status = LeadStatus.CONVERTED
         lead.converted_booking = booking
+        lead.pending_booking = None
         lead.internal_notes = "\n".join(part for part in [lead.internal_notes, serializer.validated_data.get("notes", "")] if part)
-        lead.save(update_fields=["status", "converted_booking", "internal_notes", "updated_at"])
+        lead.save(update_fields=["status", "converted_booking", "pending_booking", "internal_notes", "updated_at"])
         LeadStatusHistory.objects.create(
             lead=lead,
             from_status=previous_status,
@@ -357,6 +366,148 @@ class AdminHomepageBannerViewSet(viewsets.ModelViewSet):
         )
 
 
+class AdminDashboardSummaryView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="Get admin dashboard summary", responses={status.HTTP_200_OK: AdminDashboardSummarySerializer})
+    def get(self, request):
+        today = timezone.localdate()
+        now = timezone.now()
+        upcoming_until = today + timedelta(days=7)
+        active_booking_statuses = {
+            BookingStatus.CONFIRMED,
+            BookingStatus.TECHNICIAN_ASSIGNED,
+            BookingStatus.TECHNICIAN_EN_ROUTE,
+            BookingStatus.IN_PROGRESS,
+        }
+        upcoming_excluded_statuses = {
+            BookingStatus.COMPLETED,
+            BookingStatus.CLOSED,
+            BookingStatus.CANCELLED,
+            BookingStatus.REFUNDED,
+        }
+
+        successful_payments_today = Payment.objects.filter(
+            status=PaymentRecordStatus.SUCCESS,
+            paid_at__date=today,
+            payment_type__in=[PaymentType.BOOKING_ADVANCE, PaymentType.BALANCE],
+        )
+        daily_gmv = successful_payments_today.aggregate(total=Sum("amount"))["total"] or 0
+        active_bookings = Booking.objects.filter(booking_status__in=active_booking_statuses)
+        unassigned_bookings = active_bookings.filter(assigned_technician__isnull=True)
+        active_leads = Lead.objects.filter(status__in=ACTIVE_LEAD_STATUSES)
+
+        payload = {
+            "daily_gmv": daily_gmv,
+            "active_bookings_count": active_bookings.count(),
+            "available_technicians_count": TechnicianProfile.objects.filter(
+                user__is_active=True,
+                is_active=True,
+                is_available=True,
+                availability_status=TechnicianAvailabilityStatus.AVAILABLE,
+                background_verification_status=TechnicianVerificationStatus.VERIFIED,
+            ).count(),
+            "open_unassigned_leads_count": active_leads.filter(assigned_staff__isnull=True).count(),
+            "leads_today": Lead.objects.filter(created_at__date=today).count(),
+            "follow_ups_due": active_leads.filter(follow_up_at__lte=now).count(),
+            "bookings_today": Booking.objects.filter(created_at__date=today).count(),
+            "confirmed_bookings": Booking.objects.filter(booking_status=BookingStatus.CONFIRMED).count(),
+            "payment_pending_bookings": Booking.objects.filter(payment_status=PaymentStatus.UNPAID).count(),
+            "revenue_today": daily_gmv,
+            "unassigned_bookings": unassigned_bookings.count(),
+            "upcoming_services": Booking.objects.filter(
+                service_date__gte=today,
+                service_date__lte=upcoming_until,
+            )
+            .exclude(booking_status__in=upcoming_excluded_statuses)
+            .count(),
+            "failed_notifications": Notification.objects.filter(status=NotificationStatus.FAILED).count(),
+        }
+        return Response(AdminDashboardSummarySerializer(payload).data)
+
+
+class AdminGlobalSearchView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="Search admin records", responses={status.HTTP_200_OK: AdminGlobalSearchSerializer})
+    def get(self, request):
+        query = request.query_params.get("q", "").strip()
+        if len(query) < 2:
+            return Response({"query": query, "results": []})
+
+        results = []
+        work_orders = (
+            Booking.objects.filter(payments__status=PaymentRecordStatus.SUCCESS)
+            .filter(
+                Q(booking_number__icontains=query)
+                | Q(customer__phone_number__icontains=query)
+                | Q(customer__first_name__icontains=query)
+                | Q(customer__last_name__icontains=query)
+                | Q(customer__customer_profile__display_name__icontains=query)
+            )
+            .select_related("customer", "customer__customer_profile", "service")
+            .distinct()[:8]
+        )
+        for booking in work_orders:
+            profile = getattr(booking.customer, "customer_profile", None)
+            name = (getattr(profile, "display_name", "") or "").strip()
+            name = name or " ".join(filter(None, [booking.customer.first_name, booking.customer.last_name])).strip()
+            results.append(
+                {
+                    "type": "WORK_ORDER",
+                    "id": str(booking.id),
+                    "title": booking.booking_number,
+                    "subtitle": f"{name or booking.customer.phone_number} · {booking.service.name}",
+                    "url": f"/admin/work-orders/{booking.id}",
+                }
+            )
+
+        leads = (
+            Lead.objects.filter(
+                Q(primary_mobile__icontains=query)
+                | Q(customer_name__icontains=query)
+                | Q(converted_booking__booking_number__icontains=query)
+                | Q(pending_booking__booking_number__icontains=query)
+            )
+            .select_related("required_service")[:8]
+        )
+        for lead in leads:
+            results.append(
+                {
+                    "type": "LEAD",
+                    "id": str(lead.id),
+                    "title": lead.customer_name or lead.primary_mobile,
+                    "subtitle": f"{lead.primary_mobile} · {lead.required_service.name if lead.required_service else 'General enquiry'}",
+                    "url": f"/admin/leads/{lead.id}",
+                }
+            )
+
+        customers = (
+            User.objects.filter(role=UserRole.CUSTOMER)
+            .filter(
+                Q(phone_number__icontains=query)
+                | Q(first_name__icontains=query)
+                | Q(last_name__icontains=query)
+                | Q(customer_profile__display_name__icontains=query)
+            )
+            .select_related("customer_profile")[:8]
+        )
+        for customer in customers:
+            profile = getattr(customer, "customer_profile", None)
+            name = (getattr(profile, "display_name", "") or "").strip()
+            name = name or " ".join(filter(None, [customer.first_name, customer.last_name])).strip()
+            results.append(
+                {
+                    "type": "CUSTOMER",
+                    "id": str(customer.id),
+                    "title": name or customer.phone_number,
+                    "subtitle": customer.phone_number,
+                    "url": f"/admin/customers?customer={customer.id}",
+                }
+            )
+        return Response(AdminGlobalSearchSerializer({"query": query, "results": results[:20]}).data)
+
+
 class AdminReportsSummaryView(APIView):
     permission_classes = [IsAuthenticated, IsAdminRole]
 
@@ -381,7 +532,7 @@ class AdminReportsSummaryView(APIView):
             "date_from": date_from,
             "date_to": date_to,
             "daily_bookings": bookings.count(),
-            "completed_services": bookings.filter(booking_status=BookingStatus.COMPLETED).count(),
+            "completed_services": bookings.filter(booking_status__in=[BookingStatus.COMPLETED, BookingStatus.CLOSED]).count(),
             "cancelled_bookings": bookings.filter(booking_status=BookingStatus.CANCELLED).count(),
             "payment_pending_bookings": bookings.filter(payment_status=PaymentStatus.UNPAID).count(),
             "revenue_collected": revenue,

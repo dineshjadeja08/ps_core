@@ -101,7 +101,7 @@ class BookingAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Customer information", {"fields": ("customer", "customer_link", "customer_mobile", "address", "address_snapshot")}),
         ("Service and schedule", {"fields": ("service", "service_date", "time_slot", "slot_window", "assigned_technician")}),
-        ("Pricing", {"fields": ("subtotal", "discount_amount", "tax_amount", "total_amount", "advance_required", "advance_paid", "balance_due", "balance_collected")}),
+        ("Pricing", {"fields": ("quantity", "subtotal", "discount_amount", "training_fee", "tax_amount", "total_amount", "advance_required", "advance_paid", "balance_due", "balance_collected")}),
         ("Status", {"fields": ("booking_status", "payment_status", "confirmed_at", "completed_at", "cancelled_at")}),
         ("Notes", {"fields": ("problem_description", "customer_notes", "admin_notes")}),
         ("System", {"fields": ("source", "created_at", "updated_at")}),

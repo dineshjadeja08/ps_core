@@ -2,6 +2,7 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 
 from apps.catalogue.views import (
+    AdminPackageViewSet,
     AdminServiceCategoryViewSet,
     AdminServiceImageViewSet,
     AdminServiceViewSet,
@@ -13,6 +14,7 @@ from apps.catalogue.views import (
 router = SimpleRouter()
 router.register("admin/service-categories", AdminServiceCategoryViewSet, basename="admin-service-category")
 router.register("admin/services", AdminServiceViewSet, basename="admin-service")
+router.register("admin/packages", AdminPackageViewSet, basename="admin-package")
 
 urlpatterns = [
     path("service-categories/", ServiceCategoryListView.as_view(), name="service-category-list"),

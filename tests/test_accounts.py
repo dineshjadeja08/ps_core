@@ -282,6 +282,33 @@ def test_password_login_rejects_bad_credentials():
 
 
 @pytest.mark.django_db
+@override_settings(ADMIN_MFA_ENABLED=False)
+def test_admin_password_login_issues_tokens_when_mfa_is_temporarily_disabled():
+    user = User.objects.create_user(
+        phone_number="+919629025814",
+        password="StrongPass123",
+        role=UserRole.ADMIN,
+        is_staff=True,
+        is_verified=True,
+    )
+    client = APIClient()
+
+    response = client.post(
+        "/api/v1/auth/password/login/",
+        {"phone_number": user.phone_number, "password": "StrongPass123"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["role"] == UserRole.ADMIN
+    assert response.json()["tokens"]["access"]
+    assert "mfa_required" not in response.json()
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {response.json()['tokens']['access']}")
+    assert client.get("/api/v1/auth/me/").status_code == 200
+
+
+@pytest.mark.django_db
+@override_settings(ADMIN_MFA_ENABLED=True)
 def test_admin_password_login_requires_one_time_mfa_before_tokens_are_issued():
     user = User.objects.create_user(
         phone_number="+919629025814",
@@ -323,6 +350,7 @@ def test_admin_password_login_requires_one_time_mfa_before_tokens_are_issued():
 
 
 @pytest.mark.django_db
+@override_settings(ADMIN_MFA_ENABLED=True)
 def test_admin_cannot_bypass_mfa_with_customer_otp_endpoints():
     user = User.objects.create_user(
         phone_number="+919629025814",

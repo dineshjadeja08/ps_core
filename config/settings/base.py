@@ -231,6 +231,9 @@ MSG91_TEMPLATE_ID = env("MSG91_TEMPLATE_ID", default="")
 MSG91_SEND_OTP_URL = env("MSG91_SEND_OTP_URL", default="https://control.msg91.com/api/v5/otp")
 MSG91_OTP_EXPIRY_MINUTES = env.int("MSG91_OTP_EXPIRY_MINUTES", default=5)
 ADMIN_MFA_TTL_MINUTES = env.int("ADMIN_MFA_TTL_MINUTES", default=5)
+# Temporary launch setting: password-only administrator login remains available
+# while the WhatsApp MFA template is pending approval. Set true to restore MFA.
+ADMIN_MFA_ENABLED = env.bool("ADMIN_MFA_ENABLED", default=False)
 MSG91_WHATSAPP_OTP_URL = env(
     "MSG91_WHATSAPP_OTP_URL",
     default="https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",

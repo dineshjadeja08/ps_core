@@ -38,7 +38,7 @@ class LeadSerializer(serializers.ModelSerializer):
     activities = LeadActivitySerializer(many=True, read_only=True)
     service_name = serializers.CharField(source="required_service.name", read_only=True)
     assigned_staff_phone = serializers.CharField(source="assigned_staff.phone_number", read_only=True)
-    booking_number = serializers.CharField(source="converted_booking.booking_number", read_only=True)
+    booking_number = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
@@ -80,6 +80,7 @@ class LeadSerializer(serializers.ModelSerializer):
             "first_seen_at",
             "last_activity_at",
             "converted_booking",
+            "pending_booking",
             "booking_number",
             "created_by",
             "created_at",
@@ -96,6 +97,11 @@ class LeadSerializer(serializers.ModelSerializer):
             "status_history",
             "activities",
         )
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_booking_number(self, obj):
+        booking = obj.converted_booking or obj.pending_booking
+        return booking.booking_number if booking else ""
 
 
 class LeadConvertSerializer(serializers.Serializer):
@@ -217,6 +223,27 @@ class AdminReportSummarySerializer(serializers.Serializer):
     refunds = serializers.DecimalField(max_digits=12, decimal_places=2)
     unassigned_bookings = serializers.IntegerField()
     average_rating = serializers.FloatField()
+
+
+class AdminDashboardSummarySerializer(serializers.Serializer):
+    daily_gmv = serializers.DecimalField(max_digits=12, decimal_places=2)
+    active_bookings_count = serializers.IntegerField()
+    available_technicians_count = serializers.IntegerField()
+    open_unassigned_leads_count = serializers.IntegerField()
+    leads_today = serializers.IntegerField()
+    follow_ups_due = serializers.IntegerField()
+    bookings_today = serializers.IntegerField()
+    confirmed_bookings = serializers.IntegerField()
+    payment_pending_bookings = serializers.IntegerField()
+    revenue_today = serializers.DecimalField(max_digits=12, decimal_places=2)
+    unassigned_bookings = serializers.IntegerField()
+    upcoming_services = serializers.IntegerField()
+    failed_notifications = serializers.IntegerField()
+
+
+class AdminGlobalSearchSerializer(serializers.Serializer):
+    query = serializers.CharField()
+    results = serializers.ListField(child=serializers.DictField())
 
 
 class AdminSettingsSerializer(serializers.Serializer):

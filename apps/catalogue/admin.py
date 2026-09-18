@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from apps.catalogue.models import AdvancePaymentType, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, Service, ServiceCategory, ServiceImage
 
 
 @admin.register(ServiceCategory)
@@ -36,6 +36,8 @@ class ServiceAdmin(admin.ModelAdmin):
         "advance_amount",
         "advance_payment_type",
         "advance_payment_value",
+        "training_fee",
+        "training_fee_per_unit",
         "estimated_duration_minutes",
         "is_featured",
         "is_popular",
@@ -51,7 +53,7 @@ class ServiceAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Service", {"fields": ("category", "name", "slug", "short_description", "description")}),
         ("Content sections", {"fields": ("whats_included", "whats_excluded", "important_notes")}),
-        ("Pricing", {"fields": ("base_price", "selling_price", "advance_payment_type", "advance_payment_value", "advance_amount")}),
+        ("Pricing", {"fields": ("base_price", "selling_price", "advance_payment_type", "advance_payment_value", "advance_amount", "training_fee", "training_fee_per_unit")}),
         ("Media", {"fields": ("cover_image", "cover_preview")}),
         ("Display", {"fields": ("estimated_duration_minutes", "display_order", "is_featured", "is_popular", "is_active")}),
         ("System", {"fields": ("created_at", "updated_at")}),
@@ -88,6 +90,22 @@ class ServiceImageInline(admin.TabularInline):
 
 
 ServiceAdmin.inlines = (ServiceImageInline,)
+
+
+class PackageItemInline(admin.TabularInline):
+    model = PackageItem
+    extra = 1
+    autocomplete_fields = ("service",)
+
+
+@admin.register(Package)
+class PackageAdmin(admin.ModelAdmin):
+    list_display = ("name", "bundle_price", "valid_from", "valid_until", "maximum_usage_limit", "is_active")
+    list_filter = ("is_active", "valid_from", "valid_until")
+    search_fields = ("name", "slug", "description")
+    prepopulated_fields = {"slug": ("name",)}
+    readonly_fields = ("created_at", "updated_at")
+    inlines = (PackageItemInline,)
 
 
 @admin.register(ServiceImage)

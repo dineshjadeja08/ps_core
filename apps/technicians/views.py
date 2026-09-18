@@ -1,3 +1,4 @@
+from django.db import transaction
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
@@ -12,10 +13,12 @@ from apps.audit.services import audit_event
 from apps.bookings.models import Booking
 from apps.bookings.serializers import AdminBookingSerializer, BookingOperationSerializer, BookingSerializer
 from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
-from apps.technicians.models import TechnicianProfile
+from apps.technicians.models import TechnicianLeave, TechnicianProfile
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
+    TechnicianLeaveReviewSerializer,
+    TechnicianLeaveSerializer,
     TechnicianProfileSerializer,
 )
 from apps.technicians.services import assign_technician, get_eligible_technicians, remove_technician_assignment
@@ -95,6 +98,99 @@ class AdminTechnicianListView(generics.ListAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+
+@extend_schema(tags=["Admin - Technician Leaves"])
+class AdminTechnicianLeaveViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    viewsets.GenericViewSet,
+):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = TechnicianLeaveSerializer
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self):
+        queryset = TechnicianLeave.objects.select_related("technician", "approved_by").order_by("-start_at")
+        technician_id = self.request.query_params.get("technician")
+        if technician_id:
+            queryset = queryset.filter(technician_id=technician_id)
+        status_filter = self.request.query_params.get("status", "").upper()
+        if status_filter == "PENDING":
+            queryset = queryset.filter(is_active=True, approved_by__isnull=True)
+        elif status_filter == "APPROVED":
+            queryset = queryset.filter(is_active=True, approved_by__isnull=False)
+        elif status_filter == "REJECTED":
+            queryset = queryset.filter(is_active=False)
+        return queryset
+
+    @extend_schema(
+        summary="List technician leave requests",
+        parameters=[
+            OpenApiParameter("technician", OpenApiTypes.UUID, OpenApiParameter.QUERY),
+            OpenApiParameter("status", str, OpenApiParameter.QUERY, enum=["PENDING", "APPROVED", "REJECTED"]),
+        ],
+        responses={status.HTTP_200_OK: TechnicianLeaveSerializer(many=True)},
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Approve technician leave",
+        request=TechnicianLeaveReviewSerializer,
+        responses={status.HTTP_200_OK: TechnicianLeaveSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def approve(self, request, *args, **kwargs):
+        serializer = TechnicianLeaveReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            leave = generics.get_object_or_404(
+                TechnicianLeave.objects.select_for_update().select_related("technician", "approved_by"),
+                id=kwargs["id"],
+            )
+            leave.approved_by = request.user
+            leave.review_note = serializer.validated_data.get("note", "")
+            leave.is_active = True
+            leave.save(update_fields=["approved_by", "review_note", "is_active", "updated_at"])
+            audit_event(
+                action=AuditAction.TECHNICIAN_LEAVE_APPROVED,
+                actor=request.user,
+                request=request,
+                resource_type="technician_leave",
+                resource_id=leave.id,
+                metadata={"technician_id": str(leave.technician_id), "note": leave.review_note},
+            )
+        return Response(TechnicianLeaveSerializer(leave, context={"request": request}).data)
+
+    @extend_schema(
+        summary="Reject technician leave",
+        request=TechnicianLeaveReviewSerializer,
+        responses={status.HTTP_200_OK: TechnicianLeaveSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def reject(self, request, *args, **kwargs):
+        serializer = TechnicianLeaveReviewSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        with transaction.atomic():
+            leave = generics.get_object_or_404(
+                TechnicianLeave.objects.select_for_update().select_related("technician", "approved_by"),
+                id=kwargs["id"],
+            )
+            leave.approved_by = None
+            leave.review_note = serializer.validated_data.get("note", "")
+            leave.is_active = False
+            leave.save(update_fields=["approved_by", "review_note", "is_active", "updated_at"])
+            audit_event(
+                action=AuditAction.TECHNICIAN_LEAVE_REJECTED,
+                actor=request.user,
+                request=request,
+                resource_type="technician_leave",
+                resource_id=leave.id,
+                metadata={"technician_id": str(leave.technician_id), "note": leave.review_note},
+            )
+        return Response(TechnicianLeaveSerializer(leave, context={"request": request}).data)
 
 
 class AssignTechnicianView(APIView):

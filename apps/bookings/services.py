@@ -1,13 +1,12 @@
-import secrets
 from decimal import Decimal
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
 
-from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory, PaymentStatus
-from apps.catalogue.models import Service
+from apps.bookings.models import Booking, BookingNumberSequence, BookingStatus, BookingStatusHistory, PaymentStatus
+from apps.catalogue.models import AdvancePaymentType, Service
 from apps.locations.models import Address
 from apps.locations.services import get_active_service_area
 from apps.notifications.models import NotificationEvent
@@ -37,9 +36,10 @@ CUSTOMER_RESCHEDULABLE_STATUSES = {
 }
 STARTABLE_STATUSES = {BookingStatus.TECHNICIAN_ASSIGNED, BookingStatus.TECHNICIAN_EN_ROUTE}
 COMPLETABLE_STATUSES = {BookingStatus.IN_PROGRESS}
+CLOSABLE_STATUSES = {BookingStatus.COMPLETED}
 
 
-def create_booking(*, customer, service_id, address_id, slot_id, problem_description, customer_notes=""):
+def create_booking(*, customer, service_id, address_id, slot_id, problem_description, customer_notes="", contact_phone="", quantity=1):
     with transaction.atomic():
         service = _get_active_service(service_id)
         address = _get_customer_address(customer, address_id)
@@ -52,6 +52,8 @@ def create_booking(*, customer, service_id, address_id, slot_id, problem_descrip
             slot=slot,
             problem_description=problem_description,
             customer_notes=customer_notes,
+            contact_phone=contact_phone,
+            quantity=quantity,
         )
         BookingStatusHistory.objects.create(
             booking=booking,
@@ -111,41 +113,45 @@ def _lock_and_validate_slot(*, slot_id, address, service):
     return slot
 
 
-def _create_booking_record(*, customer, service, address, slot, problem_description, customer_notes):
-    subtotal = service.effective_price
-    discount_amount = Decimal("0.00")
+def _create_booking_record(*, customer, service, address, slot, problem_description, customer_notes, contact_phone, quantity):
+    quantity = int(quantity)
+    subtotal = service.base_price * quantity
+    effective_item_total = service.effective_price * quantity
+    discount_amount = subtotal - effective_item_total
+    training_fee = service.training_fee * quantity if service.training_fee_per_unit else service.training_fee
     tax_amount = Decimal("0.00")
-    total_amount = subtotal - discount_amount + tax_amount
-    advance_required = service.advance_amount
+    total_amount = subtotal - discount_amount + training_fee + tax_amount
+    if service.advance_payment_type == AdvancePaymentType.PERCENTAGE:
+        advance_required = (total_amount * service.advance_payment_value / Decimal("100.00")).quantize(Decimal("0.01"))
+    else:
+        advance_required = min(service.advance_amount, total_amount)
     advance_paid = Decimal("0.00")
     balance_due = total_amount - advance_paid
 
-    for _ in range(5):
-        try:
-            return Booking.objects.create(
-                booking_number=generate_booking_number(),
-                customer=customer,
-                service=service,
-                address=address,
-                address_snapshot=build_address_snapshot(address),
-                service_date=slot.date,
-                time_slot=slot,
-                problem_description=problem_description,
-                subtotal=subtotal,
-                discount_amount=discount_amount,
-                tax_amount=tax_amount,
-                total_amount=total_amount,
-                advance_required=advance_required,
-                advance_paid=advance_paid,
-                balance_due=balance_due,
-                balance_collected=Decimal("0.00"),
-                booking_status=BookingStatus.PENDING_PAYMENT,
-                payment_status=PaymentStatus.UNPAID,
-                customer_notes=customer_notes,
-            )
-        except IntegrityError:
-            continue
-    raise serializers.ValidationError("Could not generate a unique booking number.")
+    return Booking.objects.create(
+        booking_number=generate_booking_number(),
+        customer=customer,
+        service=service,
+        address=address,
+        address_snapshot=build_address_snapshot(address),
+        service_date=slot.date,
+        time_slot=slot,
+        problem_description=problem_description,
+        contact_phone=(contact_phone or address.phone or customer.phone_number).strip(),
+        quantity=quantity,
+        subtotal=subtotal,
+        discount_amount=discount_amount,
+        training_fee=training_fee,
+        tax_amount=tax_amount,
+        total_amount=total_amount,
+        advance_required=advance_required,
+        advance_paid=advance_paid,
+        balance_due=balance_due,
+        balance_collected=Decimal("0.00"),
+        booking_status=BookingStatus.PENDING_PAYMENT,
+        payment_status=PaymentStatus.UNPAID,
+        customer_notes=customer_notes,
+    )
 
 
 def build_address_snapshot(address):
@@ -165,8 +171,24 @@ def build_address_snapshot(address):
     }
 
 
-def generate_booking_number():
-    return f"PS-{secrets.token_hex(3).upper()}"
+@transaction.atomic
+def generate_booking_number(*, for_date=None):
+    period = (for_date or timezone.localdate()).strftime("%y%m")
+    sequence, created = BookingNumberSequence.objects.select_for_update().get_or_create(period=period)
+    if created:
+        latest = (
+            Booking.objects.filter(booking_number__startswith=f"PS{period}")
+            .order_by("-booking_number")
+            .values_list("booking_number", flat=True)
+            .first()
+        )
+        if latest and len(latest) == 10 and latest[-4:].isdigit():
+            sequence.current_serial = int(latest[-4:])
+    if sequence.current_serial >= 9999:
+        raise serializers.ValidationError("The monthly booking number range has been exhausted.")
+    sequence.current_serial += 1
+    sequence.save(update_fields=["current_serial", "updated_at"])
+    return f"PS{period}{sequence.current_serial:04d}"
 
 
 @transaction.atomic
@@ -230,6 +252,19 @@ def complete_booking(*, booking_id, changed_by, notes=""):
         booking=booking,
     )
     return booking
+
+
+@transaction.atomic
+def close_booking(*, booking_id, changed_by, notes=""):
+    booking = _lock_booking(booking_id)
+    if booking.booking_status not in CLOSABLE_STATUSES:
+        raise serializers.ValidationError("Only a completed booking can be closed.")
+    return _transition_booking(
+        booking=booking,
+        to_status=BookingStatus.CLOSED,
+        changed_by=changed_by,
+        notes=notes or "Work order closed.",
+    )
 
 
 @transaction.atomic

@@ -146,6 +146,13 @@ class Lead(BaseModel):
         null=True,
         blank=True,
     )
+    pending_booking = models.OneToOneField(
+        Booking,
+        on_delete=models.SET_NULL,
+        related_name="pending_source_lead",
+        null=True,
+        blank=True,
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

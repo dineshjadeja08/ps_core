@@ -5,7 +5,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from apps.catalogue.models import AdvancePaymentType, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, Service, ServiceCategory, ServiceImage
 
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
@@ -61,7 +61,11 @@ class ServiceListSerializer(serializers.ModelSerializer):
             "base_price",
             "selling_price",
             "effective_price",
+            "advance_payment_type",
+            "advance_payment_value",
             "advance_amount",
+            "training_fee",
+            "training_fee_per_unit",
             "estimated_duration_minutes",
             "cover_image",
             "is_featured",
@@ -157,6 +161,8 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             "advance_payment_type",
             "advance_payment_value",
             "advance_amount",
+            "training_fee",
+            "training_fee_per_unit",
             "estimated_duration_minutes",
             "cover_image",
             "images",
@@ -195,6 +201,9 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({"selling_price": "Selling price cannot be negative."})
         if advance_value < Decimal("0.00"):
             raise serializers.ValidationError({"advance_payment_value": "Advance payment value cannot be negative."})
+        training_fee = attrs.get("training_fee", getattr(instance, "training_fee", Decimal("0.00")))
+        if training_fee < Decimal("0.00"):
+            raise serializers.ValidationError({"training_fee": "Training fee cannot be negative."})
         if advance_type == AdvancePaymentType.PERCENTAGE and advance_value > Decimal("100.00"):
             raise serializers.ValidationError({"advance_payment_value": "Advance percentage cannot exceed 100."})
         if advance_type == AdvancePaymentType.FIXED and effective_price is not None and advance_value > effective_price:
@@ -232,3 +241,87 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             validated_data["advance_amount"] = advance_value
         validated_data["advance_payment_value"] = advance_value
         return validated_data
+
+
+class PackageItemSerializer(serializers.ModelSerializer):
+    service_detail = ServiceListSerializer(source="service", read_only=True)
+
+    class Meta:
+        model = PackageItem
+        fields = ("id", "service", "service_detail", "quantity", "display_order")
+        read_only_fields = ("id", "service_detail")
+
+    def validate_quantity(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Quantity must be at least 1.")
+        return value
+
+
+class AdminPackageSerializer(serializers.ModelSerializer):
+    items = PackageItemSerializer(many=True)
+
+    class Meta:
+        model = Package
+        fields = (
+            "id",
+            "name",
+            "slug",
+            "description",
+            "bundle_price",
+            "valid_from",
+            "valid_until",
+            "maximum_usage_limit",
+            "is_active",
+            "items",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate(self, attrs):
+        instance = self.instance
+        valid_from = attrs.get("valid_from", getattr(instance, "valid_from", None))
+        valid_until = attrs.get("valid_until", getattr(instance, "valid_until", None))
+        if valid_from and valid_until and valid_from > valid_until:
+            raise serializers.ValidationError({"valid_until": "Validity end date must be on or after the start date."})
+        if (self.instance is None or "items" in attrs) and not attrs.get("items"):
+            raise serializers.ValidationError({"items": "At least one service is required."})
+        items = attrs.get("items")
+        if items:
+            service_ids = [item["service"].id for item in items]
+            if len(service_ids) != len(set(service_ids)):
+                raise serializers.ValidationError({"items": "Each service may appear only once per package."})
+        return attrs
+
+    def validate_bundle_price(self, value):
+        if value < Decimal("0.00"):
+            raise serializers.ValidationError("Bundle price cannot be negative.")
+        return value
+
+    def validate_maximum_usage_limit(self, value):
+        if value < 1:
+            raise serializers.ValidationError("Maximum usage limit must be at least 1.")
+        return value
+
+    @transaction.atomic
+    def create(self, validated_data):
+        items = validated_data.pop("items")
+        package = Package.objects.create(**validated_data)
+        self._replace_items(package, items)
+        return package
+
+    @transaction.atomic
+    def update(self, instance, validated_data):
+        items = validated_data.pop("items", None)
+        package = super().update(instance, validated_data)
+        if items is not None:
+            if not items:
+                raise serializers.ValidationError({"items": "At least one service is required."})
+            package.items.all().delete()
+            self._replace_items(package, items)
+        return package
+
+    @staticmethod
+    def _replace_items(package, items):
+        for item in items:
+            PackageItem.objects.create(package=package, **item)

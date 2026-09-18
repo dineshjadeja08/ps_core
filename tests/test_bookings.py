@@ -111,7 +111,8 @@ def test_booking_creation(authenticated_client, service, address, slot):
 
     assert response.status_code == 201
     payload = response.json()
-    assert payload["booking_number"].startswith("PS-")
+    assert payload["booking_number"].startswith(f"PS{timezone.localdate():%y%m}")
+    assert len(payload["booking_number"]) == 10
     assert payload["booking_status"] == BookingStatus.PENDING_PAYMENT
     assert payload["payment_status"] == PaymentStatus.UNPAID
     assert payload["total_amount"] == "1499.00"

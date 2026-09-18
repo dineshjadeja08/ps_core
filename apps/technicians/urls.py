@@ -1,10 +1,17 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from apps.technicians.views import AdminTechnicianListView, AssignTechnicianView, RemoveTechnicianAssignmentView, TechnicianJobViewSet
+from apps.technicians.views import (
+    AdminTechnicianLeaveViewSet,
+    AdminTechnicianListView,
+    AssignTechnicianView,
+    RemoveTechnicianAssignmentView,
+    TechnicianJobViewSet,
+)
 
 router = DefaultRouter()
 router.register("technician/jobs", TechnicianJobViewSet, basename="technician-job")
+router.register("admin/technician-leaves", AdminTechnicianLeaveViewSet, basename="admin-technician-leave")
 
 urlpatterns = [
     path("", include(router.urls)),

@@ -15,6 +15,7 @@ class BookingStatus(models.TextChoices):
     TECHNICIAN_EN_ROUTE = "TECHNICIAN_EN_ROUTE", "Technician en route"
     IN_PROGRESS = "IN_PROGRESS", "In progress"
     COMPLETED = "COMPLETED", "Completed"
+    CLOSED = "CLOSED", "Closed"
     CANCELLED = "CANCELLED", "Cancelled"
     REFUND_PENDING = "REFUND_PENDING", "Refund pending"
     REFUNDED = "REFUNDED", "Refunded"
@@ -37,8 +38,11 @@ class Booking(BaseModel):
     service_date = models.DateField()
     time_slot = models.ForeignKey(TimeSlot, on_delete=models.PROTECT, related_name="bookings")
     problem_description = models.TextField()
+    contact_phone = models.CharField(max_length=20, blank=True)
+    quantity = models.PositiveIntegerField(default=1)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    training_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     advance_required = models.DecimalField(max_digits=10, decimal_places=2)
@@ -108,11 +112,21 @@ class BookingStatusHistory(BaseModel):
 class CartItem(BaseModel):
     customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="cart_items")
     service = models.ForeignKey(Service, on_delete=models.PROTECT, related_name="cart_items")
+    quantity = models.PositiveIntegerField(default=1)
     booking = models.OneToOneField(Booking, on_delete=models.SET_NULL, null=True, blank=True, related_name="cart_item")
 
     class Meta:
         ordering = ("created_at", "id")
         constraints = [models.UniqueConstraint(fields=["customer", "service"], name="unique_customer_cart_service")]
+
+
+class BookingNumberSequence(models.Model):
+    period = models.CharField(max_length=4, unique=True)
+    current_serial = models.PositiveIntegerField(default=0)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.period}: {self.current_serial}"
 
 
 class CheckoutRequest(BaseModel):

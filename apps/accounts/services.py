@@ -127,7 +127,7 @@ def authenticate_with_password(phone_number: str, password: str, channel="WHATSA
     if not user.has_usable_password() or not user.check_password(password):
         raise serializers.ValidationError("Invalid phone number or password.")
 
-    if user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+    if user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN} and settings.ADMIN_MFA_ENABLED:
         send_login_otp(user.phone_number, channel, allow_admin=True)
         AdminMfaChallenge.objects.filter(user=user, consumed_at__isnull=True).update(consumed_at=timezone.now())
         challenge = AdminMfaChallenge.objects.create(
@@ -144,7 +144,11 @@ def authenticate_with_password(phone_number: str, password: str, channel="WHATSA
 
     if user.role == UserRole.CUSTOMER:
         CustomerProfile.objects.get_or_create(user=user)
-    return _login_result(user=user, created=False)
+    return _login_result(
+        user=user,
+        created=False,
+        mfa_verified=user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN},
+    )
 
 
 @transaction.atomic
