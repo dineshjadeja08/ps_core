@@ -3,6 +3,8 @@ from decimal import Decimal
 from io import BytesIO
 
 import pytest
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from PIL import Image
@@ -167,6 +169,33 @@ def test_admin_can_create_service(admin_client, category):
 
 
 @pytest.mark.django_db
+def test_frontend_multipart_payload_can_create_and_edit_service(admin_client, category):
+    create = admin_client.post(
+        "/api/v1/admin/services/",
+        service_payload(category),
+        format="multipart",
+    )
+
+    assert create.status_code == 201
+    service_id = create.json()["id"]
+    update = admin_client.patch(
+        f"/api/v1/admin/services/{service_id}/",
+        {
+            "name": "AC Deep Cleaning Updated",
+            "base_price": "999.00",
+            "advance_payment_type": "FIXED",
+            "advance_payment_value": "199.00",
+            "is_active": "true",
+        },
+        format="multipart",
+    )
+
+    assert update.status_code == 200
+    assert update.json()["name"] == "AC Deep Cleaning Updated"
+    assert update.json()["base_price"] == "999.00"
+
+
+@pytest.mark.django_db
 def test_admin_can_edit_service_and_change_price(admin_client, service):
     response = admin_client.patch(
         f"/api/v1/admin/services/{service.id}/",
@@ -318,6 +347,53 @@ def test_invalid_price_and_advance_percentage_rejected(admin_client, category):
 
     assert negative.status_code == 400
     assert percentage.status_code == 400
+
+
+@pytest.mark.django_db
+def test_missing_required_catalogue_fields_return_clear_400(admin_client, category):
+    service_response = admin_client.post(
+        "/api/v1/admin/services/",
+        {"category": str(category.id), "slug": "missing-required-fields"},
+        format="json",
+    )
+    category_response = admin_client.post(
+        "/api/v1/admin/service-categories/",
+        {"description": "No name or slug."},
+        format="json",
+    )
+
+    assert service_response.status_code == 400
+    assert "name" in service_response.json()["error"]["details"]
+    assert category_response.status_code == 400
+    assert "name" in category_response.json()["error"]["details"]
+
+
+@pytest.mark.django_db
+def test_model_validation_during_service_create_returns_400(admin_client, category, monkeypatch):
+    def invalid_save(self, *args, **kwargs):
+        raise DjangoValidationError({"slug": ["The generated slug is invalid."]})
+
+    monkeypatch.setattr(Service, "save", invalid_save)
+    response = admin_client.post("/api/v1/admin/services/", service_payload(category), format="json")
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["slug"] == ["The generated slug is invalid."]
+
+
+@pytest.mark.django_db
+def test_database_constraint_race_during_category_create_returns_400(admin_client, monkeypatch):
+    def conflicting_save(self, *args, **kwargs):
+        raise IntegrityError("simulated unique constraint race")
+
+    monkeypatch.setattr(ServiceCategory, "save", conflicting_save)
+    response = admin_client.post(
+        "/api/v1/admin/service-categories/",
+        {"name": "Conflicting category", "slug": "conflicting-category"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "existing catalogue record" in response.json()["error"]["message"]
 
 
 @pytest.mark.django_db

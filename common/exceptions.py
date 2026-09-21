@@ -1,3 +1,5 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from django.http import Http404
 from rest_framework import exceptions, status
 from rest_framework.response import Response
@@ -20,6 +22,16 @@ def standard_exception_handler(exc, context):
     if response is None and isinstance(exc, Http404):
         response = Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    if response is None and isinstance(exc, DjangoValidationError):
+        details = exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages}
+        response = Response(details, status=status.HTTP_400_BAD_REQUEST)
+
+    if response is None and isinstance(exc, IntegrityError):
+        response = Response(
+            {"non_field_errors": ["This change conflicts with an existing record or database constraint."]},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if response is None:
         return None
 
@@ -41,6 +53,11 @@ def _extract_message(data):
         detail = data.get("detail")
         if detail is not None:
             return str(detail)
+        for value in data.values():
+            if isinstance(value, (list, tuple)) and value:
+                return str(value[0])
+            if isinstance(value, (str, exceptions.ErrorDetail)):
+                return str(value)
         return "Validation error."
     if isinstance(data, list):
         return "Validation error."

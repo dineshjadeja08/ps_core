@@ -1,6 +1,8 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import IntegrityError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -10,6 +12,15 @@ from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, Serv
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+def raise_drf_validation(exc):
+    if isinstance(exc, DjangoValidationError):
+        details = exc.message_dict if hasattr(exc, "message_dict") else {"non_field_errors": exc.messages}
+        raise serializers.ValidationError(details) from exc
+    raise serializers.ValidationError(
+        {"non_field_errors": ["This change conflicts with an existing catalogue record."]}
+    ) from exc
 
 
 def validate_uploaded_image(file_obj):
@@ -118,6 +129,18 @@ class AdminServiceCategorySerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(url) if request else url
         return obj.image_url
 
+    def create(self, validated_data):
+        try:
+            return super().create(validated_data)
+        except (DjangoValidationError, IntegrityError) as exc:
+            raise_drf_validation(exc)
+
+    def update(self, instance, validated_data):
+        try:
+            return super().update(instance, validated_data)
+        except (DjangoValidationError, IntegrityError) as exc:
+            raise_drf_validation(exc)
+
 
 class ServiceImageSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(validators=[validate_uploaded_image])
@@ -215,12 +238,18 @@ class AdminServiceSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
         validated_data = self._with_synced_advance(validated_data)
-        return super().create(validated_data)
+        try:
+            return super().create(validated_data)
+        except (DjangoValidationError, IntegrityError) as exc:
+            raise_drf_validation(exc)
 
     @transaction.atomic
     def update(self, instance, validated_data):
         validated_data = self._with_synced_advance(validated_data, instance=instance)
-        return super().update(instance, validated_data)
+        try:
+            return super().update(instance, validated_data)
+        except (DjangoValidationError, IntegrityError) as exc:
+            raise_drf_validation(exc)
 
     def _with_synced_advance(self, validated_data, instance=None):
         base_price = validated_data.get("base_price", getattr(instance, "base_price", None))
