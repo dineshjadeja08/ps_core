@@ -39,7 +39,7 @@ COMPLETABLE_STATUSES = {BookingStatus.IN_PROGRESS}
 CLOSABLE_STATUSES = {BookingStatus.COMPLETED}
 
 
-def create_booking(*, customer, service_id, address_id, slot_id, problem_description, customer_notes="", contact_phone="", quantity=1):
+def create_booking(*, customer, service_id, address_id, slot_id, problem_description="", customer_notes="", contact_phone="", quantity=1):
     with transaction.atomic():
         service = _get_active_service(service_id)
         address = _get_customer_address(customer, address_id)
@@ -50,7 +50,7 @@ def create_booking(*, customer, service_id, address_id, slot_id, problem_descrip
             service=service,
             address=address,
             slot=slot,
-            problem_description=problem_description,
+            problem_description=problem_description.strip(),
             customer_notes=customer_notes,
             contact_phone=contact_phone,
             quantity=quantity,

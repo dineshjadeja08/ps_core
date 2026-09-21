@@ -24,7 +24,7 @@ class BookingCreateSerializer(serializers.Serializer):
     service_id = serializers.UUIDField()
     address_id = serializers.UUIDField()
     slot_id = serializers.UUIDField()
-    problem_description = serializers.CharField()
+    problem_description = serializers.CharField(required=False, allow_blank=True, default="")
     customer_notes = serializers.CharField(required=False, allow_blank=True)
     contact_phone = serializers.CharField(required=False, allow_blank=True, max_length=20)
     quantity = serializers.IntegerField(required=False, default=1, min_value=1, max_value=20)
@@ -35,7 +35,7 @@ class BookingCreateSerializer(serializers.Serializer):
             service_id=validated_data["service_id"],
             address_id=validated_data["address_id"],
             slot_id=validated_data["slot_id"],
-            problem_description=validated_data["problem_description"],
+            problem_description=validated_data.get("problem_description", ""),
             customer_notes=validated_data.get("customer_notes", ""),
             contact_phone=validated_data.get("contact_phone", ""),
             quantity=validated_data.get("quantity", 1),

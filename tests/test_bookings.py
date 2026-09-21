@@ -122,6 +122,17 @@ def test_booking_creation(authenticated_client, service, address, slot):
 
 
 @pytest.mark.django_db
+def test_booking_creation_allows_omitted_instructions(authenticated_client, service, address, slot):
+    payload = booking_payload(service, address, slot)
+    payload.pop("problem_description")
+
+    response = authenticated_client.post("/api/v1/bookings/", payload, format="json")
+
+    assert response.status_code == 201
+    assert response.json()["problem_description"] == ""
+
+
+@pytest.mark.django_db
 def test_address_ownership(authenticated_client, service, other_customer, slot):
     other_address = create_address(other_customer)
 
