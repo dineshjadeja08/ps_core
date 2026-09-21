@@ -31,6 +31,7 @@ class ServiceAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "category",
+        "landing_group",
         "base_price",
         "selling_price",
         "advance_amount",
@@ -51,7 +52,7 @@ class ServiceAdmin(admin.ModelAdmin):
     ordering = ("category__display_order", "display_order", "name")
     readonly_fields = ("created_at", "updated_at", "advance_amount", "cover_preview")
     fieldsets = (
-        ("Service", {"fields": ("category", "name", "slug", "short_description", "description")}),
+        ("Service", {"fields": ("category", "name", "slug", "landing_group", "short_description", "description")}),
         ("Content sections", {"fields": ("whats_included", "whats_excluded", "important_notes")}),
         ("Pricing", {"fields": ("base_price", "selling_price", "advance_payment_type", "advance_payment_value", "advance_amount", "training_fee", "training_fee_per_unit")}),
         ("Media", {"fields": ("cover_image", "cover_preview")}),

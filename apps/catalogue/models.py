@@ -41,6 +41,7 @@ class Service(BaseModel):
     whats_included = models.TextField(blank=True)
     whats_excluded = models.TextField(blank=True)
     important_notes = models.TextField(blank=True)
+    landing_group = models.CharField(max_length=120, blank=True)
     base_price = models.DecimalField(max_digits=10, decimal_places=2)
     selling_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     advance_payment_type = models.CharField(

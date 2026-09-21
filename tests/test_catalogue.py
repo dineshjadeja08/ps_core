@@ -57,7 +57,11 @@ def test_category_listing(client, ac_category):
 
 @pytest.mark.django_db
 def test_service_listing(client, ac_category):
-    service = create_service(ac_category)
+    service = create_service(
+        ac_category,
+        whats_included="Filter cleaning\nCooling test",
+        landing_group="Repair & Services",
+    )
 
     response = client.get("/api/v1/services/")
 
@@ -65,6 +69,8 @@ def test_service_listing(client, ac_category):
     payload = response.json()
     assert payload["count"] == 1
     assert payload["results"][0]["slug"] == service.slug
+    assert payload["results"][0]["whats_included"] == "Filter cleaning\nCooling test"
+    assert payload["results"][0]["landing_group"] == "Repair & Services"
 
 
 @pytest.mark.django_db

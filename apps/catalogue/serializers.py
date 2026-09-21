@@ -58,6 +58,8 @@ class ServiceListSerializer(serializers.ModelSerializer):
             "name",
             "slug",
             "short_description",
+            "whats_included",
+            "landing_group",
             "base_price",
             "selling_price",
             "effective_price",
@@ -82,7 +84,6 @@ class ServiceDetailSerializer(ServiceListSerializer):
     class Meta(ServiceListSerializer.Meta):
         fields = ServiceListSerializer.Meta.fields + (
             "description",
-            "whats_included",
             "whats_excluded",
             "important_notes",
         )
@@ -155,6 +156,7 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             "whats_included",
             "whats_excluded",
             "important_notes",
+            "landing_group",
             "base_price",
             "selling_price",
             "effective_price",
