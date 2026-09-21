@@ -13,12 +13,13 @@ from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.accounts.models import User, UserRole
+from apps.accounts.models import CustomerProfile, User, UserRole
 from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking, BookingStatus, PaymentStatus
-from apps.notifications.models import Notification, NotificationStatus
+from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, NotificationStatus
+from apps.notifications.services import send_notification
 from apps.operations.models import ACTIVE_LEAD_STATUSES, FAQ, HomepageBanner, Lead, LeadFunnelStatus, LeadStatus, LeadStatusHistory
 from apps.operations.serializers import (
     AdminDashboardSummarySerializer,
@@ -32,10 +33,12 @@ from apps.operations.serializers import (
     LeadConvertSerializer,
     LeadManualPaymentSerializer,
     LeadPaymentLinkSerializer,
+    LeadReminderSerializer,
+    LeadScheduleSerializer,
     LeadSerializer,
     LeadSummarySerializer,
 )
-from apps.operations.services import record_lead_contact, record_manual_lead_payment, send_lead_payment_link
+from apps.operations.services import convert_lead_to_work_order, record_lead_contact, record_manual_lead_payment, send_lead_payment_link
 from apps.payments.models import Payment, PaymentRecordStatus, PaymentType
 from apps.reviews.models import Review
 from apps.technicians.models import TechnicianAvailabilityStatus, TechnicianProfile, TechnicianVerificationStatus
@@ -76,7 +79,9 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             "created_by",
         ).prefetch_related("status_history", "activities")
         status_filter = self.request.query_params.get("status")
-        if status_filter:
+        if status_filter == "OPEN":
+            queryset = queryset.filter(status__in=ACTIVE_LEAD_STATUSES)
+        elif status_filter:
             queryset = queryset.filter(status=status_filter)
         funnel_status = self.request.query_params.get("funnel_status")
         if funnel_status:
@@ -93,6 +98,22 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         service = self.request.query_params.get("service")
         if service:
             queryset = queryset.filter(required_service_id=service)
+        service_search = self.request.query_params.get("service_search", "").strip()
+        if service_search:
+            queryset = queryset.filter(required_service__name__icontains=service_search)
+        city = self.request.query_params.get("city", "").strip()
+        if city:
+            queryset = queryset.filter(city__icontains=city)
+        mobile = self.request.query_params.get("mobile", "").strip()
+        if mobile:
+            queryset = queryset.filter(primary_mobile__icontains=mobile)
+        request_id = self.request.query_params.get("request_id", "").strip()
+        if request_id:
+            queryset = queryset.filter(
+                Q(id__icontains=request_id)
+                | Q(converted_booking__booking_number__icontains=request_id)
+                | Q(pending_booking__booking_number__icontains=request_id)
+            )
         created_from = self.request.query_params.get("created_from")
         if created_from:
             queryset = queryset.filter(created_at__date__gte=created_from)
@@ -129,7 +150,19 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         return queryset.order_by(ordering)
 
     def perform_create(self, serializer):
-        lead = serializer.save(created_by=self.request.user)
+        mobile = serializer.validated_data["primary_mobile"]
+        customer, created = User.objects.get_or_create(
+            phone_number=mobile,
+            defaults={"role": UserRole.CUSTOMER, "is_active": True, "is_verified": True},
+        )
+        if created:
+            customer.set_unusable_password()
+            customer.save(update_fields=["password", "updated_at"])
+        CustomerProfile.objects.get_or_create(
+            user=customer,
+            defaults={"display_name": serializer.validated_data["customer_name"]},
+        )
+        lead = serializer.save(created_by=self.request.user, customer=customer)
         LeadStatusHistory.objects.create(
             lead=lead,
             from_status="",
@@ -180,19 +213,12 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         lead = self.get_object()
         serializer = LeadConvertSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        booking = serializer.validated_data["booking_id"]
-        previous_status = lead.status
-        lead.status = LeadStatus.CONVERTED
-        lead.converted_booking = booking
-        lead.pending_booking = None
-        lead.internal_notes = "\n".join(part for part in [lead.internal_notes, serializer.validated_data.get("notes", "")] if part)
-        lead.save(update_fields=["status", "converted_booking", "pending_booking", "internal_notes", "updated_at"])
-        LeadStatusHistory.objects.create(
+        booking = serializer.validated_data.get("booking_id")
+        lead = convert_lead_to_work_order(
             lead=lead,
-            from_status=previous_status,
-            to_status=LeadStatus.CONVERTED,
-            changed_by=request.user,
-            notes=serializer.validated_data.get("notes", "") or "Lead converted.",
+            performed_by=request.user,
+            booking=booking,
+            notes=serializer.validated_data.get("notes", ""),
         )
         audit_event(
             action=AuditAction.LEAD_CONVERTED,
@@ -200,7 +226,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             request=request,
             resource_type="lead",
             resource_id=lead.id,
-            metadata={"booking_id": str(booking.id)},
+            metadata={"booking_id": str(lead.converted_booking_id)},
         )
         return Response(LeadSerializer(lead, context={"request": request}).data)
 
@@ -232,6 +258,38 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         lead = self.get_object()
         return Response(LeadActivitySerializer(lead.activities.all(), many=True).data)
 
+    @extend_schema(summary="Schedule a lead", request=LeadScheduleSerializer, responses={status.HTTP_200_OK: LeadSerializer})
+    @action(detail=True, methods=["post"], url_path="schedule")
+    def schedule(self, request, *args, **kwargs):
+        lead = self.get_object()
+        serializer = LeadScheduleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        if serializer.validated_data["preferred_date"] < timezone.localdate():
+            return Response({"detail": "Schedule date cannot be in the past."}, status=status.HTTP_400_BAD_REQUEST)
+        lead.preferred_date = serializer.validated_data["preferred_date"]
+        lead.preferred_slot = serializer.validated_data["preferred_slot"]
+        lead.last_activity_at = timezone.now()
+        lead.save(update_fields=["preferred_date", "preferred_slot", "last_activity_at", "updated_at"])
+        return Response(LeadSerializer(lead, context={"request": request}).data)
+
+    @extend_schema(summary="Send a customer reminder", request=LeadReminderSerializer, responses={status.HTTP_200_OK: LeadSerializer})
+    @action(detail=True, methods=["post"], url_path="send-reminder")
+    def send_reminder(self, request, *args, **kwargs):
+        lead = self.get_object()
+        serializer = LeadReminderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        notification = Notification.objects.create(
+            recipient=lead.customer,
+            booking=lead.converted_booking or lead.pending_booking,
+            event=NotificationEvent.BOOKING_RECEIVED,
+            channel=serializer.validated_data["channel"],
+            title="Purple Squad service reminder",
+            message=f"Hello {lead.customer_name}, Purple Squad is following up on your {lead.required_service.name if lead.required_service else 'service'} request.",
+            payload={"lead_id": str(lead.id), "mobile": lead.primary_mobile},
+        )
+        send_notification(notification)
+        return Response(LeadSerializer(lead, context={"request": request}).data)
+
     @extend_schema(summary="Send payment link for unpaid lead", request=LeadPaymentLinkSerializer, responses={status.HTTP_200_OK: LeadSerializer})
     @action(detail=True, methods=["post"], url_path="send-payment-link")
     def send_payment_link(self, request, *args, **kwargs):
@@ -243,6 +301,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             performed_by=request.user,
             request=request,
             channel=serializer.validated_data["channel"],
+            payment_scope=serializer.validated_data["payment_scope"],
         )
         response = LeadSerializer(lead, context={"request": request}).data
         response["payment_link_created"] = created

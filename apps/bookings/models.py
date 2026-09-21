@@ -67,6 +67,7 @@ class Booking(BaseModel):
     confirmed_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    is_manual_work_order = models.BooleanField(default=False)
 
     class Meta:
         ordering = ("-created_at",)

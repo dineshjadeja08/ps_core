@@ -11,6 +11,8 @@ from common.models import BaseModel
 
 
 class LeadSource(models.TextChoices):
+    CONSUMER_APP = "CONSUMER_APP", "Consumer app"
+    ONCALL = "ONCALL", "On-call"
     SERVICE_VIEW = "SERVICE_VIEW", "Service view"
     CART = "CART", "Cart"
     CHECKOUT = "CHECKOUT", "Checkout"

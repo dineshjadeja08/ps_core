@@ -39,11 +39,18 @@ class LeadSerializer(serializers.ModelSerializer):
     service_name = serializers.CharField(source="required_service.name", read_only=True)
     assigned_staff_phone = serializers.CharField(source="assigned_staff.phone_number", read_only=True)
     booking_number = serializers.SerializerMethodField()
+    lead_number = serializers.SerializerMethodField()
+    line_items = serializers.SerializerMethodField()
+    subtotal = serializers.SerializerMethodField()
+    tax_amount = serializers.SerializerMethodField()
+    training_fee = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
 
     class Meta:
         model = Lead
         fields = (
             "id",
+            "lead_number",
             "customer",
             "customer_name",
             "primary_mobile",
@@ -82,6 +89,11 @@ class LeadSerializer(serializers.ModelSerializer):
             "converted_booking",
             "pending_booking",
             "booking_number",
+            "line_items",
+            "subtotal",
+            "tax_amount",
+            "training_fee",
+            "total_amount",
             "created_by",
             "created_at",
             "updated_at",
@@ -103,9 +115,43 @@ class LeadSerializer(serializers.ModelSerializer):
         booking = obj.converted_booking or obj.pending_booking
         return booking.booking_number if booking else ""
 
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_lead_number(self, obj):
+        return f"LD-{str(obj.id).split('-')[0].upper()}"
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_line_items(self, obj):
+        service = obj.required_service
+        if service is None:
+            return []
+        return [{
+            "service_id": str(service.id),
+            "package_name": obj.package or service.name,
+            "quantity": 1,
+            "unit_cost": str(obj.quoted_amount if obj.quoted_amount is not None else service.effective_price),
+        }]
+
+    @extend_schema_field(OpenApiTypes.DECIMAL)
+    def get_subtotal(self, obj):
+        if obj.quoted_amount is not None:
+            return obj.quoted_amount
+        return obj.required_service.effective_price if obj.required_service else 0
+
+    @extend_schema_field(OpenApiTypes.DECIMAL)
+    def get_tax_amount(self, obj):
+        return 0
+
+    @extend_schema_field(OpenApiTypes.DECIMAL)
+    def get_training_fee(self, obj):
+        return obj.required_service.training_fee if obj.required_service else 0
+
+    @extend_schema_field(OpenApiTypes.DECIMAL)
+    def get_total_amount(self, obj):
+        return self.get_subtotal(obj) + self.get_training_fee(obj)
+
 
 class LeadConvertSerializer(serializers.Serializer):
-    booking_id = serializers.UUIDField()
+    booking_id = serializers.UUIDField(required=False)
     notes = serializers.CharField(required=False, allow_blank=True)
 
     def validate_booking_id(self, value):
@@ -115,6 +161,15 @@ class LeadConvertSerializer(serializers.Serializer):
             raise serializers.ValidationError("Booking was not found.") from exc
 
 
+class LeadScheduleSerializer(serializers.Serializer):
+    preferred_date = serializers.DateField()
+    preferred_slot = serializers.RegexField(r"^([01]\d|2[0-3]):[0-5]\d$", max_length=5)
+
+
+class LeadReminderSerializer(serializers.Serializer):
+    channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="SMS")
+
+
 class LeadContactSerializer(serializers.Serializer):
     note = serializers.CharField()
     next_follow_up_at = serializers.DateTimeField(required=False)
@@ -122,6 +177,7 @@ class LeadContactSerializer(serializers.Serializer):
 
 class LeadPaymentLinkSerializer(serializers.Serializer):
     channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="WHATSAPP")
+    payment_scope = serializers.ChoiceField(choices=("FULL", "ADVANCE"), default="ADVANCE")
 
 
 class LeadManualPaymentSerializer(serializers.Serializer):

@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime, timedelta
 
 from django.conf import settings
 from django.db import transaction
@@ -9,6 +10,10 @@ from rest_framework import serializers
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking, PaymentStatus as BookingPaymentStatus
+from apps.bookings.models import BookingStatus, BookingStatusHistory
+from apps.bookings.services import create_booking
+from apps.accounts.models import CustomerProfile, User, UserRole
+from apps.locations.models import Address, ServiceArea
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent
 from apps.notifications.services import send_notification
 from apps.operations.models import (
@@ -23,6 +28,7 @@ from apps.operations.models import (
     ManualPaymentMethod,
 )
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
+from apps.scheduling.models import TimeSlot
 
 OPEN_FUNNEL_STATUSES = {
     LeadFunnelStatus.VISITED,
@@ -251,16 +257,18 @@ def upsert_lead(
 
 
 @transaction.atomic
-def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.WHATSAPP):
+def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.WHATSAPP, payment_scope="ADVANCE"):
     if lead.payment_status == LeadPaymentStatus.PAID:
         raise serializers.ValidationError("Lead is already paid.")
-    if not lead.advance_amount or lead.advance_amount <= Decimal("0.00"):
-        raise serializers.ValidationError("Lead does not have an advance amount.")
-    if lead.payment_link_expires_at and lead.payment_link_expires_at > timezone.now() and lead.payment_link_url:
+    amount = lead.quoted_amount if payment_scope == "FULL" else lead.advance_amount
+    if not amount or amount <= Decimal("0.00"):
+        raise serializers.ValidationError(f"Lead does not have a valid {payment_scope.lower()} amount.")
+    provider_id = f"lead-link-{lead.id}-{payment_scope.lower()}"
+    if lead.payment_link_expires_at and lead.payment_link_expires_at > timezone.now() and lead.payment_link_url and lead.payment_link_provider_id == provider_id:
         return lead, False
 
     expires_at = timezone.now() + timezone.timedelta(hours=getattr(settings, "LEAD_PAYMENT_LINK_EXPIRY_HOURS", 24))
-    lead.payment_link_provider_id = f"lead-link-{lead.id}"
+    lead.payment_link_provider_id = provider_id
     lead.payment_link_url = _lead_payment_url(lead)
     previous = {"payment_status": lead.payment_status, "payment_link_url": bool(lead.payment_link_url)}
     lead.payment_link_expires_at = expires_at
@@ -283,7 +291,7 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
         new_value={"payment_status": lead.payment_status, "expires_at": expires_at.isoformat()},
         performed_by=performed_by,
         request=request,
-        note="Payment link created for unpaid lead.",
+        note=f"{payment_scope.title()} payment link created for unpaid lead.",
     )
     notification = Notification.objects.create(
         recipient=lead.customer,
@@ -291,8 +299,8 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
         event=NotificationEvent.PAYMENT_PENDING,
         channel=channel,
         title="Payment link",
-        message=f"Purple Squad advance payment link: {lead.payment_link_url}",
-        payload={"lead_id": str(lead.id), "payment_link_url": lead.payment_link_url},
+        message=f"Purple Squad {payment_scope.lower()} payment link for ₹{amount}: {lead.payment_link_url}",
+        payload={"lead_id": str(lead.id), "payment_link_url": lead.payment_link_url, "payment_scope": payment_scope, "amount": str(amount)},
     )
     send_notification(notification)
     record_lead_activity(
@@ -312,6 +320,111 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
         metadata={"lead_id": str(lead.id), "channel": channel},
     )
     return lead, True
+
+
+@transaction.atomic
+def convert_lead_to_work_order(*, lead, performed_by, booking=None, notes=""):
+    if lead.status == LeadStatus.CONVERTED and lead.converted_booking_id:
+        return lead
+    create_from_lead = booking is None
+    if create_from_lead:
+        if not lead.required_service_id:
+            raise serializers.ValidationError("Select a service before creating a work order.")
+        if not lead.preferred_date or not lead.preferred_slot:
+            raise serializers.ValidationError("Schedule the lead before creating a work order.")
+        if not lead.address or not lead.city or not lead.pincode:
+            raise serializers.ValidationError("A complete service address is required.")
+
+        service_area = ServiceArea.objects.filter(postal_code=lead.pincode, is_active=True).first()
+        if service_area is None:
+            raise serializers.ValidationError("The lead pincode is outside the active service area.")
+        if not service_area.supports_service(lead.required_service):
+            raise serializers.ValidationError("The selected service is not available at this pincode.")
+
+        customer, created = User.objects.get_or_create(
+            phone_number=lead.primary_mobile,
+            defaults={"role": UserRole.CUSTOMER, "is_active": True, "is_verified": True},
+        )
+        if created:
+            customer.set_unusable_password()
+            customer.save(update_fields=["password", "updated_at"])
+        CustomerProfile.objects.get_or_create(user=customer, defaults={"display_name": lead.customer_name})
+        address, _ = Address.objects.get_or_create(
+            customer=customer,
+            phone=lead.primary_mobile,
+            address_line_1=lead.address,
+            postal_code=lead.pincode,
+            defaults={
+                "label": "Lead address",
+                "recipient_name": lead.customer_name,
+                "city": lead.city,
+                "state": service_area.state,
+                "country": service_area.country,
+                "is_default": not customer.addresses.exists(),
+            },
+        )
+        start_time = datetime.strptime(lead.preferred_slot, "%H:%M").time()
+        end_time = (datetime.combine(lead.preferred_date, start_time) + timedelta(hours=1)).time()
+        slot, _ = TimeSlot.objects.get_or_create(
+            service_area=service_area,
+            date=lead.preferred_date,
+            start_time=start_time,
+            end_time=end_time,
+            defaults={"capacity": 5, "is_active": True},
+        )
+        booking = create_booking(
+            customer=customer,
+            service_id=lead.required_service_id,
+            address_id=address.id,
+            slot_id=slot.id,
+            problem_description=lead.customer_notes,
+            customer_notes=notes,
+            contact_phone=lead.primary_mobile,
+        )
+
+    previous_booking_status = booking.booking_status
+    booking_update_fields = ["is_manual_work_order", "booking_status", "updated_at"]
+    if create_from_lead and lead.quoted_amount is not None:
+        booking.subtotal = lead.quoted_amount
+        booking.discount_amount = Decimal("0.00")
+        booking.training_fee = lead.required_service.training_fee
+        booking.tax_amount = Decimal("0.00")
+        booking.total_amount = booking.subtotal + booking.training_fee
+        if lead.advance_amount is not None:
+            booking.advance_required = min(lead.advance_amount, booking.total_amount)
+        booking.balance_due = booking.total_amount
+        booking_update_fields.extend(["subtotal", "discount_amount", "training_fee", "tax_amount", "total_amount", "advance_required", "balance_due"])
+    booking.is_manual_work_order = True
+    booking.booking_status = BookingStatus.CONFIRMED
+    booking.save(update_fields=booking_update_fields)
+    if previous_booking_status != BookingStatus.CONFIRMED:
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=previous_booking_status,
+            to_status=BookingStatus.CONFIRMED,
+            changed_by=performed_by,
+            notes=notes or "Work order created from lead by admin.",
+        )
+
+    previous_status = lead.status
+    lead.customer = booking.customer
+    lead.status = LeadStatus.CONVERTED
+    lead.funnel_status = LeadFunnelStatus.BOOKED
+    lead.converted_booking = booking
+    lead.pending_booking = None
+    lead.internal_notes = "\n".join(part for part in [lead.internal_notes, notes] if part)
+    lead.last_activity_at = timezone.now()
+    lead.save(update_fields=["customer", "status", "funnel_status", "converted_booking", "pending_booking", "internal_notes", "last_activity_at", "updated_at"])
+    if previous_status != LeadStatus.CONVERTED:
+        from apps.operations.models import LeadStatusHistory
+        LeadStatusHistory.objects.create(
+            lead=lead,
+            from_status=previous_status,
+            to_status=LeadStatus.CONVERTED,
+            changed_by=performed_by,
+            notes=notes or f"Work order {booking.booking_number} created.",
+        )
+    return lead
 
 
 @transaction.atomic

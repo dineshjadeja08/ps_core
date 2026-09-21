@@ -90,7 +90,7 @@ class AdminWorkOrderViewSet(
     def get_queryset(self):
         successful = Payment.objects.filter(status=PaymentRecordStatus.SUCCESS).order_by("paid_at", "created_at")
         queryset = (
-            Booking.objects.filter(payments__status=PaymentRecordStatus.SUCCESS)
+            Booking.objects.filter(Q(payments__status=PaymentRecordStatus.SUCCESS) | Q(is_manual_work_order=True))
             .select_related(
                 "customer",
                 "customer__customer_profile",

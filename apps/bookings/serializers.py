@@ -115,6 +115,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "confirmed_at",
             "completed_at",
             "cancelled_at",
+            "is_manual_work_order",
             "created_at",
             "updated_at",
             "status_history",

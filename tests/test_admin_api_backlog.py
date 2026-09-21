@@ -1,10 +1,11 @@
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import CustomerSupportNote, UserRole
-from apps.bookings.models import BookingStatus, PaymentStatus
+from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, NotificationStatus
 from apps.operations.models import Lead, LeadStatus, LeadStatusHistory
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
@@ -69,6 +70,49 @@ def test_admin_can_create_list_and_convert_lead(admin_client, admin_user, bookin
     assert convert_response.status_code == 200
     assert convert_response.json()["status"] == LeadStatus.CONVERTED
     assert LeadStatusHistory.objects.filter(lead_id=lead_id, to_status=LeadStatus.CONVERTED).exists()
+
+
+@pytest.mark.django_db
+def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client):
+    service_area = service_area_factory(postal_code="600001", name="Chennai Central")
+    service = service_factory()
+    service_area.services.add(service)
+    service_area.services_configured = True
+    service_area.save(update_fields=["services_configured", "updated_at"])
+    create_response = admin_client.post(
+        "/api/v1/admin/leads/",
+        {
+            "customer_name": "On-call Customer",
+            "primary_mobile": "+919620000188",
+            "required_service": str(service.id),
+            "address": "12 Service Street",
+            "city": "Chennai",
+            "pincode": "600001",
+            "source": "ONCALL",
+            "status": "NEW",
+            "quoted_amount": "1499.00",
+            "advance_amount": "299.00",
+        },
+        format="json",
+    )
+    assert create_response.status_code == 201
+    lead_id = create_response.json()["id"]
+    schedule_date = timezone.localdate() + timezone.timedelta(days=2)
+
+    schedule_response = admin_client.post(
+        f"/api/v1/admin/leads/{lead_id}/schedule/",
+        {"preferred_date": str(schedule_date), "preferred_slot": "10:00"},
+        format="json",
+    )
+    assert schedule_response.status_code == 200
+
+    convert_response = admin_client.post(f"/api/v1/admin/leads/{lead_id}/convert/", {}, format="json")
+
+    assert convert_response.status_code == 200
+    booking = Booking.objects.get(id=convert_response.json()["converted_booking"])
+    assert booking.booking_number.startswith(f"PS{timezone.localdate():%y%m}")
+    assert booking.is_manual_work_order is True
+    assert booking.booking_status == BookingStatus.CONFIRMED
 
 
 @pytest.mark.django_db
