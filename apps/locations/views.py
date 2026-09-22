@@ -1,6 +1,6 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
-from rest_framework import mixins, status, viewsets
+from rest_framework import exceptions, mixins, status, viewsets
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -9,10 +9,64 @@ from apps.accounts.permissions import IsAdminRole
 from apps.locations.models import Address, ServiceArea, normalize_postal_code
 from apps.locations.serializers import (
     AddressSerializer,
+    AutocompleteQuerySerializer,
+    AutocompleteResponseSerializer,
     AdminServiceAreaSerializer,
+    NormalizedAddressSerializer,
+    ReverseGeocodeQuerySerializer,
     ServiceAreaCheckResponseSerializer,
 )
+from apps.locations.providers import LocationProviderError, autocomplete, reverse_geocode
 from apps.locations.services import enforce_single_default, get_active_service_area
+
+
+class LocationLookupUnavailable(exceptions.APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "Address lookup is temporarily unavailable. Please enter your address manually."
+    default_code = "location_lookup_unavailable"
+
+
+@extend_schema(
+    tags=["Location"],
+    summary="Reverse geocode coordinates",
+    parameters=[
+        OpenApiParameter("lat", float, required=True),
+        OpenApiParameter("lng", float, required=True),
+    ],
+    responses={status.HTTP_200_OK: NormalizedAddressSerializer},
+)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def reverse_geocode_location(request):
+    serializer = ReverseGeocodeQuerySerializer(data=request.query_params)
+    serializer.is_valid(raise_exception=True)
+    try:
+        result = reverse_geocode(float(serializer.validated_data["lat"]), float(serializer.validated_data["lng"]))
+    except LocationProviderError as exc:
+        raise LocationLookupUnavailable(str(exc)) from exc
+    return Response(result)
+
+
+@extend_schema(
+    tags=["Location"],
+    summary="Autocomplete an address",
+    parameters=[OpenApiParameter("input", str, required=True)],
+    responses={status.HTTP_200_OK: AutocompleteResponseSerializer},
+)
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def autocomplete_location(request):
+    serializer = AutocompleteQuerySerializer(data=request.query_params)
+    serializer.is_valid(raise_exception=True)
+    try:
+        suggestions = autocomplete(serializer.validated_data["input"])
+    except LocationProviderError as exc:
+        raise LocationLookupUnavailable(str(exc)) from exc
+    return Response({"suggestions": suggestions})
+
+
+reverse_geocode_location.cls.throttle_scope = "location"
+autocomplete_location.cls.throttle_scope = "location"
 
 
 @extend_schema(tags=["Admin - Service Areas"])

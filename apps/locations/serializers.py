@@ -14,6 +14,39 @@ class ServiceAreaCheckResponseSerializer(serializers.Serializer):
     service_area = serializers.DictField(allow_null=True)
 
 
+class ReverseGeocodeQuerySerializer(serializers.Serializer):
+    lat = serializers.DecimalField(max_digits=10, decimal_places=7, min_value=-90, max_value=90, coerce_to_string=False)
+    lng = serializers.DecimalField(max_digits=10, decimal_places=7, min_value=-180, max_value=180, coerce_to_string=False)
+
+
+class AutocompleteQuerySerializer(serializers.Serializer):
+    input = serializers.CharField(min_length=3, max_length=200, trim_whitespace=True)
+
+
+class NormalizedAddressSerializer(serializers.Serializer):
+    formatted_address = serializers.CharField(allow_blank=True)
+    house_number = serializers.CharField(allow_blank=True)
+    street = serializers.CharField(allow_blank=True)
+    locality = serializers.CharField(allow_blank=True)
+    city = serializers.CharField(allow_blank=True)
+    state = serializers.CharField(allow_blank=True)
+    pincode = serializers.CharField(allow_blank=True)
+    country = serializers.CharField(allow_blank=True)
+    latitude = serializers.FloatField(allow_null=True)
+    longitude = serializers.FloatField(allow_null=True)
+
+
+class AddressSuggestionSerializer(NormalizedAddressSerializer):
+    id = serializers.CharField()
+    description = serializers.CharField()
+    main_text = serializers.CharField()
+    secondary_text = serializers.CharField(allow_blank=True)
+
+
+class AutocompleteResponseSerializer(serializers.Serializer):
+    suggestions = AddressSuggestionSerializer(many=True)
+
+
 class ServiceAreaSerializer(serializers.ModelSerializer):
     class Meta:
         model = ServiceArea

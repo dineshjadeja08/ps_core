@@ -253,7 +253,10 @@ class AdminServiceViewSet(viewsets.ModelViewSet):
         action = AuditAction.SERVICE_UPDATED
         if service.base_price != previous.base_price or service.selling_price != previous.selling_price:
             action = AuditAction.SERVICE_PRICE_CHANGED
-        elif service.cover_image != previous.cover_image:
+        elif any(
+            getattr(service, field) != getattr(previous, field)
+            for field in ("cover_image", "landing_thumbnail", "popup_cover_image", "list_image")
+        ):
             action = AuditAction.SERVICE_IMAGE_CHANGED
         elif not service.is_active:
             action = AuditAction.SERVICE_DEACTIVATED

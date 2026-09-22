@@ -29,6 +29,7 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(  # noqa: F405
         "otp_verify_phone": "10000/min",
         "payment_ip": "10000/min",
         "payment_user": "10000/min",
+        "location": "10000/min",
     }
 )
 

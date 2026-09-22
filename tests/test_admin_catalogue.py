@@ -234,6 +234,29 @@ def test_admin_can_upload_cover_image(admin_client, service):
 
 
 @pytest.mark.django_db
+def test_admin_can_upload_service_presentation_images(admin_client, service):
+    response = admin_client.patch(
+        f"/api/v1/admin/services/{service.id}/",
+        {
+            "landing_thumbnail": png_upload("landing.png"),
+            "popup_cover_image": png_upload("popup.png"),
+            "list_image": png_upload("list.png"),
+        },
+        format="multipart",
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["landing_thumbnail"].endswith("landing.png")
+    assert payload["popup_cover_image"].endswith("popup.png")
+    assert payload["list_image"].endswith("list.png")
+    service.refresh_from_db()
+    assert service.landing_thumbnail.name.startswith("services/landing-thumbnails/")
+    assert service.popup_cover_image.name.startswith("services/popup-covers/")
+    assert service.list_image.name.startswith("services/list-images/")
+
+
+@pytest.mark.django_db
 def test_admin_can_activate_and_deactivate_service(admin_client, service):
     response = admin_client.patch(f"/api/v1/admin/services/{service.id}/", {"is_active": False}, format="json")
 

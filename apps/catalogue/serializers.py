@@ -59,6 +59,9 @@ class ServiceCategorySerializer(serializers.ModelSerializer):
 class ServiceListSerializer(serializers.ModelSerializer):
     category = ServiceCategorySerializer(read_only=True)
     cover_image = serializers.ImageField(read_only=True)
+    landing_thumbnail = serializers.ImageField(read_only=True)
+    popup_cover_image = serializers.ImageField(read_only=True)
+    list_image = serializers.ImageField(read_only=True)
     effective_price = serializers.SerializerMethodField()
 
     class Meta:
@@ -81,6 +84,9 @@ class ServiceListSerializer(serializers.ModelSerializer):
             "training_fee_per_unit",
             "estimated_duration_minutes",
             "cover_image",
+            "landing_thumbnail",
+            "popup_cover_image",
+            "list_image",
             "is_featured",
             "is_popular",
             "display_order",
@@ -163,6 +169,9 @@ class ServiceImageSerializer(serializers.ModelSerializer):
 class AdminServiceSerializer(serializers.ModelSerializer):
     category_detail = ServiceCategorySerializer(source="category", read_only=True)
     cover_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
+    landing_thumbnail = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
+    popup_cover_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
+    list_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
     images = ServiceImageSerializer(many=True, read_only=True)
     effective_price = serializers.SerializerMethodField()
 
@@ -190,6 +199,9 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             "training_fee_per_unit",
             "estimated_duration_minutes",
             "cover_image",
+            "landing_thumbnail",
+            "popup_cover_image",
+            "list_image",
             "images",
             "is_featured",
             "is_popular",
@@ -205,6 +217,15 @@ class AdminServiceSerializer(serializers.ModelSerializer):
         return obj.effective_price
 
     def validate_cover_image(self, value):
+        return validate_uploaded_image(value)
+
+    def validate_landing_thumbnail(self, value):
+        return validate_uploaded_image(value)
+
+    def validate_popup_cover_image(self, value):
+        return validate_uploaded_image(value)
+
+    def validate_list_image(self, value):
         return validate_uploaded_image(value)
 
     def validate(self, attrs):

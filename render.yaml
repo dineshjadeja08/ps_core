@@ -43,6 +43,8 @@ services:
         value: "true"
       - key: TURNSTILE_SECRET_KEY
         sync: false
+      - key: OLA_MAPS_API_KEY
+        sync: false
       - key: BUSINESS_LEGAL_NAME
         sync: false
       - key: BUSINESS_GSTIN

@@ -50,12 +50,34 @@ class ServiceAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug", "short_description", "description")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("category__display_order", "display_order", "name")
-    readonly_fields = ("created_at", "updated_at", "advance_amount", "cover_preview")
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+        "advance_amount",
+        "cover_preview",
+        "landing_thumbnail_preview",
+        "popup_cover_preview",
+        "list_image_preview",
+    )
     fieldsets = (
         ("Service", {"fields": ("category", "name", "slug", "landing_group", "short_description", "description")}),
         ("Content sections", {"fields": ("whats_included", "whats_excluded", "important_notes")}),
         ("Pricing", {"fields": ("base_price", "selling_price", "advance_payment_type", "advance_payment_value", "advance_amount", "training_fee", "training_fee_per_unit")}),
-        ("Media", {"fields": ("cover_image", "cover_preview")}),
+        (
+            "Media",
+            {
+                "fields": (
+                    "cover_image",
+                    "cover_preview",
+                    "landing_thumbnail",
+                    "landing_thumbnail_preview",
+                    "popup_cover_image",
+                    "popup_cover_preview",
+                    "list_image",
+                    "list_image_preview",
+                )
+            },
+        ),
         ("Display", {"fields": ("estimated_duration_minutes", "display_order", "is_featured", "is_popular", "is_active")}),
         ("System", {"fields": ("created_at", "updated_at")}),
     )
@@ -66,6 +88,23 @@ class ServiceAdmin(admin.ModelAdmin):
         if not obj.cover_image:
             return "-"
         return format_html('<img src="{}" style="max-width:220px;max-height:140px;border-radius:8px;" />', obj.cover_image.url)
+
+    def _image_preview(self, image):
+        if not image:
+            return "-"
+        return format_html('<img src="{}" style="max-width:220px;max-height:140px;border-radius:8px;" />', image.url)
+
+    @admin.display(description="Landing thumbnail preview")
+    def landing_thumbnail_preview(self, obj):
+        return self._image_preview(obj.landing_thumbnail)
+
+    @admin.display(description="Popup cover preview")
+    def popup_cover_preview(self, obj):
+        return self._image_preview(obj.popup_cover_image)
+
+    @admin.display(description="List image preview")
+    def list_image_preview(self, obj):
+        return self._image_preview(obj.list_image)
 
     def save_model(self, request, obj, form, change):
         effective_price = obj.selling_price if obj.selling_price is not None else obj.base_price

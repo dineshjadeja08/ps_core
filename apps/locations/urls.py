@@ -1,7 +1,13 @@
 from django.urls import path
 from rest_framework.routers import SimpleRouter
 
-from apps.locations.views import AddressViewSet, AdminServiceAreaViewSet, check_service_area
+from apps.locations.views import (
+    AddressViewSet,
+    AdminServiceAreaViewSet,
+    autocomplete_location,
+    check_service_area,
+    reverse_geocode_location,
+)
 
 router = SimpleRouter()
 router.register("addresses", AddressViewSet, basename="address")
@@ -9,5 +15,7 @@ router.register("admin/service-areas", AdminServiceAreaViewSet, basename="admin-
 
 urlpatterns = [
     path("service-areas/check/", check_service_area, name="service-area-check"),
+    path("location/reverse-geocode/", reverse_geocode_location, name="location-reverse-geocode"),
+    path("location/autocomplete/", autocomplete_location, name="location-autocomplete"),
     *router.urls,
 ]

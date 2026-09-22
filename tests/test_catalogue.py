@@ -71,6 +71,9 @@ def test_service_listing(client, ac_category):
     assert payload["results"][0]["slug"] == service.slug
     assert payload["results"][0]["whats_included"] == "Filter cleaning\nCooling test"
     assert payload["results"][0]["landing_group"] == "Repair & Services"
+    assert "landing_thumbnail" in payload["results"][0]
+    assert "popup_cover_image" in payload["results"][0]
+    assert "list_image" in payload["results"][0]
 
 
 @pytest.mark.django_db
