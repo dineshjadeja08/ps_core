@@ -1,0 +1,63 @@
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("audit", "0010_alter_auditlog_action"),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name="auditlog",
+            name="action",
+            field=models.CharField(
+                choices=[
+                    ("ADMIN_BOOKING_START", "Admin booking start"),
+                    ("ADMIN_BOOKING_COMPLETE", "Admin booking complete"),
+                    ("ADMIN_BOOKING_CANCEL", "Admin booking cancel"),
+                    ("ADMIN_WORK_ORDER_CLOSE", "Admin work order close"),
+                    ("ADMIN_RECORD_BALANCE", "Admin record balance"),
+                    ("ADMIN_PAYMENT_LINK_CREATED", "Admin payment link created"),
+                    ("ADMIN_REFUND_CREATED", "Admin refund created"),
+                    ("ADMIN_REFUND_RECONCILED", "Admin refund reconciled"),
+                    ("TECHNICIAN_ASSIGN", "Technician assign"),
+                    ("TECHNICIAN_CREATED", "Technician created"),
+                    ("TECHNICIAN_UPDATED", "Technician updated"),
+                    ("TECHNICIAN_VERIFICATION_CHANGED", "Technician verification changed"),
+                    ("TECHNICIAN_AVAILABILITY_CHANGED", "Technician availability changed"),
+                    ("TECHNICIAN_ASSIGNMENT_REMOVED", "Technician assignment removed"),
+                    ("TECHNICIAN_LEAVE_CREATED", "Technician leave created"),
+                    ("TECHNICIAN_LEAVE_APPROVED", "Technician leave approved"),
+                    ("TECHNICIAN_LEAVE_REJECTED", "Technician leave rejected"),
+                    ("PAYMENT_WEBHOOK_RECEIVED", "Payment webhook received"),
+                    ("PAYMENT_WEBHOOK_REJECTED", "Payment webhook rejected"),
+                    ("PERMISSION_DENIED", "Permission denied"),
+                    ("SERVICE_CREATED", "Service created"),
+                    ("SERVICE_UPDATED", "Service updated"),
+                    ("SERVICE_DEACTIVATED", "Service deactivated"),
+                    ("SERVICE_PRICE_CHANGED", "Service price changed"),
+                    ("SERVICE_IMAGE_CHANGED", "Service image changed"),
+                    ("CATEGORY_CREATED", "Category created"),
+                    ("CATEGORY_UPDATED", "Category updated"),
+                    ("CATEGORY_DEACTIVATED", "Category deactivated"),
+                    ("PACKAGE_CREATED", "Package created"),
+                    ("PACKAGE_UPDATED", "Package updated"),
+                    ("PACKAGE_DELETED", "Package deleted"),
+                    ("LEAD_CREATED", "Lead created"),
+                    ("LEAD_UPDATED", "Lead updated"),
+                    ("LEAD_STATUS_CHANGED", "Lead status changed"),
+                    ("LEAD_CONVERTED", "Lead converted"),
+                    ("BANNER_CREATED", "Banner created"),
+                    ("BANNER_UPDATED", "Banner updated"),
+                    ("BANNER_PUBLICATION_CHANGED", "Banner publication changed"),
+                    ("FAQ_CREATED", "FAQ created"),
+                    ("FAQ_UPDATED", "FAQ updated"),
+                    ("REVIEW_UPDATED", "Review updated"),
+                    ("CUSTOMER_SUPPORT_NOTE_CREATED", "Customer support note created"),
+                    ("STAFF_CREATED", "Staff created"),
+                    ("STAFF_UPDATED", "Staff updated"),
+                ],
+                max_length=64,
+            ),
+        ),
+    ]

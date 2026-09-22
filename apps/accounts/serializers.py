@@ -1,8 +1,10 @@
+from django.contrib.auth.models import Group
 from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.accounts.models import CustomerProfile, CustomerSupportNote, OtpDeliveryChannel, User
+from apps.accounts.models import CustomerProfile, CustomerSupportNote, OtpDeliveryChannel, User, UserRole
+from apps.accounts.validators import normalize_phone_number
 
 
 class FirebaseLoginRequestSerializer(serializers.Serializer):
@@ -285,6 +287,42 @@ class AdminStaffSerializer(serializers.ModelSerializer):
     @extend_schema_field(OpenApiTypes.OBJECT)
     def get_groups(self, obj):
         return [{"id": group.id, "name": group.name} for group in obj.groups.all()]
+
+
+class AdminStaffCreateSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, min_length=8, max_length=128, trim_whitespace=False)
+    group_ids = serializers.PrimaryKeyRelatedField(
+        source="groups",
+        queryset=Group.objects.all(),
+        many=True,
+        required=False,
+        write_only=True,
+    )
+    role = serializers.ChoiceField(choices=(UserRole.ADMIN, UserRole.SUPER_ADMIN), default=UserRole.ADMIN)
+
+    class Meta:
+        model = User
+        fields = ("phone_number", "password", "email", "first_name", "last_name", "role", "group_ids")
+
+    def validate_phone_number(self, value):
+        return normalize_phone_number(value)
+
+    def validate_email(self, value):
+        return value or None
+
+    def create(self, validated_data):
+        groups = validated_data.pop("groups", [])
+        password = validated_data.pop("password")
+        user = User.objects.create_user(
+            password=password,
+            is_staff=True,
+            is_active=True,
+            is_verified=True,
+            **validated_data,
+        )
+        if groups:
+            user.groups.set(groups)
+        return user
 
 
 class AdminStaffUpdateSerializer(serializers.ModelSerializer):

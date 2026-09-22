@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from apps.accounts.serializers import (
     AdminCustomerHistorySerializer,
     AdminCustomerSerializer,
+    AdminStaffCreateSerializer,
     AdminStaffSerializer,
     AdminStaffUpdateSerializer,
     AdminMfaVerifyRequestSerializer,
@@ -430,6 +431,7 @@ class AdminCustomerViewSet(
 
 
 class AdminStaffViewSet(
+    mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -440,6 +442,8 @@ class AdminStaffViewSet(
     lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_serializer_class(self):
+        if self.action == "create":
+            return AdminStaffCreateSerializer
         if self.action in {"partial_update", "update"}:
             return AdminStaffUpdateSerializer
         return AdminStaffSerializer
@@ -459,6 +463,21 @@ class AdminStaffViewSet(
     @extend_schema(summary="Get staff user for admin", responses={status.HTTP_200_OK: AdminStaffSerializer})
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Create an administrator account", request=AdminStaffCreateSerializer, responses={status.HTTP_201_CREATED: AdminStaffSerializer})
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
+        audit_event(
+            action=AuditAction.STAFF_CREATED,
+            actor=request.user,
+            request=request,
+            resource_type="staff",
+            resource_id=user.id,
+            metadata={"role": user.role, "group_ids": list(user.groups.values_list("id", flat=True))},
+        )
+        return Response(AdminStaffSerializer(user).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(summary="Update staff user for admin", request=AdminStaffUpdateSerializer, responses={status.HTTP_200_OK: AdminStaffSerializer})
     def partial_update(self, request, *args, **kwargs):

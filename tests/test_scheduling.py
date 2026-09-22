@@ -10,7 +10,7 @@ from apps.accounts.models import UserRole
 from apps.catalogue.models import Service, ServiceCategory
 from apps.locations.models import ServiceArea
 from apps.scheduling.models import ClosureType, ScheduleClosure, TimeSlot
-from tests.factories import user_factory
+from tests.factories import address_factory, booking_factory, user_factory
 from apps.scheduling.services import lock_slot_for_reservation
 
 
@@ -188,3 +188,40 @@ def test_admin_can_create_closure_and_change_slot_capacity(service_area):
     updated = client.patch(f"/api/v1/admin/time-slots/{slot.id}/", {"capacity": 7}, format="json")
     assert updated.status_code == 200
     assert updated.json()["capacity"] == 7
+
+    moved_date = service_date + timedelta(days=2)
+    rescheduled = client.patch(
+        f"/api/v1/admin/time-slots/{slot.id}/",
+        {
+            "date": moved_date,
+            "start_time": "09:30:00",
+            "end_time": "11:30:00",
+            "is_active": False,
+        },
+        format="json",
+    )
+    assert rescheduled.status_code == 200, rescheduled.json()
+    assert rescheduled.json()["date"] == str(moved_date)
+    assert rescheduled.json()["start_time"] == "09:30:00"
+    assert rescheduled.json()["end_time"] == "11:30:00"
+    assert rescheduled.json()["is_active"] is False
+
+
+@pytest.mark.django_db
+def test_admin_cannot_move_a_slot_linked_to_a_booking(service, service_area):
+    admin = user_factory("+919620000078", role=UserRole.ADMIN, is_staff=True)
+    customer = user_factory("+919620000079")
+    address = address_factory(customer, postal_code=service_area.postal_code)
+    slot = create_slot(service_area)
+    booking_factory(customer, service, address, slot)
+    client = APIClient()
+    client.force_authenticate(user=admin)
+
+    response = client.patch(
+        f"/api/v1/admin/time-slots/{slot.id}/",
+        {"start_time": "09:00:00", "end_time": "11:00:00"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "date" in response.json()["error"]["details"]

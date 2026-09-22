@@ -95,6 +95,53 @@ def test_super_admin_can_list_staff_and_groups(super_admin_client, admin_user):
 
 
 @pytest.mark.django_db
+def test_super_admin_can_create_admin_staff(
+    django_capture_on_commit_callbacks,
+    super_admin_client,
+):
+    group = Group.objects.create(name="Booking Managers")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = super_admin_client.post(
+            "/api/v1/admin/staff/",
+            {
+                "phone_number": "+919630000099",
+                "password": "TemporaryPass123",
+                "first_name": "Operations",
+                "last_name": "Admin",
+                "email": "operations@example.com",
+                "role": "ADMIN",
+                "group_ids": [group.id],
+            },
+            format="json",
+        )
+
+    assert response.status_code == 201, response.json()
+    created = response.json()
+    assert created["phone_number"] == "+919630000099"
+    assert created["role"] == "ADMIN"
+    assert created["is_staff"] is True
+    assert created["is_verified"] is True
+    assert created["groups"] == [{"id": group.id, "name": "Booking Managers"}]
+    assert AuditLog.objects.filter(action="STAFF_CREATED", resource_id=created["id"]).exists()
+
+
+@pytest.mark.django_db
+def test_regular_admin_cannot_create_staff(admin_client):
+    response = admin_client.post(
+        "/api/v1/admin/staff/",
+        {
+            "phone_number": "+919630000098",
+            "password": "TemporaryPass123",
+            "role": "ADMIN",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
 def test_admin_can_list_audit_logs(admin_client, admin_user):
     AuditLog.objects.create(actor=admin_user, action="STAFF_UPDATED", resource_type="staff", resource_id=str(admin_user.id))
 

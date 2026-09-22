@@ -47,6 +47,7 @@ class AuditAction(models.TextChoices):
     FAQ_UPDATED = "FAQ_UPDATED", "FAQ updated"
     REVIEW_UPDATED = "REVIEW_UPDATED", "Review updated"
     CUSTOMER_SUPPORT_NOTE_CREATED = "CUSTOMER_SUPPORT_NOTE_CREATED", "Customer support note created"
+    STAFF_CREATED = "STAFF_CREATED", "Staff created"
     STAFF_UPDATED = "STAFF_UPDATED", "Staff updated"
 
 
