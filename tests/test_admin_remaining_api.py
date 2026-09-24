@@ -12,7 +12,7 @@ from apps.audit.models import AuditLog
 from apps.bookings.models import BookingStatus, PaymentStatus
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent
 from apps.catalogue.models import ServiceCategory
-from apps.operations.models import FAQ, HomepageBannerPlacement
+from apps.operations.models import FAQ, HomepageBanner, HomepageBannerPlacement
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
 from apps.reviews.models import Review
 from tests.factories import address_factory, booking_factory, service_area_factory, service_factory, slot_factory, user_factory
@@ -196,6 +196,36 @@ def test_admin_can_manage_homepage_banners(admin_client):
 
     assert response.status_code == 201, response.json()
     assert response.json()["title"] == "Summer service"
+
+
+@pytest.mark.django_db
+def test_public_homepage_banners_only_returns_live_active_banners():
+    image_buffer = BytesIO()
+    Image.new("RGB", (4, 4), color="purple").save(image_buffer, format="PNG")
+
+    def banner_image(name):
+        return SimpleUploadedFile(name, image_buffer.getvalue(), content_type="image/png")
+
+    HomepageBanner.objects.create(
+        title="Live banner",
+        desktop_image=banner_image("live.png"),
+        image_alt_text="Live promotion",
+        placement=HomepageBannerPlacement.MAIN,
+        is_active=True,
+    )
+    HomepageBanner.objects.create(
+        title="Inactive banner",
+        desktop_image=banner_image("inactive.png"),
+        image_alt_text="Inactive promotion",
+        placement=HomepageBannerPlacement.MAIN,
+        is_active=False,
+    )
+
+    response = APIClient().get("/api/v1/homepage-banners/?placement=MAIN")
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.json()] == ["Live banner"]
+    assert response.json()[0]["desktop_image_url"].startswith("http://testserver/")
 
 
 @pytest.mark.django_db

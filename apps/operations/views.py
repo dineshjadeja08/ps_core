@@ -63,6 +63,24 @@ class PublicFAQListView(ListAPIView):
         return queryset
 
 
+class PublicHomepageBannerListView(ListAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = HomepageBannerSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        now = timezone.now()
+        placement = self.request.query_params.get("placement", "MAIN")
+        return HomepageBanner.objects.filter(
+            placement=placement,
+            is_active=True,
+        ).filter(
+            Q(starts_at__isnull=True) | Q(starts_at__lte=now),
+            Q(ends_at__isnull=True) | Q(ends_at__gte=now),
+        ).order_by("display_order", "-created_at")
+
+
 class AdminLeadViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdminRole]
     serializer_class = LeadSerializer
