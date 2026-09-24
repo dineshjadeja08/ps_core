@@ -35,7 +35,7 @@ def standard_exception_handler(exc, context):
     if response is None:
         return None
 
-    code = DEFAULT_ERROR_CODES.get(response.status_code, "API_ERROR")
+    code = getattr(exc, "public_code", None) or DEFAULT_ERROR_CODES.get(response.status_code, "API_ERROR")
     message = _extract_message(response.data)
 
     response.data = {

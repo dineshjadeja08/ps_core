@@ -1,7 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import exceptions, generics, mixins, status, viewsets
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
@@ -19,12 +19,27 @@ from apps.locations.serializers import (
 )
 from apps.locations.providers import LocationProviderError, autocomplete, reverse_geocode
 from apps.locations.services import enforce_single_default, get_active_service_area
+from common.throttles import LocationIPThrottle
 
 
-class LocationLookupUnavailable(exceptions.APIException):
+class LocationProviderUnavailable(exceptions.APIException):
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     default_detail = "Address lookup is temporarily unavailable. Please enter your address manually."
-    default_code = "location_lookup_unavailable"
+    default_code = "location_provider_unavailable"
+    public_code = "LOCATION_PROVIDER_UNAVAILABLE"
+
+
+class LocationProviderMisconfigured(exceptions.APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = "Address lookup is not configured correctly. Please enter your address manually."
+    default_code = "location_provider_misconfigured"
+    public_code = "LOCATION_PROVIDER_MISCONFIGURED"
+
+
+def _raise_location_provider_error(exc):
+    if exc.reason == "misconfigured":
+        raise LocationProviderMisconfigured() from exc
+    raise LocationProviderUnavailable() from exc
 
 
 @extend_schema(
@@ -38,14 +53,19 @@ class LocationLookupUnavailable(exceptions.APIException):
 )
 @api_view(["GET"])
 @authentication_classes([])
-@permission_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([LocationIPThrottle])
 def reverse_geocode_location(request):
     serializer = ReverseGeocodeQuerySerializer(data=request.query_params)
     serializer.is_valid(raise_exception=True)
     try:
-        result = reverse_geocode(float(serializer.validated_data["lat"]), float(serializer.validated_data["lng"]))
+        result = reverse_geocode(
+            float(serializer.validated_data["lat"]),
+            float(serializer.validated_data["lng"]),
+            request_id=getattr(request, "request_id", ""),
+        )
     except LocationProviderError as exc:
-        raise LocationLookupUnavailable(str(exc)) from exc
+        _raise_location_provider_error(exc)
     return Response(result)
 
 
@@ -57,19 +77,22 @@ def reverse_geocode_location(request):
 )
 @api_view(["GET"])
 @authentication_classes([])
-@permission_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([LocationIPThrottle])
 def autocomplete_location(request):
     serializer = AutocompleteQuerySerializer(data=request.query_params)
     serializer.is_valid(raise_exception=True)
     try:
-        suggestions = autocomplete(serializer.validated_data["input"])
+        suggestions = autocomplete(
+            serializer.validated_data["input"],
+            latitude=float(serializer.validated_data["lat"]) if "lat" in serializer.validated_data else None,
+            longitude=float(serializer.validated_data["lng"]) if "lng" in serializer.validated_data else None,
+            city=serializer.validated_data.get("city", ""),
+            request_id=getattr(request, "request_id", ""),
+        )
     except LocationProviderError as exc:
-        raise LocationLookupUnavailable(str(exc)) from exc
+        _raise_location_provider_error(exc)
     return Response({"suggestions": suggestions})
-
-
-reverse_geocode_location.cls.throttle_scope = "location"
-autocomplete_location.cls.throttle_scope = "location"
 
 
 @extend_schema(tags=["Admin - Service Areas"])

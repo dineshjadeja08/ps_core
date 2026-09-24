@@ -191,6 +191,7 @@ REST_FRAMEWORK = {
         "payment_ip": env("DRF_THROTTLE_PAYMENT_IP", default="30/min"),
         "payment_user": env("DRF_THROTTLE_PAYMENT_USER", default="20/min"),
         "location": env("DRF_THROTTLE_LOCATION", default="60/min"),
+        "location_ip": env("DRF_THROTTLE_LOCATION_IP", default="30/min"),
     },
     "NUM_PROXIES": env.int("DRF_NUM_PROXIES", default=0),
 }
@@ -199,7 +200,8 @@ LOCATION_PROVIDER = env("LOCATION_PROVIDER", default="apps.locations.providers.O
 OLA_MAPS_API_KEY = env("OLA_MAPS_API_KEY", default="")
 LOCATION_PROVIDER_TIMEOUT_SECONDS = env.int("LOCATION_PROVIDER_TIMEOUT_SECONDS", default=8)
 LOCATION_REVERSE_CACHE_SECONDS = env.int("LOCATION_REVERSE_CACHE_SECONDS", default=86400)
-LOCATION_AUTOCOMPLETE_CACHE_SECONDS = env.int("LOCATION_AUTOCOMPLETE_CACHE_SECONDS", default=3600)
+LOCATION_AUTOCOMPLETE_CACHE_SECONDS = env.int("LOCATION_AUTOCOMPLETE_CACHE_SECONDS", default=300)
+LOCATION_FALLBACK_PROVIDER = env("LOCATION_FALLBACK_PROVIDER", default="")
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Purple Squad API",

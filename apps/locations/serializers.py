@@ -20,7 +20,15 @@ class ReverseGeocodeQuerySerializer(serializers.Serializer):
 
 
 class AutocompleteQuerySerializer(serializers.Serializer):
-    input = serializers.CharField(min_length=3, max_length=200, trim_whitespace=True)
+    input = serializers.CharField(min_length=3, max_length=160, trim_whitespace=True)
+    lat = serializers.DecimalField(max_digits=10, decimal_places=7, min_value=-90, max_value=90, coerce_to_string=False, required=False)
+    lng = serializers.DecimalField(max_digits=10, decimal_places=7, min_value=-180, max_value=180, coerce_to_string=False, required=False)
+    city = serializers.CharField(max_length=80, trim_whitespace=True, required=False, allow_blank=True)
+
+    def validate(self, attrs):
+        if ("lat" in attrs) != ("lng" in attrs):
+            raise serializers.ValidationError("lat and lng must be supplied together.")
+        return attrs
 
 
 class NormalizedAddressSerializer(serializers.Serializer):
@@ -34,6 +42,8 @@ class NormalizedAddressSerializer(serializers.Serializer):
     country = serializers.CharField(allow_blank=True)
     latitude = serializers.FloatField(allow_null=True)
     longitude = serializers.FloatField(allow_null=True)
+    supported_city = serializers.BooleanField()
+    serviceable = serializers.BooleanField()
 
 
 class AddressSuggestionSerializer(NormalizedAddressSerializer):

@@ -58,3 +58,7 @@ class PaymentIPThrottle(ClientIPThrottle):
 
 class PaymentUserThrottle(UserRateThrottle):
     scope = "payment_user"
+
+
+class LocationIPThrottle(ClientIPThrottle):
+    scope = "location_ip"
