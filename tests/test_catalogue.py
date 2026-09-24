@@ -4,6 +4,7 @@ import pytest
 from django.core.exceptions import ValidationError
 
 from apps.catalogue.models import Service, ServiceCategory
+from apps.locations.models import ServiceArea
 
 
 @pytest.fixture
@@ -113,6 +114,21 @@ def test_service_filtering(client, ac_category, repair_category):
     assert [item["slug"] for item in by_category.json()["results"]] == ["ac-noise-repair"]
     assert [item["slug"] for item in by_featured.json()["results"]] == ["ac-general-service"]
     assert [item["slug"] for item in by_search.json()["results"]] == ["ac-noise-repair"]
+
+
+@pytest.mark.django_db
+def test_service_filtering_by_active_city(client, ac_category):
+    chennai_service = create_service(ac_category, name="Chennai AC", slug="chennai-ac")
+    other_service = create_service(ac_category, name="Other AC", slug="other-ac")
+    chennai = ServiceArea.objects.create(name="Anna Nagar", city="Chennai", state="Tamil Nadu", postal_code="600040")
+    coimbatore = ServiceArea.objects.create(name="Peelamedu", city="Coimbatore", state="Tamil Nadu", postal_code="641004")
+    chennai.services.add(chennai_service)
+    coimbatore.services.add(other_service)
+
+    response = client.get("/api/v1/services/?city=Chennai")
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()["results"]] == ["chennai-ac"]
 
 
 @pytest.mark.django_db

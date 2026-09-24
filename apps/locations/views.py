@@ -1,8 +1,8 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
-from rest_framework import exceptions, mixins, status, viewsets
+from rest_framework import exceptions, generics, mixins, status, viewsets
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdminRole
@@ -14,6 +14,7 @@ from apps.locations.serializers import (
     AdminServiceAreaSerializer,
     NormalizedAddressSerializer,
     ReverseGeocodeQuerySerializer,
+    ServiceAreaSerializer,
     ServiceAreaCheckResponseSerializer,
 )
 from apps.locations.providers import LocationProviderError, autocomplete, reverse_geocode
@@ -36,7 +37,8 @@ class LocationLookupUnavailable(exceptions.APIException):
     responses={status.HTTP_200_OK: NormalizedAddressSerializer},
 )
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([])
 def reverse_geocode_location(request):
     serializer = ReverseGeocodeQuerySerializer(data=request.query_params)
     serializer.is_valid(raise_exception=True)
@@ -54,7 +56,8 @@ def reverse_geocode_location(request):
     responses={status.HTTP_200_OK: AutocompleteResponseSerializer},
 )
 @api_view(["GET"])
-@permission_classes([IsAuthenticated])
+@authentication_classes([])
+@permission_classes([])
 def autocomplete_location(request):
     serializer = AutocompleteQuerySerializer(data=request.query_params)
     serializer.is_valid(raise_exception=True)
@@ -83,6 +86,20 @@ class AdminServiceAreaViewSet(viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         instance.is_active = False
         instance.save(update_fields=["is_active", "updated_at"])
+
+
+class PublicServiceAreaListView(generics.ListAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = ServiceAreaSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        queryset = ServiceArea.objects.filter(is_active=True).order_by("city", "name", "postal_code")
+        city = self.request.query_params.get("city", "").strip()
+        if city:
+            queryset = queryset.filter(city__iexact=city)
+        return queryset
 
 
 @extend_schema(

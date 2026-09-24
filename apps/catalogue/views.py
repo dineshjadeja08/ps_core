@@ -86,16 +86,24 @@ class ServiceListView(generics.ListAPIView):
             elif service_area is None:
                 queryset = queryset.none()
 
+        city = self.request.query_params.get("city", "").strip()
+        if city and not postal_code:
+            queryset = queryset.filter(
+                service_areas__city__iexact=city,
+                service_areas__is_active=True,
+            ).distinct()
+
         return queryset
 
     @extend_schema(
         summary="List services",
-        description="Returns active public services with optional category, featured, name search, and postal-code availability filters.",
+        description="Returns active public services with optional category, featured, name search, city, and postal-code availability filters.",
         parameters=[
             OpenApiParameter("category", str, description="Filter by category slug."),
             OpenApiParameter("featured", bool, description="Filter featured services."),
             OpenApiParameter("search", str, description="Search by service name."),
             OpenApiParameter("postal_code", str, description="Only return services available at this postal code."),
+            OpenApiParameter("city", str, description="Only return services available in active areas for this city."),
         ],
         responses={status.HTTP_200_OK: ServiceListSerializer(many=True)},
         examples=[

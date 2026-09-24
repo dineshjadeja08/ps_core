@@ -13,14 +13,6 @@ LAUNCH_SERVICE_AREAS = [
     ("Velachery", "Chennai", "Tamil Nadu", "600042"),
     ("OMR Thoraipakkam", "Chennai", "Tamil Nadu", "600096"),
     ("Medavakkam", "Chennai", "Tamil Nadu", "600100"),
-    ("Bangalore Central", "Bangalore", "Karnataka", "560001"),
-    ("Jayanagar", "Bangalore", "Karnataka", "560011"),
-    ("Koramangala", "Bangalore", "Karnataka", "560034"),
-    ("Indiranagar", "Bangalore", "Karnataka", "560038"),
-    ("Marathahalli", "Bangalore", "Karnataka", "560037"),
-    ("Whitefield", "Bangalore", "Karnataka", "560066"),
-    ("Bannerghatta Road", "Bangalore", "Karnataka", "560076"),
-    ("Electronic City", "Bangalore", "Karnataka", "560100"),
     ("Coimbatore Central", "Coimbatore", "Tamil Nadu", "641001"),
     ("RS Puram", "Coimbatore", "Tamil Nadu", "641002"),
     ("Peelamedu", "Coimbatore", "Tamil Nadu", "641004"),
@@ -33,7 +25,7 @@ LAUNCH_SERVICE_AREAS = [
 
 
 class Command(BaseCommand):
-    help = "Seed Purple Squad launch service areas for Chennai, Bangalore, and Coimbatore."
+    help = "Seed Purple Squad launch service areas for Chennai and Coimbatore."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -62,6 +54,6 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"Seeded {len(LAUNCH_SERVICE_AREAS)} active service areas for Chennai, Bangalore, and Coimbatore."
+                f"Seeded {len(LAUNCH_SERVICE_AREAS)} active service areas for Chennai and Coimbatore."
             )
         )

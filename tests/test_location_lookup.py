@@ -5,6 +5,7 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
+from apps.locations.models import ServiceArea
 from apps.locations.providers import LocationProviderError, OlaMapsLocationProvider
 
 
@@ -21,10 +22,36 @@ def authenticated_client():
 
 
 @pytest.mark.django_db
-def test_location_lookup_requires_authentication(client):
+def test_location_lookup_is_available_before_login(client, monkeypatch):
+    monkeypatch.setattr(
+        "apps.locations.views.reverse_geocode",
+        lambda latitude, longitude: {
+            "formatted_address": "Chennai",
+            "house_number": "",
+            "street": "",
+            "locality": "",
+            "city": "Chennai",
+            "state": "Tamil Nadu",
+            "pincode": "600001",
+            "country": "India",
+            "latitude": latitude,
+            "longitude": longitude,
+        },
+    )
     response = client.get("/api/v1/location/reverse-geocode/?lat=13.0827&lng=80.2707")
 
-    assert response.status_code == 401
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_public_service_areas_can_be_filtered_by_city(client):
+    ServiceArea.objects.create(name="Anna Nagar", city="Chennai", state="Tamil Nadu", postal_code="600040")
+    ServiceArea.objects.create(name="Peelamedu", city="Coimbatore", state="Tamil Nadu", postal_code="641004")
+
+    response = client.get("/api/v1/service-areas/?city=Chennai")
+
+    assert response.status_code == 200
+    assert [area["name"] for area in response.json()] == ["Anna Nagar"]
 
 
 @pytest.mark.django_db

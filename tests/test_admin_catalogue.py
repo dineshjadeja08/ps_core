@@ -3,6 +3,7 @@ from decimal import Decimal
 from io import BytesIO
 
 import pytest
+from cloudinary.exceptions import AuthorizationRequired
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -231,6 +232,21 @@ def test_admin_can_upload_cover_image(admin_client, service):
     assert response.status_code == 200
     service.refresh_from_db()
     assert service.cover_image.name.startswith("services/covers/")
+
+
+@pytest.mark.django_db
+def test_cloudinary_rejection_returns_clear_validation_error(admin_client, service, monkeypatch):
+    storage = Service._meta.get_field("cover_image").storage
+    monkeypatch.setattr(storage, "save", lambda *args, **kwargs: (_ for _ in ()).throw(AuthorizationRequired("bad key")))
+
+    response = admin_client.patch(
+        f"/api/v1/admin/services/{service.id}/",
+        {"cover_image": png_upload("cover.png")},
+        format="multipart",
+    )
+
+    assert response.status_code == 400
+    assert "Cloudinary" in response.json()["error"]["message"]
 
 
 @pytest.mark.django_db

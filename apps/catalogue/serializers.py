@@ -3,6 +3,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError
+from cloudinary.exceptions import Error as CloudinaryError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
@@ -32,6 +33,12 @@ def validate_uploaded_image(file_obj):
     if getattr(file_obj, "size", 0) > MAX_IMAGE_SIZE_BYTES:
         raise serializers.ValidationError("Image size cannot exceed 5 MB.")
     return file_obj
+
+
+def raise_media_storage_validation(exc):
+    raise serializers.ValidationError(
+        {"image": ["Image storage rejected the upload. Verify the Cloudinary cloud name, API key, and API secret."]}
+    ) from exc
 
 
 class ServiceCategorySerializer(serializers.ModelSerializer):
@@ -138,12 +145,16 @@ class AdminServiceCategorySerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         try:
             return super().create(validated_data)
+        except CloudinaryError as exc:
+            raise_media_storage_validation(exc)
         except (DjangoValidationError, IntegrityError) as exc:
             raise_drf_validation(exc)
 
     def update(self, instance, validated_data):
         try:
             return super().update(instance, validated_data)
+        except CloudinaryError as exc:
+            raise_media_storage_validation(exc)
         except (DjangoValidationError, IntegrityError) as exc:
             raise_drf_validation(exc)
 
@@ -164,6 +175,18 @@ class ServiceImageSerializer(serializers.ModelSerializer):
             "updated_at",
         )
         read_only_fields = ("id", "service", "created_at", "updated_at")
+
+    def create(self, validated_data):
+        try:
+            return super().create(validated_data)
+        except CloudinaryError as exc:
+            raise_media_storage_validation(exc)
+
+    def update(self, instance, validated_data):
+        try:
+            return super().update(instance, validated_data)
+        except CloudinaryError as exc:
+            raise_media_storage_validation(exc)
 
 
 class AdminServiceSerializer(serializers.ModelSerializer):
@@ -261,6 +284,8 @@ class AdminServiceSerializer(serializers.ModelSerializer):
         validated_data = self._with_synced_advance(validated_data)
         try:
             return super().create(validated_data)
+        except CloudinaryError as exc:
+            raise_media_storage_validation(exc)
         except (DjangoValidationError, IntegrityError) as exc:
             raise_drf_validation(exc)
 
@@ -269,6 +294,8 @@ class AdminServiceSerializer(serializers.ModelSerializer):
         validated_data = self._with_synced_advance(validated_data, instance=instance)
         try:
             return super().update(instance, validated_data)
+        except CloudinaryError as exc:
+            raise_media_storage_validation(exc)
         except (DjangoValidationError, IntegrityError) as exc:
             raise_drf_validation(exc)
 
