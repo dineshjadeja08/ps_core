@@ -35,6 +35,7 @@ from apps.accounts.serializers import (
 )
 from apps.accounts.models import CustomerSupportNote, User, UserRole
 from apps.accounts.permissions import IsAdminRole, IsSuperAdminRole
+from apps.accounts.staff_access import STAFF_ACCESS_PROFILES
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.accounts.services import (
@@ -481,16 +482,19 @@ class AdminStaffViewSet(
 
     @extend_schema(summary="Update staff user for admin", request=AdminStaffUpdateSerializer, responses={status.HTTP_200_OK: AdminStaffSerializer})
     def partial_update(self, request, *args, **kwargs):
-        response = super().partial_update(request, *args, **kwargs)
+        user = self.get_object()
+        serializer = self.get_serializer(user, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
         audit_event(
             action=AuditAction.STAFF_UPDATED,
             actor=request.user,
             request=request,
             resource_type="staff",
-            resource_id=response.data["id"],
+            resource_id=user.id,
             metadata={"fields": list(request.data.keys())},
         )
-        return response
+        return Response(AdminStaffSerializer(user).data)
 
 
 class AdminStaffGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -499,4 +503,15 @@ class AdminStaffGroupViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     @extend_schema(summary="List staff groups for admin", responses={status.HTTP_200_OK: StaffGroupSerializer(many=True)})
     def list(self, request, *args, **kwargs):
-        return Response([{"id": group.id, "name": group.name} for group in Group.objects.order_by("name")])
+        return Response(
+            [
+                {
+                    "id": group.id,
+                    "name": group.name,
+                    "description": STAFF_ACCESS_PROFILES.get(group.name, {}).get(
+                        "description", "Custom staff permission group."
+                    ),
+                }
+                for group in Group.objects.order_by("name")
+            ]
+        )

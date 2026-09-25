@@ -127,6 +127,61 @@ def test_super_admin_can_create_admin_staff(
 
 
 @pytest.mark.django_db
+def test_super_admin_can_update_staff_without_server_error(
+    django_capture_on_commit_callbacks,
+    super_admin_client,
+    admin_user,
+):
+    group = Group.objects.create(name="Customer Support")
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = super_admin_client.patch(
+            f"/api/v1/admin/staff/{admin_user.id}/",
+            {"first_name": "Support", "group_ids": [group.id]},
+            format="json",
+        )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["id"] == str(admin_user.id)
+    assert response.json()["first_name"] == "Support"
+    assert response.json()["groups"] == [{"id": group.id, "name": "Customer Support"}]
+    assert AuditLog.objects.filter(action="STAFF_UPDATED", resource_id=str(admin_user.id)).exists()
+
+
+@pytest.mark.django_db
+def test_customer_support_staff_has_scoped_admin_access():
+    group = Group.objects.create(name="Customer Support")
+    support_user = user_factory("+919630000088", role=UserRole.ADMIN, is_staff=True)
+    support_user.groups.add(group)
+    client = APIClient()
+    client.force_authenticate(user=support_user)
+
+    leads = client.get("/api/v1/admin/leads/")
+    customers = client.get("/api/v1/admin/customers/")
+    payments = client.get("/api/v1/admin/payments/")
+    catalogue = client.get("/api/v1/admin/services/")
+
+    assert leads.status_code == 200
+    assert customers.status_code == 200
+    assert payments.status_code == 403
+    assert catalogue.status_code == 403
+
+
+@pytest.mark.django_db
+def test_super_admin_cannot_remove_own_access(super_admin_client, super_admin):
+    response = super_admin_client.patch(
+        f"/api/v1/admin/staff/{super_admin.id}/",
+        {"role": "ADMIN", "is_staff": False},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    super_admin.refresh_from_db()
+    assert super_admin.role == UserRole.SUPER_ADMIN
+    assert super_admin.is_staff is True
+
+
+@pytest.mark.django_db
 def test_regular_admin_cannot_create_staff(admin_client):
     response = admin_client.post(
         "/api/v1/admin/staff/",

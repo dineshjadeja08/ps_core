@@ -65,6 +65,7 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     customer_profile = CustomerProfileSerializer(read_only=True)
+    groups = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -77,10 +78,17 @@ class UserSerializer(serializers.ModelSerializer):
             "role",
             "is_verified",
             "customer_profile",
+            "groups",
             "created_at",
             "updated_at",
         )
         read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_groups(self, obj):
+        if not obj.is_staff:
+            return []
+        return [{"id": group.id, "name": group.name} for group in obj.groups.all()]
 
 
 class UserProfileUpdateSerializer(serializers.Serializer):
@@ -310,6 +318,11 @@ class AdminStaffCreateSerializer(serializers.ModelSerializer):
     def validate_email(self, value):
         return value or None
 
+    def validate(self, attrs):
+        if attrs.get("role", UserRole.ADMIN) == UserRole.ADMIN and not attrs.get("groups"):
+            raise serializers.ValidationError({"group_ids": "Select at least one employee access profile."})
+        return attrs
+
     def create(self, validated_data):
         groups = validated_data.pop("groups", [])
         password = validated_data.pop("password")
@@ -332,6 +345,21 @@ class AdminStaffUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = ("email", "first_name", "last_name", "role", "is_verified", "is_active", "is_staff", "group_ids")
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        if request and self.instance == request.user:
+            if attrs.get("role", self.instance.role) != UserRole.SUPER_ADMIN:
+                raise serializers.ValidationError({"role": "You cannot remove your own super administrator role."})
+            if not attrs.get("is_active", self.instance.is_active):
+                raise serializers.ValidationError({"is_active": "You cannot deactivate your own account."})
+            if not attrs.get("is_staff", self.instance.is_staff):
+                raise serializers.ValidationError({"is_staff": "You cannot remove your own staff access."})
+        resulting_role = attrs.get("role", self.instance.role)
+        group_ids = attrs.get("group_ids")
+        if resulting_role == UserRole.ADMIN and group_ids is not None and not group_ids:
+            raise serializers.ValidationError({"group_ids": "Select at least one employee access profile."})
+        return attrs
+
     def update(self, instance, validated_data):
         group_ids = validated_data.pop("group_ids", None)
         for field, value in validated_data.items():
@@ -345,3 +373,4 @@ class AdminStaffUpdateSerializer(serializers.ModelSerializer):
 class StaffGroupSerializer(serializers.Serializer):
     id = serializers.IntegerField()
     name = serializers.CharField()
+    description = serializers.CharField(required=False)
