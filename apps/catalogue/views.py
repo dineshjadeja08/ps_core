@@ -63,7 +63,7 @@ class ServiceListView(generics.ListAPIView):
         queryset = (
             Service.objects.select_related("category")
             .filter(is_active=True, category__is_active=True)
-            .order_by("category__display_order", "name")
+            .order_by("category__display_order", "display_order", "name")
         )
 
         category = self.request.query_params.get("category")
@@ -263,7 +263,7 @@ class AdminServiceViewSet(viewsets.ModelViewSet):
             action = AuditAction.SERVICE_PRICE_CHANGED
         elif any(
             getattr(service, field) != getattr(previous, field)
-            for field in ("cover_image", "landing_thumbnail", "popup_cover_image", "list_image")
+            for field in ("cover_image", "landing_thumbnail", "popup_cover_image", "popup_content_image", "list_image")
         ):
             action = AuditAction.SERVICE_IMAGE_CHANGED
         elif not service.is_active:

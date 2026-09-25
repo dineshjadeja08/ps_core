@@ -256,6 +256,7 @@ def test_admin_can_upload_service_presentation_images(admin_client, service):
         {
             "landing_thumbnail": png_upload("landing.png"),
             "popup_cover_image": png_upload("popup.png"),
+            "popup_content_image": png_upload("popup-content.png"),
             "list_image": png_upload("list.png"),
         },
         format="multipart",
@@ -265,10 +266,12 @@ def test_admin_can_upload_service_presentation_images(admin_client, service):
     payload = response.json()
     assert payload["landing_thumbnail"].endswith("landing.png")
     assert payload["popup_cover_image"].endswith("popup.png")
+    assert payload["popup_content_image"].endswith("popup-content.png")
     assert payload["list_image"].endswith("list.png")
     service.refresh_from_db()
     assert service.landing_thumbnail.name.startswith("services/landing-thumbnails/")
     assert service.popup_cover_image.name.startswith("services/popup-covers/")
+    assert service.popup_content_image.name.startswith("services/popup-content/")
     assert service.list_image.name.startswith("services/list-images/")
 
 

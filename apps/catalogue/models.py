@@ -57,6 +57,7 @@ class Service(BaseModel):
     cover_image = models.ImageField(upload_to="services/covers/", blank=True)
     landing_thumbnail = models.ImageField(upload_to="services/landing-thumbnails/", blank=True)
     popup_cover_image = models.ImageField(upload_to="services/popup-covers/", blank=True)
+    popup_content_image = models.ImageField(upload_to="services/popup-content/", blank=True)
     list_image = models.ImageField(upload_to="services/list-images/", blank=True)
     is_featured = models.BooleanField(default=False)
     is_popular = models.BooleanField(default=False)

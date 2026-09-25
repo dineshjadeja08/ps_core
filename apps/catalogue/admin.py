@@ -57,6 +57,7 @@ class ServiceAdmin(admin.ModelAdmin):
         "cover_preview",
         "landing_thumbnail_preview",
         "popup_cover_preview",
+        "popup_content_preview",
         "list_image_preview",
     )
     fieldsets = (
@@ -73,6 +74,8 @@ class ServiceAdmin(admin.ModelAdmin):
                     "landing_thumbnail_preview",
                     "popup_cover_image",
                     "popup_cover_preview",
+                    "popup_content_image",
+                    "popup_content_preview",
                     "list_image",
                     "list_image_preview",
                 )
@@ -101,6 +104,10 @@ class ServiceAdmin(admin.ModelAdmin):
     @admin.display(description="Popup cover preview")
     def popup_cover_preview(self, obj):
         return self._image_preview(obj.popup_cover_image)
+
+    @admin.display(description="Popup content preview")
+    def popup_content_preview(self, obj):
+        return self._image_preview(obj.popup_content_image)
 
     @admin.display(description="List image preview")
     def list_image_preview(self, obj):

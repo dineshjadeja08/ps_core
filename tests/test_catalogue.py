@@ -74,7 +74,19 @@ def test_service_listing(client, ac_category):
     assert payload["results"][0]["landing_group"] == "Repair & Services"
     assert "landing_thumbnail" in payload["results"][0]
     assert "popup_cover_image" in payload["results"][0]
+    assert "popup_content_image" in payload["results"][0]
     assert "list_image" in payload["results"][0]
+
+
+@pytest.mark.django_db
+def test_service_listing_uses_saved_display_order(client, ac_category):
+    second = create_service(ac_category, name="Alphabetically First", slug="alphabetically-first", display_order=2)
+    first = create_service(ac_category, name="Alphabetically Last", slug="alphabetically-last", display_order=1)
+
+    response = client.get("/api/v1/services/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["results"]] == [str(first.id), str(second.id)]
 
 
 @pytest.mark.django_db

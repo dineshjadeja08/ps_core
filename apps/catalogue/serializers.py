@@ -68,6 +68,7 @@ class ServiceListSerializer(serializers.ModelSerializer):
     cover_image = serializers.ImageField(read_only=True)
     landing_thumbnail = serializers.ImageField(read_only=True)
     popup_cover_image = serializers.ImageField(read_only=True)
+    popup_content_image = serializers.ImageField(read_only=True)
     list_image = serializers.ImageField(read_only=True)
     effective_price = serializers.SerializerMethodField()
 
@@ -93,6 +94,7 @@ class ServiceListSerializer(serializers.ModelSerializer):
             "cover_image",
             "landing_thumbnail",
             "popup_cover_image",
+            "popup_content_image",
             "list_image",
             "is_featured",
             "is_popular",
@@ -194,6 +196,7 @@ class AdminServiceSerializer(serializers.ModelSerializer):
     cover_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
     landing_thumbnail = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
     popup_cover_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
+    popup_content_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
     list_image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
     images = ServiceImageSerializer(many=True, read_only=True)
     effective_price = serializers.SerializerMethodField()
@@ -224,6 +227,7 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             "cover_image",
             "landing_thumbnail",
             "popup_cover_image",
+            "popup_content_image",
             "list_image",
             "images",
             "is_featured",
@@ -246,6 +250,9 @@ class AdminServiceSerializer(serializers.ModelSerializer):
         return validate_uploaded_image(value)
 
     def validate_popup_cover_image(self, value):
+        return validate_uploaded_image(value)
+
+    def validate_popup_content_image(self, value):
         return validate_uploaded_image(value)
 
     def validate_list_image(self, value):
