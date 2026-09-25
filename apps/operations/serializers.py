@@ -295,6 +295,9 @@ class AdminDashboardSummarySerializer(serializers.Serializer):
     unassigned_bookings = serializers.IntegerField()
     upcoming_services = serializers.IntegerField()
     failed_notifications = serializers.IntegerField()
+    recent_bookings = BookingSerializer(many=True)
+    pending_payments = BookingSerializer(many=True)
+    unassigned_items = BookingSerializer(many=True)
 
 
 class AdminGlobalSearchSerializer(serializers.Serializer):

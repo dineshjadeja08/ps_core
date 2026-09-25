@@ -2,8 +2,9 @@ import csv
 from datetime import timedelta
 
 from django.conf import settings
+from django.core.cache import cache
 from django.http import HttpResponse
-from django.db.models import Avg, Q, Sum
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import mixins, status, viewsets
@@ -449,6 +450,11 @@ class AdminDashboardSummaryView(APIView):
     @extend_schema(summary="Get admin dashboard summary", responses={status.HTTP_200_OK: AdminDashboardSummarySerializer})
     def get(self, request):
         today = timezone.localdate()
+        cache_key = f"admin-dashboard-summary:v2:{today.isoformat()}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
         now = timezone.now()
         upcoming_until = today + timedelta(days=7)
         active_booking_statuses = {
@@ -464,19 +470,49 @@ class AdminDashboardSummaryView(APIView):
             BookingStatus.REFUNDED,
         }
 
-        successful_payments_today = Payment.objects.filter(
+        payment_stats = Payment.objects.filter(
             status=PaymentRecordStatus.SUCCESS,
             paid_at__date=today,
             payment_type__in=[PaymentType.BOOKING_ADVANCE, PaymentType.BALANCE],
+        ).aggregate(daily_gmv=Sum("amount"))
+        daily_gmv = payment_stats["daily_gmv"] or 0
+        booking_stats = Booking.objects.aggregate(
+            active_bookings_count=Count("id", filter=Q(booking_status__in=active_booking_statuses)),
+            bookings_today=Count("id", filter=Q(created_at__date=today)),
+            confirmed_bookings=Count("id", filter=Q(booking_status=BookingStatus.CONFIRMED)),
+            payment_pending_bookings=Count("id", filter=Q(payment_status=PaymentStatus.UNPAID)),
+            unassigned_bookings=Count(
+                "id",
+                filter=Q(booking_status__in=active_booking_statuses, assigned_technician__isnull=True),
+            ),
+            upcoming_services=Count(
+                "id",
+                filter=Q(service_date__gte=today, service_date__lte=upcoming_until)
+                & ~Q(booking_status__in=upcoming_excluded_statuses),
+            ),
         )
-        daily_gmv = successful_payments_today.aggregate(total=Sum("amount"))["total"] or 0
-        active_bookings = Booking.objects.filter(booking_status__in=active_booking_statuses)
-        unassigned_bookings = active_bookings.filter(assigned_technician__isnull=True)
-        active_leads = Lead.objects.filter(status__in=ACTIVE_LEAD_STATUSES)
+        lead_stats = Lead.objects.aggregate(
+            open_unassigned_leads_count=Count(
+                "id", filter=Q(status__in=ACTIVE_LEAD_STATUSES, assigned_staff__isnull=True)
+            ),
+            leads_today=Count("id", filter=Q(created_at__date=today)),
+            follow_ups_due=Count(
+                "id", filter=Q(status__in=ACTIVE_LEAD_STATUSES, follow_up_at__lte=now)
+            ),
+        )
+        booking_base = Booking.objects.select_related(
+            "customer", "customer__customer_profile", "service", "time_slot", "assigned_technician"
+        ).prefetch_related("status_history")
+        recent_bookings = booking_base.order_by("-created_at")[:6]
+        pending_payments = booking_base.filter(payment_status=PaymentStatus.UNPAID).order_by("-created_at")[:6]
+        unassigned_items = booking_base.filter(
+            booking_status__in=active_booking_statuses,
+            assigned_technician__isnull=True,
+        ).order_by("service_date", "time_slot__start_time")[:6]
 
         payload = {
             "daily_gmv": daily_gmv,
-            "active_bookings_count": active_bookings.count(),
+            "active_bookings_count": booking_stats["active_bookings_count"],
             "available_technicians_count": TechnicianProfile.objects.filter(
                 user__is_active=True,
                 is_active=True,
@@ -484,23 +520,23 @@ class AdminDashboardSummaryView(APIView):
                 availability_status=TechnicianAvailabilityStatus.AVAILABLE,
                 background_verification_status=TechnicianVerificationStatus.VERIFIED,
             ).count(),
-            "open_unassigned_leads_count": active_leads.filter(assigned_staff__isnull=True).count(),
-            "leads_today": Lead.objects.filter(created_at__date=today).count(),
-            "follow_ups_due": active_leads.filter(follow_up_at__lte=now).count(),
-            "bookings_today": Booking.objects.filter(created_at__date=today).count(),
-            "confirmed_bookings": Booking.objects.filter(booking_status=BookingStatus.CONFIRMED).count(),
-            "payment_pending_bookings": Booking.objects.filter(payment_status=PaymentStatus.UNPAID).count(),
+            "open_unassigned_leads_count": lead_stats["open_unassigned_leads_count"],
+            "leads_today": lead_stats["leads_today"],
+            "follow_ups_due": lead_stats["follow_ups_due"],
+            "bookings_today": booking_stats["bookings_today"],
+            "confirmed_bookings": booking_stats["confirmed_bookings"],
+            "payment_pending_bookings": booking_stats["payment_pending_bookings"],
             "revenue_today": daily_gmv,
-            "unassigned_bookings": unassigned_bookings.count(),
-            "upcoming_services": Booking.objects.filter(
-                service_date__gte=today,
-                service_date__lte=upcoming_until,
-            )
-            .exclude(booking_status__in=upcoming_excluded_statuses)
-            .count(),
+            "unassigned_bookings": booking_stats["unassigned_bookings"],
+            "upcoming_services": booking_stats["upcoming_services"],
             "failed_notifications": Notification.objects.filter(status=NotificationStatus.FAILED).count(),
+            "recent_bookings": recent_bookings,
+            "pending_payments": pending_payments,
+            "unassigned_items": unassigned_items,
         }
-        return Response(AdminDashboardSummarySerializer(payload).data)
+        data = AdminDashboardSummarySerializer(payload, context={"request": request}).data
+        cache.set(cache_key, data, timeout=30)
+        return Response(data)
 
 
 class AdminGlobalSearchView(APIView):

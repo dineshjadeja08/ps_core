@@ -1,5 +1,6 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from django.db import transaction
+from django.db.models import Count, Q
 from rest_framework import generics, status, viewsets
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -13,6 +14,7 @@ from apps.catalogue.models import Package, Service, ServiceCategory, ServiceImag
 from apps.catalogue.serializers import (
     AdminPackageSerializer,
     AdminServiceCategorySerializer,
+    AdminServiceListSerializer,
     AdminServiceSerializer,
     ServiceCategorySerializer,
     ServiceDetailSerializer,
@@ -186,7 +188,7 @@ class AdminServiceCategoryViewSet(viewsets.ModelViewSet):
     lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_queryset(self):
-        return ServiceCategory.objects.all().order_by("display_order", "name")
+        return ServiceCategory.objects.annotate(service_count=Count("services")).order_by("display_order", "name")
 
     def perform_create(self, serializer):
         category = serializer.save()
@@ -237,8 +239,22 @@ class AdminServiceViewSet(viewsets.ModelViewSet):
     lookup_field = "id"
     lookup_value_regex = "[0-9a-f-]{36}"
 
+    def get_serializer_class(self):
+        return AdminServiceListSerializer if self.action == "list" else AdminServiceSerializer
+
     def get_queryset(self):
-        return Service.objects.select_related("category").prefetch_related("images").all().order_by(
+        queryset = Service.objects.select_related("category").all()
+        if self.action != "list":
+            queryset = queryset.prefetch_related("images")
+        search = self.request.query_params.get("search", "").strip()
+        category = self.request.query_params.get("category", "").strip()
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search) | Q(slug__icontains=search) | Q(short_description__icontains=search)
+            )
+        if category:
+            queryset = queryset.filter(category_id=category)
+        return queryset.order_by(
             "category__display_order",
             "display_order",
             "name",

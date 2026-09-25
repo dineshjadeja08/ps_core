@@ -119,6 +119,7 @@ class AdminServiceCategorySerializer(serializers.ModelSerializer):
     image = serializers.ImageField(required=False, allow_empty_file=False, validators=[validate_uploaded_image])
     image_url = serializers.SerializerMethodField()
     external_image_url = serializers.URLField(source="image_url", required=False, allow_blank=True, write_only=True)
+    service_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = ServiceCategory
@@ -134,6 +135,7 @@ class AdminServiceCategorySerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
+            "service_count",
         )
         read_only_fields = ("id", "created_at", "updated_at")
 
@@ -327,6 +329,18 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             validated_data["advance_amount"] = advance_value
         validated_data["advance_payment_value"] = advance_value
         return validated_data
+
+
+class AdminServiceListSerializer(AdminServiceSerializer):
+    """Lean list payload; gallery images are fetched only when the editor opens them."""
+
+    images = serializers.SerializerMethodField()
+
+    class Meta(AdminServiceSerializer.Meta):
+        fields = AdminServiceSerializer.Meta.fields
+
+    def get_images(self, obj):
+        return []
 
 
 class PackageItemSerializer(serializers.ModelSerializer):
