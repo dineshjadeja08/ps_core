@@ -1,27 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from apps.locations.models import ServiceArea
-
-
-LAUNCH_SERVICE_AREAS = [
-    ("Chennai Central", "Chennai", "Tamil Nadu", "600001"),
-    ("Chennai Egmore", "Chennai", "Tamil Nadu", "600008"),
-    ("T Nagar", "Chennai", "Tamil Nadu", "600017"),
-    ("Adyar", "Chennai", "Tamil Nadu", "600020"),
-    ("Mylapore", "Chennai", "Tamil Nadu", "600004"),
-    ("Anna Nagar", "Chennai", "Tamil Nadu", "600040"),
-    ("Velachery", "Chennai", "Tamil Nadu", "600042"),
-    ("OMR Thoraipakkam", "Chennai", "Tamil Nadu", "600096"),
-    ("Medavakkam", "Chennai", "Tamil Nadu", "600100"),
-    ("Coimbatore Central", "Coimbatore", "Tamil Nadu", "641001"),
-    ("RS Puram", "Coimbatore", "Tamil Nadu", "641002"),
-    ("Peelamedu", "Coimbatore", "Tamil Nadu", "641004"),
-    ("Gandhipuram", "Coimbatore", "Tamil Nadu", "641012"),
-    ("Race Course", "Coimbatore", "Tamil Nadu", "641018"),
-    ("Saravanampatti", "Coimbatore", "Tamil Nadu", "641035"),
-    ("Saibaba Colony", "Coimbatore", "Tamil Nadu", "641011"),
-    ("Vadavalli", "Coimbatore", "Tamil Nadu", "641041"),
-]
+from apps.locations.service_area_data import LAUNCH_SERVICE_AREAS
 
 
 class Command(BaseCommand):
