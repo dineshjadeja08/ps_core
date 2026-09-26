@@ -126,8 +126,9 @@ class CartView(APIView):
             if requested_quantity and not row.booking_id and row.quantity != requested_quantity:
                 row.quantity = requested_quantity
                 row.save(update_fields=["quantity", "updated_at"])
-            if created:
-                mark_cart_added(customer=request.user, service=service, request=request)
+            # Keep the lead current even when a guest cart merges into an existing
+            # account cart row or the same service is added again later.
+            mark_cart_added(customer=request.user, service=service, request=request)
             booking_id = serializer.validated_data["booking_ids"].get(str(service.id))
             if booking_id and not row.booking_id:
                 from apps.bookings.models import Booking

@@ -37,6 +37,38 @@ def test_adding_account_cart_item_creates_admin_lead(authenticated_client, custo
     assert lead.funnel_status == LeadFunnelStatus.CART_ADDED
     assert lead.activities.filter(action=LeadActivityAction.ADDED_TO_CART).exists()
 
+
+def test_adding_existing_cart_item_refreshes_admin_lead(authenticated_client, customer, service):
+    customer.first_name = "Live"
+    customer.last_name = "Customer"
+    customer.save()
+    assert add(authenticated_client, service).status_code == 200
+    lead = Lead.objects.get(primary_mobile=customer.phone_number, required_service=service)
+    first_activity_count = lead.activities.filter(action=LeadActivityAction.ADDED_TO_CART).count()
+
+    assert add(authenticated_client, service).status_code == 200
+    lead.refresh_from_db()
+    assert lead.customer_name == "Live Customer"
+    assert lead.activities.filter(action=LeadActivityAction.ADDED_TO_CART).count() == first_activity_count + 1
+
+
+def test_name_and_mobile_login_cart_add_appears_in_admin_leads(service):
+    client = APIClient()
+    login = client.post(
+        "/api/v1/auth/customer-access/",
+        {"name": "Launch Customer", "phone_number": "9876543210"},
+        format="json",
+    )
+    assert login.status_code == 200
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['tokens']['access']}")
+
+    response = add(client, service)
+
+    assert response.status_code == 200
+    lead = Lead.objects.get(primary_mobile="+919876543210", required_service=service)
+    assert lead.customer_name == "Launch Customer"
+    assert lead.funnel_status == LeadFunnelStatus.CART_ADDED
+
 def test_cart_isolated_between_customers(authenticated_client, customer, other_customer, service):
     add(authenticated_client, service)
     other = APIClient(); other.force_authenticate(other_customer)

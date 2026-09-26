@@ -2,6 +2,7 @@ from django.urls import path
 
 from apps.accounts.views import (
     DevPhoneLoginView,
+    CustomerAccessView,
     AdminMfaVerifyView,
     FirebaseLoginView,
     LogoutView,
@@ -15,6 +16,7 @@ from apps.accounts.views import (
 
 urlpatterns = [
     path("firebase/", FirebaseLoginView.as_view(), name="auth-firebase"),
+    path("customer-access/", CustomerAccessView.as_view(), name="auth-customer-access"),
     path("otp/send/", OtpSendView.as_view(), name="auth-otp-send"),
     path("otp/verify/", OtpVerifyView.as_view(), name="auth-otp-verify"),
     path("password/signup/", PasswordSignupView.as_view(), name="auth-password-signup"),

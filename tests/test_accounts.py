@@ -74,6 +74,50 @@ def auth_response(client, id_token="valid-token"):
 
 
 @pytest.mark.django_db
+def test_customer_access_saves_name_and_mobile_without_otp_or_password():
+    client = APIClient()
+    first = client.post(
+        "/api/v1/auth/customer-access/",
+        {"name": "Viknesh Customer", "phone_number": "9629025814"},
+        format="json",
+    )
+    second = client.post(
+        "/api/v1/auth/customer-access/",
+        {"name": "Viknesh Updated", "phone_number": "+919629025814"},
+        format="json",
+    )
+
+    assert first.status_code == 200
+    assert first.json()["created"] is True
+    assert first.json()["tokens"]["access"]
+    assert second.status_code == 200
+    assert second.json()["created"] is False
+    user = User.objects.get(phone_number="+919629025814")
+    assert user.first_name == "Viknesh"
+    assert user.last_name == "Updated"
+    assert user.has_usable_password() is False
+    assert user.customer_profile.display_name == "Viknesh Updated"
+
+
+@pytest.mark.django_db
+def test_customer_access_cannot_login_staff_account():
+    User.objects.create_user(
+        phone_number="+919629025814",
+        password="StrongPass123",
+        role=UserRole.ADMIN,
+        is_staff=True,
+    )
+    response = APIClient().post(
+        "/api/v1/auth/customer-access/",
+        {"name": "Not Admin", "phone_number": "+919629025814"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "tokens" not in response.json()
+
+
+@pytest.mark.django_db
 def test_first_login_creates_customer():
     response = auth_response(APIClient())
 

@@ -81,6 +81,38 @@ def authenticate_verified_phone(phone_number: str):
 
 
 @transaction.atomic
+def authenticate_customer_access(*, name: str, phone_number: str):
+    """Temporary customer access using name and mobile, without OTP or password."""
+    phone_digits = "".join(character for character in str(phone_number) if character.isdigit())
+    if len(phone_digits) == 10:
+        phone_number = f"+91{phone_digits}"
+    phone_number = normalize_phone_number(phone_number)
+    normalized_name = " ".join(name.strip().split())
+    if len(normalized_name) < 2:
+        raise serializers.ValidationError({"name": "Enter your name."})
+
+    user = User.objects.select_for_update().filter(phone_number=phone_number).first()
+    created = user is None
+    if user is None:
+        user = User(phone_number=phone_number, role=UserRole.CUSTOMER, is_active=True, is_verified=False)
+        user.set_unusable_password()
+    elif user.role != UserRole.CUSTOMER:
+        raise serializers.ValidationError("Staff accounts must use their secure login portal.")
+    elif not user.is_active:
+        raise serializers.ValidationError("This account is disabled.")
+
+    name_parts = normalized_name.split(" ", 1)
+    user.first_name = name_parts[0]
+    user.last_name = name_parts[1] if len(name_parts) > 1 else ""
+    user.save()
+    profile, _ = CustomerProfile.objects.get_or_create(user=user)
+    if profile.display_name != normalized_name:
+        profile.display_name = normalized_name
+        profile.save(update_fields=["display_name", "updated_at"])
+    return _login_result(user=user, created=created)
+
+
+@transaction.atomic
 def register_with_password(phone_number: str, password: str, **profile_fields):
     phone_number = normalize_phone_number(phone_number)
     existing_user = User.objects.filter(phone_number=phone_number).first()

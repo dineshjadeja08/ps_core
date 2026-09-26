@@ -238,7 +238,7 @@ def upsert_lead(
         "payment_status": lead.payment_status,
     }
     lead.customer = lead.customer or customer
-    lead.customer_name = lead.customer_name or customer_name or mobile_number
+    lead.customer_name = customer_name or lead.customer_name or mobile_number
     lead.source = source if created else lead.source
     lead.funnel_status = _max_funnel_status(lead.funnel_status, funnel_status)
     lead.payment_status = _max_payment_status(lead.payment_status, payment_status)

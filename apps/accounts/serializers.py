@@ -15,6 +15,11 @@ class DevPhoneLoginRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 
 
+class CustomerAccessRequestSerializer(serializers.Serializer):
+    name = serializers.CharField(min_length=2, max_length=150, trim_whitespace=True)
+    phone_number = serializers.CharField()
+
+
 class PasswordSignupRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True, min_length=8, max_length=128, trim_whitespace=False)

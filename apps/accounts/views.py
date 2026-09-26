@@ -20,6 +20,7 @@ from apps.accounts.serializers import (
     AdminStaffUpdateSerializer,
     AdminMfaVerifyRequestSerializer,
     CustomerSupportNoteSerializer,
+    CustomerAccessRequestSerializer,
     DevPhoneLoginRequestSerializer,
     FirebaseLoginRequestSerializer,
     AuthLoginResponseSerializer,
@@ -40,6 +41,7 @@ from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.accounts.services import (
     authenticate_dev_phone,
+    authenticate_customer_access,
     authenticate_with_firebase,
     authenticate_with_otp,
     authenticate_with_password,
@@ -153,6 +155,31 @@ class DevPhoneLoginView(APIView):
             )
 
         result = authenticate_dev_phone(phone_number)
+        return Response(
+            {
+                "user": UserSerializer(result["user"]).data,
+                "tokens": result["tokens"],
+                "created": result["created"],
+            }
+        )
+
+
+class CustomerAccessView(APIView):
+    authentication_classes = []
+    permission_classes = []
+    throttle_scope = "auth"
+    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
+
+    @extend_schema(
+        summary="Customer access with name and mobile",
+        description="Creates or updates a customer and returns a session without OTP or password.",
+        request=CustomerAccessRequestSerializer,
+        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
+    )
+    def post(self, request):
+        serializer = CustomerAccessRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = authenticate_customer_access(**serializer.validated_data)
         return Response(
             {
                 "user": UserSerializer(result["user"]).data,
