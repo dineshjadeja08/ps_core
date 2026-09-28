@@ -40,6 +40,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin, BaseModel):
     username = None
     phone_number = models.CharField(max_length=16, unique=True)
+    firebase_uid = models.CharField(max_length=128, unique=True, null=True, blank=True)
     email = models.EmailField(blank=True, null=True)
     first_name = models.CharField(max_length=150, blank=True)
     last_name = models.CharField(max_length=150, blank=True)
@@ -91,32 +92,3 @@ class CustomerSupportNote(BaseModel):
 
     def __str__(self):
         return f"Support note for {self.customer.phone_number}"
-
-
-class OtpDeliveryChannel(models.TextChoices):
-    SMS = "SMS", "SMS"
-    WHATSAPP = "WHATSAPP", "WhatsApp"
-
-
-class LoginOtpChallenge(BaseModel):
-    mobile = models.CharField(max_length=15, unique=True)
-    channel = models.CharField(max_length=16, choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.SMS)
-    code_hash = models.CharField(max_length=64, blank=True)
-    expires_at = models.DateTimeField(null=True, blank=True)
-    sent_at = models.DateTimeField(null=True, blank=True)
-    attempts = models.PositiveSmallIntegerField(default=0)
-    consumed_at = models.DateTimeField(null=True, blank=True)
-
-
-class AdminMfaChallenge(BaseModel):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="admin_mfa_challenges")
-    channel = models.CharField(max_length=16, choices=OtpDeliveryChannel.choices)
-    expires_at = models.DateTimeField()
-    consumed_at = models.DateTimeField(null=True, blank=True)
-
-    class Meta:
-        ordering = ("-created_at",)
-        indexes = [
-            models.Index(fields=["user", "expires_at"]),
-            models.Index(fields=["expires_at", "consumed_at"]),
-        ]

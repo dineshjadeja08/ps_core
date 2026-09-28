@@ -184,10 +184,6 @@ REST_FRAMEWORK = {
         "webhook": env("DRF_THROTTLE_WEBHOOK", default="120/min"),
         "login_ip": env("DRF_THROTTLE_LOGIN_IP", default="10/min"),
         "login_phone": env("DRF_THROTTLE_LOGIN_PHONE", default="5/min"),
-        "otp_send_ip": env("DRF_THROTTLE_OTP_SEND_IP", default="10/hour"),
-        "otp_send_phone": env("DRF_THROTTLE_OTP_SEND_PHONE", default="5/hour"),
-        "otp_verify_ip": env("DRF_THROTTLE_OTP_VERIFY_IP", default="30/hour"),
-        "otp_verify_phone": env("DRF_THROTTLE_OTP_VERIFY_PHONE", default="10/hour"),
         "payment_ip": env("DRF_THROTTLE_PAYMENT_IP", default="30/min"),
         "payment_user": env("DRF_THROTTLE_PAYMENT_USER", default="20/min"),
         "location": env("DRF_THROTTLE_LOCATION", default="60/min"),
@@ -196,8 +192,8 @@ REST_FRAMEWORK = {
     "NUM_PROXIES": env.int("DRF_NUM_PROXIES", default=0),
 }
 
-LOCATION_PROVIDER = env("LOCATION_PROVIDER", default="apps.locations.providers.OlaMapsLocationProvider")
-OLA_MAPS_API_KEY = env("OLA_MAPS_API_KEY", default="")
+LOCATION_PROVIDER = env("LOCATION_PROVIDER", default="apps.locations.providers.GoogleMapsLocationProvider")
+GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
 LOCATION_PROVIDER_TIMEOUT_SECONDS = env.int("LOCATION_PROVIDER_TIMEOUT_SECONDS", default=8)
 LOCATION_REVERSE_CACHE_SECONDS = env.int("LOCATION_REVERSE_CACHE_SECONDS", default=86400)
 LOCATION_AUTOCOMPLETE_CACHE_SECONDS = env.int("LOCATION_AUTOCOMPLETE_CACHE_SECONDS", default=300)
@@ -230,39 +226,13 @@ SIMPLE_JWT = {
     "CHECK_REVOKE_TOKEN": True,
 }
 
+FIREBASE_CREDENTIALS_PATH = env("FIREBASE_CREDENTIALS_PATH", default="")
+FIREBASE_PROJECT_ID = env("FIREBASE_PROJECT_ID", default="")
 FIREBASE_AUTH_PROVIDER = env(
     "FIREBASE_AUTH_PROVIDER",
     default="apps.accounts.auth.providers.FirebaseAdminAuthProvider",
 )
-OTP_AUTH_PROVIDER = env("OTP_AUTH_PROVIDER", default="apps.accounts.otp.providers.Msg91OtpProvider")
-MSG91_AUTH_KEY = env("MSG91_AUTH_KEY", default="")
-MSG91_TEMPLATE_ID = env("MSG91_TEMPLATE_ID", default="")
-MSG91_SEND_OTP_URL = env("MSG91_SEND_OTP_URL", default="https://control.msg91.com/api/v5/otp")
-MSG91_OTP_EXPIRY_MINUTES = env.int("MSG91_OTP_EXPIRY_MINUTES", default=5)
-ADMIN_MFA_TTL_MINUTES = env.int("ADMIN_MFA_TTL_MINUTES", default=5)
-# Temporary launch setting: password-only administrator login remains available
-# while the WhatsApp MFA template is pending approval. Set true to restore MFA.
 ADMIN_MFA_ENABLED = env.bool("ADMIN_MFA_ENABLED", default=False)
-MSG91_WHATSAPP_OTP_URL = env(
-    "MSG91_WHATSAPP_OTP_URL",
-    default="https://api.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/",
-)
-MSG91_WHATSAPP_INTEGRATED_NUMBER = env("MSG91_WHATSAPP_INTEGRATED_NUMBER", default="")
-MSG91_WHATSAPP_TEMPLATE_NAME = env("MSG91_WHATSAPP_TEMPLATE_NAME", default="")
-MSG91_WHATSAPP_TEMPLATE_NAMESPACE = env("MSG91_WHATSAPP_TEMPLATE_NAMESPACE", default="")
-MSG91_WHATSAPP_TEMPLATE_LANGUAGE = env("MSG91_WHATSAPP_TEMPLATE_LANGUAGE", default="en")
-MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME = env("MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME", default="")
-MSG91_WHATSAPP_TEMPLATE_BOOKING_CONFIRMED = env("MSG91_WHATSAPP_TEMPLATE_BOOKING_CONFIRMED", default="")
-MSG91_WHATSAPP_TEMPLATE_PAYMENT_SUCCESSFUL = env("MSG91_WHATSAPP_TEMPLATE_PAYMENT_SUCCESSFUL", default="")
-MSG91_WHATSAPP_TEMPLATE_PAYMENT_FAILED = env("MSG91_WHATSAPP_TEMPLATE_PAYMENT_FAILED", default="")
-MSG91_WHATSAPP_TEMPLATE_TECHNICIAN_ASSIGNED = env("MSG91_WHATSAPP_TEMPLATE_TECHNICIAN_ASSIGNED", default="")
-MSG91_WHATSAPP_TEMPLATE_BOOKING_RESCHEDULED = env("MSG91_WHATSAPP_TEMPLATE_BOOKING_RESCHEDULED", default="")
-MSG91_WHATSAPP_TEMPLATE_BOOKING_CANCELLED = env("MSG91_WHATSAPP_TEMPLATE_BOOKING_CANCELLED", default="")
-MSG91_WHATSAPP_TEMPLATE_REFUND_INITIATED = env("MSG91_WHATSAPP_TEMPLATE_REFUND_INITIATED", default="")
-MSG91_WHATSAPP_TEMPLATE_REFUND_COMPLETED = env("MSG91_WHATSAPP_TEMPLATE_REFUND_COMPLETED", default="")
-MSG91_WEBHOOK_SECRET = env("MSG91_WEBHOOK_SECRET", default="")
-TURNSTILE_SECRET_KEY = env("TURNSTILE_SECRET_KEY", default="")
-REQUIRE_TURNSTILE_FOR_OTP = env.bool("REQUIRE_TURNSTILE_FOR_OTP", default=False)
 BUSINESS_LEGAL_NAME = env("BUSINESS_LEGAL_NAME", default="Purple Squad")
 BUSINESS_GSTIN = env("BUSINESS_GSTIN", default="")
 BUSINESS_ADDRESS = env("BUSINESS_ADDRESS", default="Chennai, Tamil Nadu, India")
@@ -278,7 +248,7 @@ BOOKING_CUSTOMER_RESCHEDULE_MIN_HOURS = env.int("BOOKING_CUSTOMER_RESCHEDULE_MIN
 BOOKING_REQUIRE_BALANCE_BEFORE_COMPLETION = env.bool("BOOKING_REQUIRE_BALANCE_BEFORE_COMPLETION", default=True)
 NOTIFICATION_PROVIDER = env(
     "NOTIFICATION_PROVIDER",
-    default="apps.notifications.providers.LocalNotificationProvider",
+    default="apps.notifications.fcm.FirebaseCloudMessagingProvider",
 )
 SHOW_API_DOCS = env.bool("SHOW_API_DOCS", default=DEBUG)
 ENABLE_DJANGO_ADMIN = env.bool("ENABLE_DJANGO_ADMIN", default=DEBUG)

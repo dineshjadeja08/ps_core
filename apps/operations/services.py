@@ -257,7 +257,7 @@ def upsert_lead(
 
 
 @transaction.atomic
-def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.WHATSAPP, payment_scope="ADVANCE"):
+def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.PUSH, payment_scope="ADVANCE"):
     if lead.payment_status == LeadPaymentStatus.PAID:
         raise serializers.ValidationError("Lead is already paid.")
     amount = lead.quoted_amount if payment_scope == "FULL" else lead.advance_amount
@@ -324,9 +324,18 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
 
 @transaction.atomic
 def convert_lead_to_work_order(*, lead, performed_by, booking=None, notes=""):
+    lead = Lead.objects.select_for_update().select_related("pending_booking", "required_service").get(pk=lead.pk)
     if lead.status == LeadStatus.CONVERTED and lead.converted_booking_id:
         return lead
+
+    booking = booking or lead.pending_booking
     create_from_lead = booking is None
+    if booking is not None:
+        if lead.required_service_id and booking.service_id != lead.required_service_id:
+            raise serializers.ValidationError(
+                {"booking_id": ["The booking service does not match the lead service."]}
+            )
+
     if create_from_lead:
         if not lead.required_service_id:
             raise serializers.ValidationError("Select a service before creating a work order.")
@@ -363,7 +372,12 @@ def convert_lead_to_work_order(*, lead, performed_by, booking=None, notes=""):
                 "is_default": not customer.addresses.exists(),
             },
         )
-        start_time = datetime.strptime(lead.preferred_slot, "%H:%M").time()
+        try:
+            start_time = datetime.strptime(lead.preferred_slot.split("-", 1)[0].strip(), "%H:%M").time()
+        except (TypeError, ValueError) as exc:
+            raise serializers.ValidationError(
+                {"preferred_slot": ["The scheduled time is invalid. Update the lead schedule before creating a work order."]}
+            ) from exc
         end_time = (datetime.combine(lead.preferred_date, start_time) + timedelta(hours=1)).time()
         slot, _ = TimeSlot.objects.get_or_create(
             service_area=service_area,

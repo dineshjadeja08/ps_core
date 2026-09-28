@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils import timezone
 
-from apps.notifications.models import Notification, NotificationStatus
+from apps.notifications.models import DeviceToken, Notification, NotificationStatus
 from apps.notifications.services import send_notification
 
 
@@ -27,3 +27,11 @@ class NotificationAdmin(admin.ModelAdmin):
     def cancel_queued_notifications(self, request, queryset):
         count = queryset.filter(status=NotificationStatus.QUEUED).update(status=NotificationStatus.CANCELLED, updated_at=timezone.now())
         self.message_user(request, f"Cancelled {count} queued notifications.")
+
+
+@admin.register(DeviceToken)
+class DeviceTokenAdmin(admin.ModelAdmin):
+    list_display = ("user", "platform", "is_active", "last_seen_at")
+    list_filter = ("platform", "is_active")
+    search_fields = ("user__phone_number", "token")
+    readonly_fields = ("created_at", "updated_at", "last_seen_at")

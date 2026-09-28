@@ -4,6 +4,89 @@ info:
   version: v1
   description: API for the Purple Squad home services platform.
 paths:
+  /api/auth/firebase-login/:
+    post:
+      operationId: api_auth_firebase_login_create
+      description: Verifies a Firebase ID token server-side, extracts the verified
+        phone number, creates or retrieves the Purple Squad user, and returns backend
+        JWT credentials.
+      summary: Authenticate with Firebase phone token
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+            examples:
+              LoginRequest:
+                value:
+                  id_token: firebase-id-token
+                summary: Login request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+              examples:
+                LoginResponse:
+                  value:
+                    user:
+                      id: 67d9bd9d-31af-4c75-b443-04377885242e
+                      phone_number: '+919876543210'
+                      email: null
+                      first_name: ''
+                      last_name: ''
+                      role: CUSTOMER
+                      is_verified: true
+                      customer_profile:
+                        id: 406f0389-df33-4a09-aed7-1fcb66f85321
+                        display_name: ''
+                        alternate_phone: ''
+                      created_at: '2026-08-18T12:00:00+05:30'
+                      updated_at: '2026-08-18T12:00:00+05:30'
+                    tokens:
+                      access: jwt-access-token
+                      refresh: jwt-refresh-token
+                      token_type: Bearer
+                    created: true
+                  summary: Login response
+          description: ''
+  /api/devices/register/:
+    post:
+      operationId: api_devices_register_create
+      summary: Register an FCM device token
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceToken'
+          description: ''
   /api/v1/addresses/:
     get:
       operationId: api_v1_addresses_list
@@ -214,7 +297,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedBookingList'
+                $ref: '#/components/schemas/PaginatedAdminBookingList'
           description: ''
   /api/v1/admin/bookings/{booking_id}/assign-technician/:
     post:
@@ -324,6 +407,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/admin/bookings/{booking_id}/invoice/:
+    get:
+      operationId: api_v1_admin_bookings_invoice_retrieve
+      summary: Download a booking GST invoice as an administrator
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
           description: ''
   /api/v1/admin/bookings/{booking_id}/record-balance/:
     post:
@@ -448,7 +554,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Booking'
+                $ref: '#/components/schemas/AdminBooking'
           description: ''
   /api/v1/admin/customers/:
     get:
@@ -533,6 +639,21 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CustomerSupportNote'
+          description: ''
+  /api/v1/admin/dashboard/summary/:
+    get:
+      operationId: api_v1_admin_dashboard_summary_retrieve
+      summary: Get admin dashboard summary
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminDashboardSummary'
           description: ''
   /api/v1/admin/faqs/:
     get:
@@ -1081,7 +1202,6 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/LeadConvertRequest'
-        required: true
       security:
       - jwtAuth: []
       responses:
@@ -1159,6 +1279,40 @@ paths:
               schema:
                 $ref: '#/components/schemas/Lead'
           description: ''
+  /api/v1/admin/leads/{id}/schedule/:
+    post:
+      operationId: api_v1_admin_leads_schedule_create
+      summary: Schedule a lead
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadScheduleRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadScheduleRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadScheduleRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
   /api/v1/admin/leads/{id}/send-payment-link/:
     post:
       operationId: api_v1_admin_leads_send_payment_link_create
@@ -1183,6 +1337,39 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/LeadPaymentLinkRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Lead'
+          description: ''
+  /api/v1/admin/leads/{id}/send-reminder/:
+    post:
+      operationId: api_v1_admin_leads_send_reminder_create
+      summary: Send a customer reminder
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LeadReminderRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/LeadReminderRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/LeadReminderRequest'
       security:
       - jwtAuth: []
       responses:
@@ -1395,6 +1582,140 @@ paths:
               schema:
                 $ref: '#/components/schemas/Notification'
           description: ''
+  /api/v1/admin/packages/:
+    get:
+      operationId: api_v1_admin_packages_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - Admin - Packages
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminPackageList'
+          description: ''
+    post:
+      operationId: api_v1_admin_packages_create
+      tags:
+      - Admin - Packages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminPackageRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPackage'
+          description: ''
+  /api/v1/admin/packages/{id}/:
+    get:
+      operationId: api_v1_admin_packages_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Packages
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPackage'
+          description: ''
+    put:
+      operationId: api_v1_admin_packages_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Packages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminPackageRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPackage'
+          description: ''
+    patch:
+      operationId: api_v1_admin_packages_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Packages
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminPackageRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminPackage'
+          description: ''
+    delete:
+      operationId: api_v1_admin_packages_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Packages
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
   /api/v1/admin/payments/:
     get:
       operationId: api_v1_admin_payments_list
@@ -1618,6 +1939,177 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AdminReview'
+          description: ''
+  /api/v1/admin/schedule-closures/:
+    get:
+      operationId: api_v1_admin_schedule_closures_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedScheduleClosureList'
+          description: ''
+    post:
+      operationId: api_v1_admin_schedule_closures_create
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleClosureRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ScheduleClosureRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ScheduleClosureRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleClosure'
+          description: ''
+  /api/v1/admin/schedule-closures/{id}/:
+    get:
+      operationId: api_v1_admin_schedule_closures_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this schedule closure.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleClosure'
+          description: ''
+    put:
+      operationId: api_v1_admin_schedule_closures_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this schedule closure.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScheduleClosureRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ScheduleClosureRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ScheduleClosureRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleClosure'
+          description: ''
+    patch:
+      operationId: api_v1_admin_schedule_closures_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this schedule closure.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedScheduleClosureRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedScheduleClosureRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedScheduleClosureRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScheduleClosure'
+          description: ''
+    delete:
+      operationId: api_v1_admin_schedule_closures_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this schedule closure.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/admin/search/:
+    get:
+      operationId: api_v1_admin_search_retrieve
+      summary: Search admin records
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminGlobalSearch'
           description: ''
   /api/v1/admin/service-areas/:
     get:
@@ -1916,7 +2408,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedAdminServiceList'
+                $ref: '#/components/schemas/PaginatedAdminServiceListList'
           description: ''
     post:
       operationId: api_v1_admin_services_create
@@ -2231,6 +2723,32 @@ paths:
               schema:
                 $ref: '#/components/schemas/PaginatedAdminStaffList'
           description: ''
+    post:
+      operationId: api_v1_admin_staff_create
+      summary: Create an administrator account
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminStaffCreateRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminStaffCreateRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminStaffCreateRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminStaff'
+          description: ''
   /api/v1/admin/staff-groups/:
     get:
       operationId: api_v1_admin_staff_groups_list
@@ -2344,6 +2862,134 @@ paths:
               schema:
                 $ref: '#/components/schemas/AdminStaff'
           description: ''
+  /api/v1/admin/technician-leaves/:
+    get:
+      operationId: api_v1_admin_technician_leaves_list
+      summary: List technician leave requests
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      - in: query
+        name: status
+        schema:
+          type: string
+          enum:
+          - APPROVED
+          - PENDING
+          - REJECTED
+      - in: query
+        name: technician
+        schema:
+          type: string
+          format: uuid
+      tags:
+      - Admin - Technician Leaves
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTechnicianLeaveList'
+          description: ''
+  /api/v1/admin/technician-leaves/{id}/:
+    get:
+      operationId: api_v1_admin_technician_leaves_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Technician Leaves
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechnicianLeave'
+          description: ''
+  /api/v1/admin/technician-leaves/{id}/approve/:
+    post:
+      operationId: api_v1_admin_technician_leaves_approve_create
+      summary: Approve technician leave
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Technician Leaves
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TechnicianLeaveReviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TechnicianLeaveReviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TechnicianLeaveReviewRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechnicianLeave'
+          description: ''
+  /api/v1/admin/technician-leaves/{id}/reject/:
+    post:
+      operationId: api_v1_admin_technician_leaves_reject_create
+      summary: Reject technician leave
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - Admin - Technician Leaves
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TechnicianLeaveReviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TechnicianLeaveReviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TechnicianLeaveReviewRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TechnicianLeave'
+          description: ''
   /api/v1/admin/technicians/:
     get:
       operationId: api_v1_admin_technicians_list
@@ -2369,32 +3015,244 @@ paths:
                 items:
                   $ref: '#/components/schemas/TechnicianProfile'
           description: ''
-  /api/v1/auth/admin-mfa/verify/:
+  /api/v1/admin/time-slots/:
+    get:
+      operationId: api_v1_admin_time_slots_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminTimeSlotList'
+          description: ''
     post:
-      operationId: api_v1_auth_admin_mfa_verify_create
-      description: Verifies the OTP for a short-lived password-authenticated administrator
-        challenge.
-      summary: Complete administrator MFA
+      operationId: api_v1_admin_time_slots_create
       tags:
       - api
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AdminMfaVerifyRequestRequest'
+              $ref: '#/components/schemas/AdminTimeSlotRequest'
           application/x-www-form-urlencoded:
             schema:
-              $ref: '#/components/schemas/AdminMfaVerifyRequestRequest'
+              $ref: '#/components/schemas/AdminTimeSlotRequest'
           multipart/form-data:
             schema:
-              $ref: '#/components/schemas/AdminMfaVerifyRequestRequest'
+              $ref: '#/components/schemas/AdminTimeSlotRequest'
         required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTimeSlot'
+          description: ''
+  /api/v1/admin/time-slots/{id}/:
+    get:
+      operationId: api_v1_admin_time_slots_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this time slot.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
       responses:
         '200':
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthLoginResponse'
+                $ref: '#/components/schemas/AdminTimeSlot'
+          description: ''
+    put:
+      operationId: api_v1_admin_time_slots_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this time slot.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminTimeSlotRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminTimeSlotRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminTimeSlotRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTimeSlot'
+          description: ''
+    patch:
+      operationId: api_v1_admin_time_slots_partial_update
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this time slot.
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminTimeSlotRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminTimeSlotRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedAdminTimeSlotRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminTimeSlot'
+          description: ''
+    delete:
+      operationId: api_v1_admin_time_slots_destroy
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          format: uuid
+        description: A UUID string identifying this time slot.
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '204':
+          description: No response body
+  /api/v1/admin/work-orders/:
+    get:
+      operationId: api_v1_admin_work_orders_list
+      summary: List paid work orders
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminBookingList'
+          description: ''
+  /api/v1/admin/work-orders/{id}/:
+    get:
+      operationId: api_v1_admin_work_orders_retrieve
+      summary: Get paid work order
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBooking'
+          description: ''
+  /api/v1/admin/work-orders/{id}/close/:
+    post:
+      operationId: api_v1_admin_work_orders_close_create
+      summary: Close completed work order
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BookingOperationRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBooking'
           description: ''
   /api/v1/auth/dev-phone/:
     post:
@@ -2426,6 +3284,62 @@ paths:
   /api/v1/auth/firebase/:
     post:
       operationId: api_v1_auth_firebase_create
+      description: Verifies a Firebase ID token server-side, extracts the verified
+        phone number, creates or retrieves the Purple Squad user, and returns backend
+        JWT credentials.
+      summary: Authenticate with Firebase phone token
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+            examples:
+              LoginRequest:
+                value:
+                  id_token: firebase-id-token
+                summary: Login request
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/FirebaseLoginRequestRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthLoginResponse'
+              examples:
+                LoginResponse:
+                  value:
+                    user:
+                      id: 67d9bd9d-31af-4c75-b443-04377885242e
+                      phone_number: '+919876543210'
+                      email: null
+                      first_name: ''
+                      last_name: ''
+                      role: CUSTOMER
+                      is_verified: true
+                      customer_profile:
+                        id: 406f0389-df33-4a09-aed7-1fcb66f85321
+                        display_name: ''
+                        alternate_phone: ''
+                      created_at: '2026-08-18T12:00:00+05:30'
+                      updated_at: '2026-08-18T12:00:00+05:30'
+                    tokens:
+                      access: jwt-access-token
+                      refresh: jwt-refresh-token
+                      token_type: Bearer
+                    created: true
+                  summary: Login response
+          description: ''
+  /api/v1/auth/firebase-login/:
+    post:
+      operationId: api_v1_auth_firebase_login_create
       description: Verifies a Firebase ID token server-side, extracts the verified
         phone number, creates or retrieves the Purple Squad user, and returns backend
         JWT credentials.
@@ -2550,58 +3464,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/User'
           description: ''
-  /api/v1/auth/otp/send/:
-    post:
-      operationId: api_v1_auth_otp_send_create
-      description: Sends a login OTP through the configured backend OTP provider.
-      summary: Send phone OTP
-      tags:
-      - api
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OtpSendRequestRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/OtpSendRequestRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/OtpSendRequestRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/OtpSendResponse'
-          description: ''
-  /api/v1/auth/otp/verify/:
-    post:
-      operationId: api_v1_auth_otp_verify_create
-      description: Verifies a phone OTP and returns Purple Squad JWT credentials.
-      summary: Verify phone OTP
-      tags:
-      - api
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/OtpVerifyRequestRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/OtpVerifyRequestRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/OtpVerifyRequestRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthLoginResponse'
-          description: ''
   /api/v1/auth/password/login/:
     post:
       operationId: api_v1_auth_password_login_create
@@ -2628,33 +3490,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/PasswordLoginResponse'
-          description: ''
-  /api/v1/auth/password/signup/:
-    post:
-      operationId: api_v1_auth_password_signup_create
-      description: Temporary phone-password customer account creation while OTP delivery
-        is being configured.
-      summary: Create account with phone and password
-      tags:
-      - api
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PasswordSignupRequestRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PasswordSignupRequestRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PasswordSignupRequestRequest'
-        required: true
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AuthLoginResponse'
           description: ''
   /api/v1/auth/refresh/:
     post:
@@ -2749,6 +3584,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Booking'
+          description: ''
+  /api/v1/bookings/{booking_id}/invoice/:
+    get:
+      operationId: api_v1_bookings_invoice_retrieve
+      summary: Download GST invoice
+      parameters:
+      - in: path
+        name: booking_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
           description: ''
   /api/v1/bookings/{booking_id}/payments/order/:
     post:
@@ -2975,6 +3833,37 @@ paths:
                 $ref: '#/components/schemas/CartCheckoutResponse'
           description: ''
   /api/v1/cart/items/{service_id}/:
+    patch:
+      operationId: api_v1_cart_items_partial_update
+      parameters:
+      - in: path
+        name: service_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      tags:
+      - Cart
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedCartQuantityRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedCartQuantityRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedCartQuantityRequest'
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CartResponse'
+          description: ''
     delete:
       operationId: api_v1_cart_items_destroy
       parameters:
@@ -2991,6 +3880,33 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/v1/devices/register/:
+    post:
+      operationId: api_v1_devices_register_create
+      summary: Register an FCM device token
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DeviceTokenRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceToken'
+          description: ''
   /api/v1/faqs/:
     get:
       operationId: api_v1_faqs_list
@@ -3036,42 +3952,91 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
           description: ''
-  /api/v1/notifications/webhooks/msg91/:
-    post:
-      operationId: api_v1_notifications_webhooks_msg91_create
-      description: Reconciles sent, delivered, read, and failed WhatsApp notification
-        states.
-      summary: MSG91 WhatsApp delivery callback
+  /api/v1/homepage-banners/:
+    get:
+      operationId: api_v1_homepage_banners_list
       tags:
       - api
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: {}
-          application/x-www-form-urlencoded:
-            schema:
-              type: object
-              additionalProperties: {}
-          multipart/form-data:
-            schema:
-              type: object
-              additionalProperties: {}
+      security:
+      - {}
       responses:
         '200':
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: {}
+                type: array
+                items:
+                  $ref: '#/components/schemas/HomepageBanner'
           description: ''
-        '403':
+  /api/v1/location/autocomplete/:
+    get:
+      operationId: api_v1_location_autocomplete_retrieve
+      summary: Autocomplete an address
+      parameters:
+      - in: query
+        name: input
+        schema:
+          type: string
+        required: true
+      tags:
+      - Location
+      security:
+      - {}
+      responses:
+        '200':
           content:
             application/json:
               schema:
-                type: object
-                additionalProperties: {}
+                $ref: '#/components/schemas/AutocompleteResponse'
+          description: ''
+  /api/v1/location/geocode/:
+    get:
+      operationId: api_v1_location_geocode_retrieve
+      summary: Resolve a Google Places result
+      parameters:
+      - in: query
+        name: place_id
+        schema:
+          type: string
+        required: true
+      tags:
+      - Location
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizedAddress'
+          description: ''
+  /api/v1/location/reverse-geocode/:
+    get:
+      operationId: api_v1_location_reverse_geocode_retrieve
+      summary: Reverse geocode coordinates
+      parameters:
+      - in: query
+        name: lat
+        schema:
+          type: number
+          format: double
+        required: true
+      - in: query
+        name: lng
+        schema:
+          type: number
+          format: double
+        required: true
+      tags:
+      - Location
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NormalizedAddress'
           description: ''
   /api/v1/payments/verify/:
     post:
@@ -3138,6 +4103,22 @@ paths:
               schema:
                 $ref: '#/components/schemas/WebhookResponse'
           description: ''
+  /api/v1/service-areas/:
+    get:
+      operationId: api_v1_service_areas_list
+      tags:
+      - api
+      security:
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ServiceArea'
+          description: ''
   /api/v1/service-areas/check/:
     get:
       operationId: api_v1_service_areas_check_retrieve
@@ -3203,7 +4184,7 @@ paths:
     get:
       operationId: api_v1_services_list
       description: Returns active public services with optional category, featured,
-        name search, and postal-code availability filters.
+        name search, city, and postal-code availability filters.
       summary: List services
       parameters:
       - in: query
@@ -3211,6 +4192,11 @@ paths:
         schema:
           type: string
         description: Filter by category slug.
+      - in: query
+        name: city
+        schema:
+          type: string
+        description: Only return services available in active areas for this city.
       - in: query
         name: featured
         schema:
@@ -3402,6 +4388,153 @@ paths:
                     available_capacity: 2
                   summary: Available slot
           description: ''
+  /api/v1/technician/jobs/:
+    get:
+      operationId: api_v1_technician_jobs_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      - name: page_size
+        required: false
+        in: query
+        description: Number of results to return per page.
+        schema:
+          type: integer
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedAdminBookingList'
+          description: ''
+  /api/v1/technician/jobs/{id}/:
+    get:
+      operationId: api_v1_technician_jobs_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBooking'
+          description: ''
+  /api/v1/technician/jobs/{id}/complete/:
+    post:
+      operationId: api_v1_technician_jobs_complete_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBooking'
+          description: ''
+  /api/v1/technician/jobs/{id}/en-route/:
+    post:
+      operationId: api_v1_technician_jobs_en_route_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBooking'
+          description: ''
+  /api/v1/technician/jobs/{id}/start/:
+    post:
+      operationId: api_v1_technician_jobs_start_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-f-]{36}$
+        required: true
+      tags:
+      - api
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AdminBookingRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AdminBooking'
+          description: ''
 components:
   schemas:
     Address:
@@ -3539,6 +4672,289 @@ components:
       - postal_code
       - recipient_name
       - state
+    AddressSuggestion:
+      type: object
+      properties:
+        formatted_address:
+          type: string
+        house_number:
+          type: string
+        street:
+          type: string
+        locality:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pincode:
+          type: string
+        country:
+          type: string
+        latitude:
+          type: number
+          format: double
+          nullable: true
+        longitude:
+          type: number
+          format: double
+          nullable: true
+        supported_city:
+          type: boolean
+        serviceable:
+          type: boolean
+        id:
+          type: string
+        description:
+          type: string
+        main_text:
+          type: string
+        secondary_text:
+          type: string
+      required:
+      - city
+      - country
+      - description
+      - formatted_address
+      - house_number
+      - id
+      - latitude
+      - locality
+      - longitude
+      - main_text
+      - pincode
+      - secondary_text
+      - serviceable
+      - state
+      - street
+      - supported_city
+    AdminBooking:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        booking_number:
+          type: string
+          maxLength: 32
+        service:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        address_snapshot: {}
+        service_date:
+          type: string
+          format: date
+        time_slot:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        problem_description:
+          type: string
+        contact_phone:
+          type: string
+          maxLength: 20
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        subtotal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        discount_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        tax_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        advance_required:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        advance_paid:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        balance_due:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        balance_collected:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        payment_status:
+          $ref: '#/components/schemas/PaymentStatusEnum'
+        booking_status:
+          $ref: '#/components/schemas/BookingStatusEnum'
+        customer_notes:
+          type: string
+        admin_notes:
+          type: string
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_manual_work_order:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+        status_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/BookingStatusHistory'
+          readOnly: true
+        customer_name:
+          type: string
+          readOnly: true
+        customer_phone:
+          type: string
+          readOnly: true
+        service_category:
+          type: string
+          readOnly: true
+        assigned_technician:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        paid_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - address_snapshot
+      - advance_required
+      - assigned_technician
+      - balance_due
+      - booking_number
+      - created_at
+      - customer_name
+      - customer_phone
+      - id
+      - paid_at
+      - problem_description
+      - service
+      - service_category
+      - service_date
+      - status_history
+      - subtotal
+      - time_slot
+      - total_amount
+      - updated_at
+    AdminBookingRequest:
+      type: object
+      properties:
+        booking_number:
+          type: string
+          minLength: 1
+          maxLength: 32
+        address_snapshot: {}
+        service_date:
+          type: string
+          format: date
+        problem_description:
+          type: string
+          minLength: 1
+        contact_phone:
+          type: string
+          maxLength: 20
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        subtotal:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        discount_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        tax_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        total_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        advance_required:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        advance_paid:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        balance_due:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        balance_collected:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        payment_status:
+          $ref: '#/components/schemas/PaymentStatusEnum'
+        booking_status:
+          $ref: '#/components/schemas/BookingStatusEnum'
+        customer_notes:
+          type: string
+        admin_notes:
+          type: string
+        confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        cancelled_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_manual_work_order:
+          type: boolean
+      required:
+      - address_snapshot
+      - advance_required
+      - balance_due
+      - booking_number
+      - problem_description
+      - service_date
+      - subtotal
+      - total_amount
     AdminCustomer:
       type: object
       properties:
@@ -3562,7 +4978,7 @@ components:
           readOnly: true
         role:
           allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          - $ref: '#/components/schemas/Role5a2Enum'
           readOnly: true
         is_verified:
           type: boolean
@@ -3570,6 +4986,10 @@ components:
         customer_profile:
           allOf:
           - $ref: '#/components/schemas/CustomerProfile'
+          readOnly: true
+        groups:
+          type: object
+          additionalProperties: {}
           readOnly: true
         created_at:
           type: string
@@ -3598,6 +5018,7 @@ components:
       - customer_profile
       - email
       - first_name
+      - groups
       - id
       - is_verified
       - last_booking_at
@@ -3630,7 +5051,7 @@ components:
           readOnly: true
         role:
           allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          - $ref: '#/components/schemas/Role5a2Enum'
           readOnly: true
         is_verified:
           type: boolean
@@ -3638,6 +5059,10 @@ components:
         customer_profile:
           allOf:
           - $ref: '#/components/schemas/CustomerProfile'
+          readOnly: true
+        groups:
+          type: object
+          additionalProperties: {}
           readOnly: true
         created_at:
           type: string
@@ -3685,6 +5110,7 @@ components:
       - customer_profile
       - email
       - first_name
+      - groups
       - id
       - is_verified
       - last_name
@@ -3696,19 +5122,176 @@ components:
       - role
       - support_notes
       - updated_at
-    AdminMfaVerifyRequestRequest:
+    AdminDashboardSummary:
       type: object
       properties:
-        challenge_id:
+        daily_gmv:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        active_bookings_count:
+          type: integer
+        available_technicians_count:
+          type: integer
+        open_unassigned_leads_count:
+          type: integer
+        leads_today:
+          type: integer
+        follow_ups_due:
+          type: integer
+        bookings_today:
+          type: integer
+        confirmed_bookings:
+          type: integer
+        payment_pending_bookings:
+          type: integer
+        revenue_today:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,10}(?:\.\d{0,2})?$
+        unassigned_bookings:
+          type: integer
+        upcoming_services:
+          type: integer
+        failed_notifications:
+          type: integer
+        recent_bookings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+        pending_payments:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+        unassigned_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Booking'
+      required:
+      - active_bookings_count
+      - available_technicians_count
+      - bookings_today
+      - confirmed_bookings
+      - daily_gmv
+      - failed_notifications
+      - follow_ups_due
+      - leads_today
+      - open_unassigned_leads_count
+      - payment_pending_bookings
+      - pending_payments
+      - recent_bookings
+      - revenue_today
+      - unassigned_bookings
+      - unassigned_items
+      - upcoming_services
+    AdminGlobalSearch:
+      type: object
+      properties:
+        query:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - query
+      - results
+    AdminPackage:
+      type: object
+      properties:
+        id:
           type: string
           format: uuid
-        otp:
+          readOnly: true
+        name:
+          type: string
+          maxLength: 180
+        slug:
+          type: string
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        bundle_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+        valid_until:
+          type: string
+          format: date
+          nullable: true
+        maximum_usage_limit:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageItem'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - bundle_price
+      - created_at
+      - id
+      - items
+      - name
+      - slug
+      - updated_at
+    AdminPackageRequest:
+      type: object
+      properties:
+        name:
           type: string
           minLength: 1
-          pattern: ^\d{4,8}$
+          maxLength: 180
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        bundle_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+        valid_until:
+          type: string
+          format: date
+          nullable: true
+        maximum_usage_limit:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageItemRequest'
       required:
-      - challenge_id
-      - otp
+      - bundle_price
+      - items
+      - name
+      - slug
     AdminReportSummary:
       type: object
       properties:
@@ -3842,6 +5425,9 @@ components:
           type: string
         important_notes:
           type: string
+        landing_group:
+          type: string
+          maxLength: 120
         base_price:
           type: string
           format: decimal
@@ -3867,12 +5453,29 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
           readOnly: true
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
         estimated_duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         cover_image:
+          type: string
+          format: uri
+        landing_thumbnail:
+          type: string
+          format: uri
+        popup_cover_image:
+          type: string
+          format: uri
+        popup_content_image:
+          type: string
+          format: uri
+        list_image:
           type: string
           format: uri
         images:
@@ -3888,9 +5491,8 @@ components:
           type: boolean
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         created_at:
           type: string
           format: date-time
@@ -4019,9 +5621,8 @@ components:
           readOnly: true
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
         created_at:
@@ -4032,11 +5633,15 @@ components:
           type: string
           format: date-time
           readOnly: true
+        service_count:
+          type: integer
+          readOnly: true
       required:
       - created_at
       - id
       - image_url
       - name
+      - service_count
       - slug
       - updated_at
     AdminServiceCategoryRequest:
@@ -4062,14 +5667,134 @@ components:
           writeOnly: true
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
       required:
       - name
       - slug
+    AdminServiceList:
+      type: object
+      description: Lean list payload; gallery images are fetched only when the editor
+        opens them.
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        category:
+          type: string
+          format: uuid
+        category_detail:
+          allOf:
+          - $ref: '#/components/schemas/ServiceCategory'
+          readOnly: true
+        name:
+          type: string
+          maxLength: 180
+        slug:
+          type: string
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        description:
+          type: string
+        whats_included:
+          type: string
+        whats_excluded:
+          type: string
+        important_notes:
+          type: string
+        landing_group:
+          type: string
+          maxLength: 120
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        effective_price:
+          type: number
+          format: double
+          readOnly: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          readOnly: true
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
+        estimated_duration_minutes:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        cover_image:
+          type: string
+          format: uri
+        landing_thumbnail:
+          type: string
+          format: uri
+        popup_cover_image:
+          type: string
+          format: uri
+        popup_content_image:
+          type: string
+          format: uri
+        list_image:
+          type: string
+          format: uri
+        images:
+          type: string
+          readOnly: true
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        is_active:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - advance_amount
+      - base_price
+      - category
+      - category_detail
+      - created_at
+      - effective_price
+      - estimated_duration_minutes
+      - id
+      - images
+      - name
+      - slug
+      - updated_at
     AdminServiceRequest:
       type: object
       properties:
@@ -4096,6 +5821,9 @@ components:
           type: string
         important_notes:
           type: string
+        landing_group:
+          type: string
+          maxLength: 120
         base_price:
           type: string
           format: decimal
@@ -4112,12 +5840,29 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
           nullable: true
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
         estimated_duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         cover_image:
+          type: string
+          format: binary
+        landing_thumbnail:
+          type: string
+          format: binary
+        popup_cover_image:
+          type: string
+          format: binary
+        popup_content_image:
+          type: string
+          format: binary
+        list_image:
           type: string
           format: binary
         is_featured:
@@ -4128,9 +5873,8 @@ components:
           type: boolean
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - base_price
       - category
@@ -4154,15 +5898,13 @@ components:
           type: array
           items:
             type: string
-        otp_provider:
-          type: string
         notification_provider:
           type: string
         razorpay_configured:
           type: boolean
-        msg91_configured:
-          type: boolean
         firebase_configured:
+          type: boolean
+        google_maps_configured:
           type: boolean
         cloudinary_media_enabled:
           type: boolean
@@ -4179,9 +5921,8 @@ components:
       - csrf_trusted_origins
       - debug
       - firebase_configured
-      - msg91_configured
+      - google_maps_configured
       - notification_provider
-      - otp_provider
       - razorpay_configured
     AdminStaff:
       type: object
@@ -4205,7 +5946,7 @@ components:
           type: string
           maxLength: 150
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/Role5a2Enum'
         is_verified:
           type: boolean
         is_active:
@@ -4237,6 +5978,50 @@ components:
       - is_superuser
       - phone_number
       - updated_at
+    AdminStaffCreateRequest:
+      type: object
+      properties:
+        phone_number:
+          type: string
+          minLength: 1
+          maxLength: 16
+        password:
+          type: string
+          writeOnly: true
+          minLength: 8
+          maxLength: 128
+        email:
+          type: string
+          format: email
+          nullable: true
+          maxLength: 254
+        first_name:
+          type: string
+          maxLength: 150
+        last_name:
+          type: string
+          maxLength: 150
+        role:
+          allOf:
+          - $ref: '#/components/schemas/AdminStaffCreateRoleEnum'
+          default: ADMIN
+        group_ids:
+          type: array
+          items:
+            type: integer
+            writeOnly: true
+          writeOnly: true
+      required:
+      - password
+      - phone_number
+    AdminStaffCreateRoleEnum:
+      enum:
+      - ADMIN
+      - SUPER_ADMIN
+      type: string
+      description: |-
+        * `ADMIN` - ADMIN
+        * `SUPER_ADMIN` - SUPER_ADMIN
     AdminStaffUpdate:
       type: object
       properties:
@@ -4252,7 +6037,7 @@ components:
           type: string
           maxLength: 150
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/Role5a2Enum'
         is_verified:
           type: boolean
         is_active:
@@ -4274,7 +6059,7 @@ components:
           type: string
           maxLength: 150
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/Role5a2Enum'
         is_verified:
           type: boolean
         is_active:
@@ -4286,6 +6071,70 @@ components:
           items:
             type: integer
           writeOnly: true
+    AdminTimeSlot:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        service_area:
+          type: string
+          format: uuid
+          readOnly: true
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        capacity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        available_capacity:
+          type: integer
+          readOnly: true
+        service_area_name:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+      required:
+      - available_capacity
+      - capacity
+      - date
+      - end_time
+      - id
+      - service_area
+      - service_area_name
+      - start_time
+    AdminTimeSlotRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        capacity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+      required:
+      - capacity
+      - date
+      - end_time
+      - start_time
     AdvancePaymentTypeEnum:
       enum:
       - FIXED
@@ -4370,6 +6219,7 @@ components:
       - ADMIN_BOOKING_START
       - ADMIN_BOOKING_COMPLETE
       - ADMIN_BOOKING_CANCEL
+      - ADMIN_WORK_ORDER_CLOSE
       - ADMIN_RECORD_BALANCE
       - ADMIN_PAYMENT_LINK_CREATED
       - ADMIN_REFUND_CREATED
@@ -4381,6 +6231,8 @@ components:
       - TECHNICIAN_AVAILABILITY_CHANGED
       - TECHNICIAN_ASSIGNMENT_REMOVED
       - TECHNICIAN_LEAVE_CREATED
+      - TECHNICIAN_LEAVE_APPROVED
+      - TECHNICIAN_LEAVE_REJECTED
       - PAYMENT_WEBHOOK_RECEIVED
       - PAYMENT_WEBHOOK_REJECTED
       - PERMISSION_DENIED
@@ -4392,6 +6244,9 @@ components:
       - CATEGORY_CREATED
       - CATEGORY_UPDATED
       - CATEGORY_DEACTIVATED
+      - PACKAGE_CREATED
+      - PACKAGE_UPDATED
+      - PACKAGE_DELETED
       - LEAD_CREATED
       - LEAD_UPDATED
       - LEAD_STATUS_CHANGED
@@ -4403,12 +6258,14 @@ components:
       - FAQ_UPDATED
       - REVIEW_UPDATED
       - CUSTOMER_SUPPORT_NOTE_CREATED
+      - STAFF_CREATED
       - STAFF_UPDATED
       type: string
       description: |-
         * `ADMIN_BOOKING_START` - Admin booking start
         * `ADMIN_BOOKING_COMPLETE` - Admin booking complete
         * `ADMIN_BOOKING_CANCEL` - Admin booking cancel
+        * `ADMIN_WORK_ORDER_CLOSE` - Admin work order close
         * `ADMIN_RECORD_BALANCE` - Admin record balance
         * `ADMIN_PAYMENT_LINK_CREATED` - Admin payment link created
         * `ADMIN_REFUND_CREATED` - Admin refund created
@@ -4420,6 +6277,8 @@ components:
         * `TECHNICIAN_AVAILABILITY_CHANGED` - Technician availability changed
         * `TECHNICIAN_ASSIGNMENT_REMOVED` - Technician assignment removed
         * `TECHNICIAN_LEAVE_CREATED` - Technician leave created
+        * `TECHNICIAN_LEAVE_APPROVED` - Technician leave approved
+        * `TECHNICIAN_LEAVE_REJECTED` - Technician leave rejected
         * `PAYMENT_WEBHOOK_RECEIVED` - Payment webhook received
         * `PAYMENT_WEBHOOK_REJECTED` - Payment webhook rejected
         * `PERMISSION_DENIED` - Permission denied
@@ -4431,6 +6290,9 @@ components:
         * `CATEGORY_CREATED` - Category created
         * `CATEGORY_UPDATED` - Category updated
         * `CATEGORY_DEACTIVATED` - Category deactivated
+        * `PACKAGE_CREATED` - Package created
+        * `PACKAGE_UPDATED` - Package updated
+        * `PACKAGE_DELETED` - Package deleted
         * `LEAD_CREATED` - Lead created
         * `LEAD_UPDATED` - Lead updated
         * `LEAD_STATUS_CHANGED` - Lead status changed
@@ -4442,6 +6304,7 @@ components:
         * `FAQ_UPDATED` - FAQ updated
         * `REVIEW_UPDATED` - Review updated
         * `CUSTOMER_SUPPORT_NOTE_CREATED` - Customer support note created
+        * `STAFF_CREATED` - Staff created
         * `STAFF_UPDATED` - Staff updated
     AuthLoginResponse:
       type: object
@@ -4456,6 +6319,15 @@ components:
       - created
       - tokens
       - user
+    AutocompleteResponse:
+      type: object
+      properties:
+        suggestions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AddressSuggestion'
+      required:
+      - suggestions
     AvailabilityStatusEnum:
       enum:
       - AVAILABLE
@@ -4534,11 +6406,22 @@ components:
           readOnly: true
         problem_description:
           type: string
+        contact_phone:
+          type: string
+          maxLength: 20
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
         subtotal:
           type: string
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
         discount_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee:
           type: string
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
@@ -4586,6 +6469,8 @@ components:
           type: string
           format: date-time
           nullable: true
+        is_manual_work_order:
+          type: boolean
         created_at:
           type: string
           format: date-time
@@ -4628,12 +6513,19 @@ components:
           format: uuid
         problem_description:
           type: string
-          minLength: 1
+          default: ''
         customer_notes:
           type: string
+        contact_phone:
+          type: string
+          maxLength: 20
+        quantity:
+          type: integer
+          maximum: 20
+          minimum: 1
+          default: 1
       required:
       - address_id
-      - problem_description
       - service_id
       - slot_id
     BookingOperationRequest:
@@ -4660,6 +6552,7 @@ components:
       - TECHNICIAN_EN_ROUTE
       - IN_PROGRESS
       - COMPLETED
+      - CLOSED
       - CANCELLED
       - REFUND_PENDING
       - REFUNDED
@@ -4672,6 +6565,7 @@ components:
         * `TECHNICIAN_EN_ROUTE` - Technician en route
         * `IN_PROGRESS` - In progress
         * `COMPLETED` - Completed
+        * `CLOSED` - Closed
         * `CANCELLED` - Cancelled
         * `REFUND_PENDING` - Refund pending
         * `REFUNDED` - Refunded
@@ -4698,6 +6592,20 @@ components:
       - created_at
       - id
       - to_status
+    BookingStatusHistoryRequest:
+      type: object
+      properties:
+        from_status:
+          type: string
+          maxLength: 32
+        to_status:
+          type: string
+          minLength: 1
+          maxLength: 32
+        notes:
+          type: string
+      required:
+      - to_status
     CartAddRequest:
       type: object
       properties:
@@ -4716,6 +6624,12 @@ components:
           additionalProperties:
             type: string
             format: uuid
+        quantities:
+          type: object
+          additionalProperties:
+            type: integer
+            maximum: 20
+            minimum: 1
       required:
       - service_ids
     CartCheckoutRequest:
@@ -4770,14 +6684,21 @@ components:
       - count
       - items
       - total
-    ChannelD63Enum:
+    Channel817Enum:
       enum:
-      - SMS
-      - WHATSAPP
+      - PUSH
+      type: string
+      description: '* `PUSH` - PUSH'
+    ClosureTypeEnum:
+      enum:
+      - HOLIDAY
+      - BLACKOUT
+      - EMERGENCY
       type: string
       description: |-
-        * `SMS` - SMS
-        * `WHATSAPP` - WhatsApp
+        * `HOLIDAY` - Holiday
+        * `BLACKOUT` - Blackout
+        * `EMERGENCY` - Emergency closure
     CustomerProfile:
       type: object
       properties:
@@ -4846,6 +6767,25 @@ components:
           minLength: 1
       required:
       - phone_number
+    DeviceToken:
+      type: object
+      properties:
+        token:
+          type: string
+        platform:
+          $ref: '#/components/schemas/PlatformEnum'
+      required:
+      - token
+    DeviceTokenRequest:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 1
+        platform:
+          $ref: '#/components/schemas/PlatformEnum'
+      required:
+      - token
     EmploymentStatusEnum:
       enum:
       - ACTIVE
@@ -4921,9 +6861,8 @@ components:
           maxLength: 180
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
           default: true
@@ -4964,9 +6903,8 @@ components:
           maxLength: 180
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
           default: true
@@ -5052,9 +6990,8 @@ components:
           $ref: '#/components/schemas/PlacementEnum'
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         starts_at:
           type: string
           format: date-time
@@ -5113,9 +7050,8 @@ components:
           $ref: '#/components/schemas/PlacementEnum'
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         starts_at:
           type: string
           format: date-time
@@ -5136,6 +7072,9 @@ components:
         id:
           type: string
           format: uuid
+          readOnly: true
+        lead_number:
+          type: string
           readOnly: true
         customer:
           type: string
@@ -5253,8 +7192,32 @@ components:
           type: string
           format: uuid
           nullable: true
+        pending_booking:
+          type: string
+          format: uuid
+          nullable: true
         booking_number:
           type: string
+          readOnly: true
+        line_items:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        subtotal:
+          type: number
+          format: double
+          readOnly: true
+        tax_amount:
+          type: number
+          format: double
+          readOnly: true
+        training_fee:
+          type: number
+          format: double
+          readOnly: true
+        total_amount:
+          type: number
+          format: double
           readOnly: true
         created_by:
           type: string
@@ -5287,10 +7250,16 @@ components:
       - created_by
       - customer_name
       - id
+      - lead_number
+      - line_items
       - payment_link_provider_id
       - primary_mobile
       - service_name
       - status_history
+      - subtotal
+      - tax_amount
+      - total_amount
+      - training_fee
       - updated_at
     LeadActivity:
       type: object
@@ -5385,8 +7354,6 @@ components:
           format: uuid
         notes:
           type: string
-      required:
-      - booking_id
     LeadManualPaymentMethodEnum:
       enum:
       - MANUAL_CASH
@@ -5422,21 +7389,17 @@ components:
       - confirm
       - method
       - payment_date
-    LeadPaymentLinkChannelEnum:
-      enum:
-      - SMS
-      - WHATSAPP
-      type: string
-      description: |-
-        * `SMS` - SMS
-        * `WHATSAPP` - WHATSAPP
     LeadPaymentLinkRequest:
       type: object
       properties:
         channel:
           allOf:
-          - $ref: '#/components/schemas/LeadPaymentLinkChannelEnum'
-          default: WHATSAPP
+          - $ref: '#/components/schemas/Channel817Enum'
+          default: PUSH
+        payment_scope:
+          allOf:
+          - $ref: '#/components/schemas/PaymentScopeEnum'
+          default: ADVANCE
     LeadPaymentStatusEnum:
       enum:
       - NOT_REQUIRED
@@ -5453,6 +7416,13 @@ components:
         * `PAID` - Paid
         * `FAILED` - Failed
         * `REFUNDED` - Refunded
+    LeadReminderRequest:
+      type: object
+      properties:
+        channel:
+          allOf:
+          - $ref: '#/components/schemas/Channel817Enum'
+          default: PUSH
     LeadRequest:
       type: object
       properties:
@@ -5565,9 +7535,27 @@ components:
           type: string
           format: uuid
           nullable: true
+        pending_booking:
+          type: string
+          format: uuid
+          nullable: true
       required:
       - customer_name
       - primary_mobile
+    LeadScheduleRequest:
+      type: object
+      properties:
+        preferred_date:
+          type: string
+          format: date
+        preferred_slot:
+          type: string
+          minLength: 1
+          maxLength: 5
+          pattern: ^([01]\d|2[0-3]):[0-5]\d$
+      required:
+      - preferred_date
+      - preferred_slot
     LeadStatusEnum:
       enum:
       - NEW
@@ -5654,6 +7642,50 @@ components:
         * `HOT` - Hot
         * `WARM` - Warm
         * `COLD` - Cold
+    NormalizedAddress:
+      type: object
+      properties:
+        formatted_address:
+          type: string
+        house_number:
+          type: string
+        street:
+          type: string
+        locality:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pincode:
+          type: string
+        country:
+          type: string
+        latitude:
+          type: number
+          format: double
+          nullable: true
+        longitude:
+          type: number
+          format: double
+          nullable: true
+        supported_city:
+          type: boolean
+        serviceable:
+          type: boolean
+      required:
+      - city
+      - country
+      - formatted_address
+      - house_number
+      - latitude
+      - locality
+      - longitude
+      - pincode
+      - serviceable
+      - state
+      - street
+      - supported_city
     Notification:
       type: object
       properties:
@@ -5734,18 +7766,9 @@ components:
           type: string
     NotificationChannelEnum:
       enum:
-      - SMS
-      - EMAIL
-      - WHATSAPP
-      - IN_APP
       - PUSH
       type: string
-      description: |-
-        * `SMS` - SMS
-        * `EMAIL` - Email
-        * `WHATSAPP` - WhatsApp
-        * `IN_APP` - In-app
-        * `PUSH` - Push
+      description: '* `PUSH` - Push'
     NotificationRequest:
       type: object
       properties:
@@ -5792,44 +7815,48 @@ components:
         * `READ` - Read
         * `FAILED` - Failed
         * `CANCELLED` - Cancelled
-    OtpSendRequestRequest:
+    PackageItem:
       type: object
       properties:
-        phone_number:
+        id:
           type: string
-          minLength: 1
-        channel:
+          format: uuid
+          readOnly: true
+        service:
+          type: string
+          format: uuid
+        service_detail:
           allOf:
-          - $ref: '#/components/schemas/ChannelD63Enum'
-          default: SMS
+          - $ref: '#/components/schemas/ServiceList'
+          readOnly: true
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        display_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
       required:
-      - phone_number
-    OtpSendResponse:
+      - id
+      - service
+      - service_detail
+    PackageItemRequest:
       type: object
       properties:
-        phone_number:
+        service:
           type: string
-        request_id:
-          type: string
-        channel:
-          $ref: '#/components/schemas/ChannelD63Enum'
+          format: uuid
+        quantity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        display_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
       required:
-      - channel
-      - phone_number
-      - request_id
-    OtpVerifyRequestRequest:
-      type: object
-      properties:
-        phone_number:
-          type: string
-          minLength: 1
-        otp:
-          type: string
-          minLength: 1
-          pattern: ^\d{4,8}$
-      required:
-      - otp
-      - phone_number
+      - service
     PaginatedAddressList:
       type: object
       required:
@@ -5853,6 +7880,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Address'
+    PaginatedAdminBookingList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminBooking'
     PaginatedAdminCustomerList:
       type: object
       required:
@@ -5876,6 +7926,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminCustomer'
+    PaginatedAdminPackageList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminPackage'
     PaginatedAdminReviewList:
       type: object
       required:
@@ -5945,7 +8018,7 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminServiceCategory'
-    PaginatedAdminServiceList:
+    PaginatedAdminServiceListList:
       type: object
       required:
       - count
@@ -5967,7 +8040,7 @@ components:
         results:
           type: array
           items:
-            $ref: '#/components/schemas/AdminService'
+            $ref: '#/components/schemas/AdminServiceList'
     PaginatedAdminStaffList:
       type: object
       required:
@@ -5991,6 +8064,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AdminStaff'
+    PaginatedAdminTimeSlotList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdminTimeSlot'
     PaginatedAuditLogList:
       type: object
       required:
@@ -6198,6 +8294,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Review'
+    PaginatedScheduleClosureList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduleClosure'
     PaginatedServiceImageList:
       type: object
       required:
@@ -6267,6 +8386,29 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/StaffGroup'
+    PaginatedTechnicianLeaveList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/TechnicianLeave'
     PasswordLoginRequestRequest:
       type: object
       properties:
@@ -6277,10 +8419,6 @@ components:
           type: string
           writeOnly: true
           minLength: 1
-        channel:
-          allOf:
-          - $ref: '#/components/schemas/ChannelD63Enum'
-          default: WHATSAPP
       required:
       - password
       - phone_number
@@ -6293,39 +8431,10 @@ components:
           $ref: '#/components/schemas/TokenPair'
         created:
           type: boolean
-        mfa_required:
-          type: boolean
-        challenge_id:
-          type: string
-          format: uuid
-        channel:
-          $ref: '#/components/schemas/ChannelD63Enum'
-        expires_in:
-          type: integer
-    PasswordSignupRequestRequest:
-      type: object
-      properties:
-        phone_number:
-          type: string
-          minLength: 1
-        password:
-          type: string
-          writeOnly: true
-          minLength: 8
-          maxLength: 128
-        first_name:
-          type: string
-          maxLength: 150
-        last_name:
-          type: string
-          maxLength: 150
-        email:
-          type: string
-          format: email
-          nullable: true
       required:
-      - password
-      - phone_number
+      - created
+      - tokens
+      - user
     PatchedAddressRequest:
       type: object
       properties:
@@ -6382,6 +8491,42 @@ components:
           nullable: true
         is_default:
           type: boolean
+    PatchedAdminPackageRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        description:
+          type: string
+        bundle_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        valid_from:
+          type: string
+          format: date
+          nullable: true
+        valid_until:
+          type: string
+          format: date
+          nullable: true
+        maximum_usage_limit:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/PackageItemRequest'
     PatchedAdminReviewRequest:
       type: object
       properties:
@@ -6450,9 +8595,8 @@ components:
           writeOnly: true
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
     PatchedAdminServiceRequest:
@@ -6481,6 +8625,9 @@ components:
           type: string
         important_notes:
           type: string
+        landing_group:
+          type: string
+          maxLength: 120
         base_price:
           type: string
           format: decimal
@@ -6497,12 +8644,29 @@ components:
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
           nullable: true
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
         estimated_duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         cover_image:
+          type: string
+          format: binary
+        landing_thumbnail:
+          type: string
+          format: binary
+        popup_cover_image:
+          type: string
+          format: binary
+        popup_content_image:
+          type: string
+          format: binary
+        list_image:
           type: string
           format: binary
         is_featured:
@@ -6513,9 +8677,8 @@ components:
           type: boolean
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
     PatchedAdminStaffUpdateRequest:
       type: object
       properties:
@@ -6531,7 +8694,7 @@ components:
           type: string
           maxLength: 150
         role:
-          $ref: '#/components/schemas/RoleEnum'
+          $ref: '#/components/schemas/Role5a2Enum'
         is_verified:
           type: boolean
         is_active:
@@ -6543,6 +8706,31 @@ components:
           items:
             type: integer
           writeOnly: true
+    PatchedAdminTimeSlotRequest:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        start_time:
+          type: string
+          format: time
+        end_time:
+          type: string
+          format: time
+        capacity:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_active:
+          type: boolean
+    PatchedCartQuantityRequest:
+      type: object
+      properties:
+        quantity:
+          type: integer
+          maximum: 20
+          minimum: 1
     PatchedFAQRequest:
       type: object
       properties:
@@ -6566,9 +8754,8 @@ components:
           maxLength: 180
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
           default: true
@@ -6603,9 +8790,8 @@ components:
           $ref: '#/components/schemas/PlacementEnum'
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         starts_at:
           type: string
           format: date-time
@@ -6728,6 +8914,32 @@ components:
           type: string
           format: uuid
           nullable: true
+        pending_booking:
+          type: string
+          format: uuid
+          nullable: true
+    PatchedScheduleClosureRequest:
+      type: object
+      properties:
+        service_area:
+          type: string
+          format: uuid
+          nullable: true
+          description: Leave empty to close every service area.
+        closure_type:
+          $ref: '#/components/schemas/ClosureTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
     PatchedServiceImageRequest:
       type: object
       properties:
@@ -6739,9 +8951,8 @@ components:
           maxLength: 255
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
     PatchedUserProfileUpdateRequest:
@@ -6905,6 +9116,14 @@ components:
         * `SUCCESS` - Success
         * `FAILED` - Failed
         * `REFUNDED` - Refunded
+    PaymentScopeEnum:
+      enum:
+      - FULL
+      - ADVANCE
+      type: string
+      description: |-
+        * `FULL` - FULL
+        * `ADVANCE` - ADVANCE
     PaymentStatusEnum:
       enum:
       - UNPAID
@@ -6975,6 +9194,16 @@ components:
         * `PROMOTIONAL_CAROUSEL` - Promotional carousel
         * `CATEGORY` - Category banner
         * `SERVICE_PAGE` - Service-page banner
+    PlatformEnum:
+      enum:
+      - WEB
+      - ANDROID
+      - IOS
+      type: string
+      description: |-
+        * `WEB` - Web
+        * `ANDROID` - Android
+        * `IOS` - iOS
     ProviderEnum:
       enum:
       - RAZORPAY
@@ -7059,7 +9288,7 @@ components:
       required:
       - comment
       - rating
-    RoleEnum:
+    Role5a2Enum:
       enum:
       - CUSTOMER
       - TECHNICIAN
@@ -7071,6 +9300,105 @@ components:
         * `TECHNICIAN` - Technician
         * `ADMIN` - Admin
         * `SUPER_ADMIN` - Super Admin
+    ScheduleClosure:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        service_area:
+          type: string
+          format: uuid
+          nullable: true
+          description: Leave empty to close every service area.
+        service_area_name:
+          type: string
+          readOnly: true
+        closure_type:
+          $ref: '#/components/schemas/ClosureTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        reason:
+          type: string
+          maxLength: 255
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - end_date
+      - id
+      - reason
+      - service_area_name
+      - start_date
+      - updated_at
+    ScheduleClosureRequest:
+      type: object
+      properties:
+        service_area:
+          type: string
+          format: uuid
+          nullable: true
+          description: Leave empty to close every service area.
+        closure_type:
+          $ref: '#/components/schemas/ClosureTypeEnum'
+        start_date:
+          type: string
+          format: date
+        end_date:
+          type: string
+          format: date
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 255
+        is_active:
+          type: boolean
+      required:
+      - end_date
+      - reason
+      - start_date
+    ServiceArea:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          maxLength: 150
+        city:
+          type: string
+          maxLength: 100
+        state:
+          type: string
+          maxLength: 100
+        country:
+          type: string
+          default: India
+          maxLength: 100
+        postal_code:
+          type: string
+          maxLength: 20
+      required:
+      - city
+      - id
+      - name
+      - postal_code
+      - state
     ServiceAreaCheckResponse:
       type: object
       properties:
@@ -7107,9 +9435,8 @@ components:
           readOnly: true
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - id
       - image_url
@@ -7131,9 +9458,8 @@ components:
           type: string
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - name
       - slug
@@ -7158,6 +9484,11 @@ components:
         short_description:
           type: string
           maxLength: 255
+        whats_included:
+          type: string
+        landing_group:
+          type: string
+          maxLength: 120
         base_price:
           type: string
           format: decimal
@@ -7171,16 +9502,44 @@ components:
           type: number
           format: double
           readOnly: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
         advance_amount:
           type: string
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
         estimated_duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         cover_image:
+          type: string
+          format: uri
+          readOnly: true
+        landing_thumbnail:
+          type: string
+          format: uri
+          readOnly: true
+        popup_cover_image:
+          type: string
+          format: uri
+          readOnly: true
+        popup_content_image:
+          type: string
+          format: uri
+          readOnly: true
+        list_image:
           type: string
           format: uri
           readOnly: true
@@ -7190,12 +9549,9 @@ components:
           type: boolean
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         description:
-          type: string
-        whats_included:
           type: string
         whats_excluded:
           type: string
@@ -7209,7 +9565,11 @@ components:
       - effective_price
       - estimated_duration_minutes
       - id
+      - landing_thumbnail
+      - list_image
       - name
+      - popup_content_image
+      - popup_cover_image
       - slug
     ServiceImage:
       type: object
@@ -7230,9 +9590,8 @@ components:
           maxLength: 255
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
         created_at:
@@ -7260,9 +9619,8 @@ components:
           maxLength: 255
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_active:
           type: boolean
       required:
@@ -7288,6 +9646,11 @@ components:
         short_description:
           type: string
           maxLength: 255
+        whats_included:
+          type: string
+        landing_group:
+          type: string
+          maxLength: 120
         base_price:
           type: string
           format: decimal
@@ -7301,16 +9664,44 @@ components:
           type: number
           format: double
           readOnly: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
         advance_amount:
           type: string
           format: decimal
           pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
         estimated_duration_minutes:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         cover_image:
+          type: string
+          format: uri
+          readOnly: true
+        landing_thumbnail:
+          type: string
+          format: uri
+          readOnly: true
+        popup_cover_image:
+          type: string
+          format: uri
+          readOnly: true
+        popup_content_image:
+          type: string
+          format: uri
+          readOnly: true
+        list_image:
           type: string
           format: uri
           readOnly: true
@@ -7320,9 +9711,8 @@ components:
           type: boolean
         display_order:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
       required:
       - advance_amount
       - base_price
@@ -7331,10 +9721,80 @@ components:
       - effective_price
       - estimated_duration_minutes
       - id
+      - landing_thumbnail
+      - list_image
+      - name
+      - popup_content_image
+      - popup_cover_image
+      - slug
+    ServiceListRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 180
+        slug:
+          type: string
+          minLength: 1
+          maxLength: 220
+          pattern: ^[-a-zA-Z0-9_]+$
+        short_description:
+          type: string
+          maxLength: 255
+        whats_included:
+          type: string
+        landing_group:
+          type: string
+          maxLength: 120
+        base_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        selling_price:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_payment_type:
+          $ref: '#/components/schemas/AdvancePaymentTypeEnum'
+        advance_payment_value:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+          nullable: true
+        advance_amount:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee:
+          type: string
+          format: decimal
+          pattern: ^-?\d{0,8}(?:\.\d{0,2})?$
+        training_fee_per_unit:
+          type: boolean
+        estimated_duration_minutes:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+        is_featured:
+          type: boolean
+        is_popular:
+          type: boolean
+        display_order:
+          type: integer
+          maximum: 2147483647
+          minimum: 0
+      required:
+      - advance_amount
+      - base_price
+      - estimated_duration_minutes
       - name
       - slug
     SourceEnum:
       enum:
+      - CONSUMER_APP
+      - ONCALL
       - SERVICE_VIEW
       - CART
       - CHECKOUT
@@ -7351,6 +9811,8 @@ components:
       - OTHER
       type: string
       description: |-
+        * `CONSUMER_APP` - Consumer app
+        * `ONCALL` - On-call
         * `SERVICE_VIEW` - Service view
         * `CART` - Cart
         * `CHECKOUT` - Checkout
@@ -7372,9 +9834,84 @@ components:
           type: integer
         name:
           type: string
+        description:
+          type: string
       required:
       - id
       - name
+    TechnicianLeave:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        technician:
+          type: string
+          format: uuid
+          readOnly: true
+        technician_name:
+          type: string
+          readOnly: true
+        technician_employee_code:
+          type: string
+          readOnly: true
+        start_at:
+          type: string
+          format: date-time
+          readOnly: true
+        end_at:
+          type: string
+          format: date-time
+          readOnly: true
+        reason:
+          type: string
+          readOnly: true
+        status:
+          type: string
+          readOnly: true
+        approved_by:
+          type: string
+          format: uuid
+          readOnly: true
+          nullable: true
+        approved_by_phone:
+          type: string
+          readOnly: true
+        review_note:
+          type: string
+          readOnly: true
+        is_active:
+          type: boolean
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - approved_by
+      - approved_by_phone
+      - created_at
+      - end_at
+      - id
+      - is_active
+      - reason
+      - review_note
+      - start_at
+      - status
+      - technician
+      - technician_employee_code
+      - technician_name
+      - updated_at
+    TechnicianLeaveReviewRequest:
+      type: object
+      properties:
+        note:
+          type: string
     TechnicianProfile:
       type: object
       properties:
@@ -7440,14 +9977,12 @@ components:
           pattern: ^-?\d{0,1}(?:\.\d{0,2})?$
         completed_job_count:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         cancellation_count:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         is_available:
           type: boolean
         is_active:
@@ -7520,9 +10055,8 @@ components:
           format: time
         capacity:
           type: integer
-          maximum: 9223372036854775807
+          maximum: 2147483647
           minimum: 0
-          format: int64
         available_capacity:
           type: integer
           readOnly: true
@@ -7589,7 +10123,7 @@ components:
           readOnly: true
         role:
           allOf:
-          - $ref: '#/components/schemas/RoleEnum'
+          - $ref: '#/components/schemas/Role5a2Enum'
           readOnly: true
         is_verified:
           type: boolean
@@ -7597,6 +10131,10 @@ components:
         customer_profile:
           allOf:
           - $ref: '#/components/schemas/CustomerProfile'
+          readOnly: true
+        groups:
+          type: object
+          additionalProperties: {}
           readOnly: true
         created_at:
           type: string
@@ -7611,6 +10149,7 @@ components:
       - customer_profile
       - email
       - first_name
+      - groups
       - id
       - is_verified
       - last_name
@@ -7633,4 +10172,5 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Administrator tokens must be issued after MFA verification.
+      description: JWT authentication. Administrator MFA is enforced when ADMIN_MFA_ENABLED
+        is true.

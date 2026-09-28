@@ -12,7 +12,7 @@ from common.monitoring import report_operational_failure
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_CHANNELS = (NotificationChannel.WHATSAPP,)
+DEFAULT_CHANNELS = (NotificationChannel.PUSH,)
 
 
 def emit_notification_event(*, event, recipient, booking=None, channels=None, payload=None):

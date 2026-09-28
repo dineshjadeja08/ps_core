@@ -8,7 +8,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.auth.providers import FirebaseTokenError
-from apps.accounts.models import AdminMfaChallenge, CustomerProfile, User, UserRole
+from apps.accounts.models import CustomerProfile, User, UserRole
 
 
 @dataclass(frozen=True)
@@ -27,94 +27,16 @@ class FakeProvider:
         return TokenResult(phone_number=self.phone_number)
 
 
-class FakeOtpProvider:
-    sent_mobile = ""
-    sent_channel = ""
-    verified_mobile = ""
-    verified_otp = ""
-    fail_send = False
-    fail_verify = False
-
-    def send_otp(self, *, mobile, channel):
-        if self.fail_send:
-            from rest_framework import serializers
-
-            raise serializers.ValidationError("Could not send OTP.")
-        self.__class__.sent_mobile = mobile
-        self.__class__.sent_channel = channel
-        return type("Result", (), {"request_id": "otp-request-id"})()
-
-    def verify_otp(self, *, mobile, otp):
-        if self.fail_verify:
-            from rest_framework import serializers
-
-            raise serializers.ValidationError("Invalid or expired OTP.")
-        self.__class__.verified_mobile = mobile
-        self.__class__.verified_otp = otp
-        return type("Result", (), {"request_id": "otp-request-id"})()
-
-
 @pytest.fixture(autouse=True)
 def fake_provider(monkeypatch):
     cache.clear()
     monkeypatch.setattr("apps.accounts.services.get_firebase_auth_provider", FakeProvider)
-    monkeypatch.setattr("apps.accounts.services.get_otp_auth_provider", FakeOtpProvider)
     FakeProvider.phone_number = "+919876543210"
     FakeProvider.error = None
-    FakeOtpProvider.sent_mobile = ""
-    FakeOtpProvider.sent_channel = ""
-    FakeOtpProvider.verified_mobile = ""
-    FakeOtpProvider.verified_otp = ""
-    FakeOtpProvider.fail_send = False
-    FakeOtpProvider.fail_verify = False
 
 
 def auth_response(client, id_token="valid-token"):
-    return client.post("/api/v1/auth/firebase/", {"id_token": id_token}, format="json")
-
-
-@pytest.mark.django_db
-def test_customer_access_saves_name_and_mobile_without_otp_or_password():
-    client = APIClient()
-    first = client.post(
-        "/api/v1/auth/customer-access/",
-        {"name": "Viknesh Customer", "phone_number": "9629025814"},
-        format="json",
-    )
-    second = client.post(
-        "/api/v1/auth/customer-access/",
-        {"name": "Viknesh Updated", "phone_number": "+919629025814"},
-        format="json",
-    )
-
-    assert first.status_code == 200
-    assert first.json()["created"] is True
-    assert first.json()["tokens"]["access"]
-    assert second.status_code == 200
-    assert second.json()["created"] is False
-    user = User.objects.get(phone_number="+919629025814")
-    assert user.first_name == "Viknesh"
-    assert user.last_name == "Updated"
-    assert user.has_usable_password() is False
-    assert user.customer_profile.display_name == "Viknesh Updated"
-
-
-@pytest.mark.django_db
-def test_customer_access_cannot_login_staff_account():
-    User.objects.create_user(
-        phone_number="+919629025814",
-        password="StrongPass123",
-        role=UserRole.ADMIN,
-        is_staff=True,
-    )
-    response = APIClient().post(
-        "/api/v1/auth/customer-access/",
-        {"name": "Not Admin", "phone_number": "+919629025814"},
-        format="json",
-    )
-
-    assert response.status_code == 400
-    assert "tokens" not in response.json()
+    return client.post("/api/v1/auth/firebase-login/", {"id_token": id_token}, format="json")
 
 
 @pytest.mark.django_db
@@ -132,6 +54,7 @@ def test_first_login_creates_customer():
     assert payload["tokens"]["refresh"]
     assert User.objects.count() == 1
     assert CustomerProfile.objects.count() == 1
+    assert User.objects.get().firebase_uid == "firebase-uid"
 
 
 @pytest.mark.django_db
@@ -166,149 +89,6 @@ def test_missing_phone_claim():
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "VALIDATION_ERROR"
-
-
-@pytest.mark.django_db
-def test_otp_send_uses_selected_backend_provider_channel():
-    response = APIClient().post(
-        "/api/v1/auth/otp/send/",
-        {"phone_number": "+919629025814", "channel": "WHATSAPP"},
-        format="json",
-    )
-
-    assert response.status_code == 200
-    assert response.json()["phone_number"] == "+919629025814"
-    assert response.json()["request_id"] == "otp-request-id"
-    assert response.json()["channel"] == "WHATSAPP"
-    assert FakeOtpProvider.sent_mobile == "919629025814"
-    assert FakeOtpProvider.sent_channel == "WHATSAPP"
-
-
-@pytest.mark.django_db
-def test_otp_send_defaults_to_sms_and_rejects_unknown_channel():
-    client = APIClient()
-    default_response = client.post("/api/v1/auth/otp/send/", {"phone_number": "+919629025814"}, format="json")
-    invalid_response = client.post(
-        "/api/v1/auth/otp/send/",
-        {"phone_number": "+919629025814", "channel": "EMAIL"},
-        format="json",
-    )
-
-    assert default_response.status_code == 200
-    assert default_response.json()["channel"] == "SMS"
-    assert FakeOtpProvider.sent_channel == "SMS"
-    assert invalid_response.status_code == 400
-
-
-@pytest.mark.django_db
-def test_otp_verify_creates_customer_session():
-    response = APIClient().post(
-        "/api/v1/auth/otp/verify/",
-        {"phone_number": "+919629025814", "otp": "123456"},
-        format="json",
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["user"]["phone_number"] == "+919629025814"
-    assert payload["tokens"]["access"]
-    assert payload["tokens"]["refresh"]
-    assert FakeOtpProvider.verified_mobile == "919629025814"
-    assert FakeOtpProvider.verified_otp == "123456"
-
-
-@pytest.mark.django_db
-def test_otp_verify_rejects_provider_failure():
-    FakeOtpProvider.fail_verify = True
-
-    response = APIClient().post(
-        "/api/v1/auth/otp/verify/",
-        {"phone_number": "+919629025814", "otp": "123456"},
-        format="json",
-    )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
-
-
-@pytest.mark.django_db
-def test_password_signup_creates_customer_session():
-    response = APIClient().post(
-        "/api/v1/auth/password/signup/",
-        {
-            "phone_number": "+919629025814",
-            "password": "StrongPass123",
-            "first_name": "Viknesh",
-            "email": "viknesh@example.com",
-        },
-        format="json",
-    )
-
-    assert response.status_code == 201
-    payload = response.json()
-    user = User.objects.get(phone_number="+919629025814")
-    assert payload["created"] is True
-    assert payload["user"]["first_name"] == "Viknesh"
-    assert payload["user"]["role"] == UserRole.CUSTOMER
-    assert payload["tokens"]["access"]
-    assert user.check_password("StrongPass123") is True
-    assert CustomerProfile.objects.filter(user=user).exists() is True
-
-
-@pytest.mark.django_db
-def test_password_signup_rejects_existing_password_account():
-    User.objects.create_user(phone_number="+919629025814", password="StrongPass123", role=UserRole.CUSTOMER)
-
-    response = APIClient().post(
-        "/api/v1/auth/password/signup/",
-        {"phone_number": "+919629025814", "password": "NewStrongPass123"},
-        format="json",
-    )
-
-    assert response.status_code == 400
-    assert response.json()["error"]["code"] == "VALIDATION_ERROR"
-
-
-@pytest.mark.django_db
-def test_password_signup_does_not_modify_admin_accounts():
-    User.objects.create_user(
-        phone_number="+919629025814",
-        role=UserRole.ADMIN,
-        is_staff=True,
-        is_verified=True,
-    )
-
-    response = APIClient().post(
-        "/api/v1/auth/password/signup/",
-        {"phone_number": "+919629025814", "password": "StrongPass123"},
-        format="json",
-    )
-
-    user = User.objects.get(phone_number="+919629025814")
-    assert response.status_code == 400
-    assert user.has_usable_password() is False
-
-
-@pytest.mark.django_db
-def test_password_login_returns_customer_session():
-    User.objects.create_user(
-        phone_number="+919629025814",
-        password="StrongPass123",
-        role=UserRole.CUSTOMER,
-        is_verified=True,
-    )
-
-    response = APIClient().post(
-        "/api/v1/auth/password/login/",
-        {"phone_number": "+919629025814", "password": "StrongPass123"},
-        format="json",
-    )
-
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["created"] is False
-    assert payload["user"]["phone_number"] == "+919629025814"
-    assert payload["tokens"]["access"]
 
 
 @pytest.mark.django_db
@@ -352,90 +132,9 @@ def test_admin_password_login_issues_tokens_when_mfa_is_temporarily_disabled():
 
 
 @pytest.mark.django_db
-@override_settings(ADMIN_MFA_ENABLED=True)
-def test_admin_password_login_requires_one_time_mfa_before_tokens_are_issued():
-    user = User.objects.create_user(
-        phone_number="+919629025814",
-        password="StrongPass123",
-        role=UserRole.ADMIN,
-        is_staff=True,
-        is_verified=True,
-    )
-    client = APIClient()
-    first = client.post(
-        "/api/v1/auth/password/login/",
-        {"phone_number": user.phone_number, "password": "StrongPass123", "channel": "WHATSAPP"},
-        format="json",
-    )
-
-    assert first.status_code == 200
-    assert first.json()["mfa_required"] is True
-    assert "tokens" not in first.json()
-    assert FakeOtpProvider.sent_mobile == "919629025814"
-    assert AdminMfaChallenge.objects.filter(user=user, consumed_at__isnull=True).count() == 1
-
-    verified = client.post(
-        "/api/v1/auth/admin-mfa/verify/",
-        {"challenge_id": first.json()["challenge_id"], "otp": "123456"},
-        format="json",
-    )
-    repeated = client.post(
-        "/api/v1/auth/admin-mfa/verify/",
-        {"challenge_id": first.json()["challenge_id"], "otp": "123456"},
-        format="json",
-    )
-
-    assert verified.status_code == 200
-    assert verified.json()["user"]["role"] == UserRole.ADMIN
-    assert verified.json()["tokens"]["refresh"]
-    assert repeated.status_code == 400
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {verified.json()['tokens']['access']}")
-    assert client.get("/api/v1/auth/me/").status_code == 200
-
-
-@pytest.mark.django_db
-@override_settings(ADMIN_MFA_ENABLED=True)
-def test_admin_cannot_bypass_mfa_with_customer_otp_endpoints():
-    user = User.objects.create_user(
-        phone_number="+919629025814",
-        password="StrongPass123",
-        role=UserRole.SUPER_ADMIN,
-        is_staff=True,
-        is_superuser=True,
-        is_verified=True,
-    )
-    client = APIClient()
-
-    send = client.post("/api/v1/auth/otp/send/", {"phone_number": user.phone_number}, format="json")
-    verify = client.post(
-        "/api/v1/auth/otp/verify/",
-        {"phone_number": user.phone_number, "otp": "123456"},
-        format="json",
-    )
-
-    assert send.status_code == 400
-    assert verify.status_code == 400
-    assert FakeOtpProvider.verified_mobile == ""
-
-    legacy_access = str(RefreshToken.for_user(user).access_token)
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {legacy_access}")
-    assert client.get("/api/v1/auth/me/").status_code == 401
-
-
-@pytest.mark.django_db
 def test_refresh_token_rotates_and_old_token_is_blacklisted():
-    User.objects.create_user(
-        phone_number="+919629025814",
-        password="StrongPass123",
-        role=UserRole.CUSTOMER,
-        is_verified=True,
-    )
     client = APIClient()
-    login = client.post(
-        "/api/v1/auth/password/login/",
-        {"phone_number": "+919629025814", "password": "StrongPass123"},
-        format="json",
-    )
+    login = auth_response(client)
     original_refresh = login.json()["tokens"]["refresh"]
 
     rotated = client.post("/api/v1/auth/refresh/", {"refresh": original_refresh}, format="json")

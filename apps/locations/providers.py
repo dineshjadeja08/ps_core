@@ -56,14 +56,17 @@ class LocationProvider(Protocol):
         request_id: str = "",
     ) -> list[dict]: ...
 
+    def get_geocode(self, place_id: str, *, request_id: str = "") -> dict: ...
 
-class OlaMapsLocationProvider:
-    BASE_URL = "https://api.olamaps.io"
-    REVERSE_GEOCODE_PATH = "/places/v1/reverse-geocode"
-    AUTOCOMPLETE_PATH = "/places/v1/autocomplete"
+
+class GoogleMapsLocationProvider:
+    BASE_URL = "https://maps.googleapis.com/maps/api"
+    REVERSE_GEOCODE_PATH = "/geocode/json"
+    AUTOCOMPLETE_PATH = "/place/autocomplete/json"
+    GEOCODE_PATH = "/geocode/json"
 
     def __init__(self):
-        self.api_key = str(settings.OLA_MAPS_API_KEY or "").strip()
+        self.api_key = str(settings.GOOGLE_MAPS_API_KEY or "").strip()
         self.timeout = min(max(int(settings.LOCATION_PROVIDER_TIMEOUT_SECONDS), 1), 15)
 
     def get_reverse_geocode(self, latitude: float, longitude: float, *, request_id: str = "") -> dict:
@@ -72,9 +75,9 @@ class OlaMapsLocationProvider:
             {"latlng": f"{latitude},{longitude}", "language": "en"},
             request_id=request_id,
         )
-        if "results" not in payload and "geocodingResults" not in payload:
+        if "results" not in payload:
             raise self._malformed_error(request_id)
-        results = payload.get("results") or payload.get("geocodingResults") or []
+        results = payload.get("results") or []
         if not isinstance(results, list):
             raise self._malformed_error(request_id)
         if not results:
@@ -93,20 +96,32 @@ class OlaMapsLocationProvider:
         city: str = "",
         request_id: str = "",
     ) -> list[dict]:
-        params = {"input": query, "language": "en"}
+        params = {"input": query, "language": "en", "components": "country:in", "region": "in"}
         if latitude is not None and longitude is not None:
-            params["location"] = f"{latitude},{longitude}"
+            params.update({"location": f"{latitude},{longitude}", "radius": 50000})
         elif city and city.casefold() not in query.casefold():
             params["input"] = f"{query}, {city}"
 
         payload = self._get(self.AUTOCOMPLETE_PATH, params, request_id=request_id)
-        if "predictions" not in payload and "results" not in payload:
+        if "predictions" not in payload:
             raise self._malformed_error(request_id)
-        predictions = payload.get("predictions") or payload.get("results") or []
+        predictions = payload.get("predictions") or []
         if not isinstance(predictions, list):
             raise self._malformed_error(request_id)
         try:
             return [_normalise_suggestion(item) for item in predictions[:8] if isinstance(item, dict)]
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise self._malformed_error(request_id) from exc
+
+    def get_geocode(self, place_id: str, *, request_id: str = "") -> dict:
+        payload = self._get(self.GEOCODE_PATH, {"place_id": place_id, "language": "en", "region": "in"}, request_id=request_id)
+        results = payload.get("results")
+        if not isinstance(results, list):
+            raise self._malformed_error(request_id)
+        if not results:
+            raise LocationProviderError("Address was not found.", reason="not_found", request_id=request_id)
+        try:
+            return _normalise_place(results[0])
         except (AttributeError, TypeError, ValueError) as exc:
             raise self._malformed_error(request_id) from exc
 
@@ -127,7 +142,7 @@ class OlaMapsLocationProvider:
             try:
                 response = requests.get(
                     f"{self.BASE_URL}{path}",
-                    params={**params, "api_key": self.api_key},
+                    params={**params, "key": self.api_key},
                     headers={"Accept": "application/json", "X-Request-Id": provider_request_id},
                     timeout=self.timeout,
                 )
@@ -195,6 +210,19 @@ class OlaMapsLocationProvider:
                 error = self._malformed_error(provider_request_id, status_code=status_code, latency_ms=latency_ms, snippet=snippet)
                 self._log_failure(path, error, attempt=attempt + 1)
                 raise error
+            provider_status = str(payload.get("status", "OK"))
+            if provider_status not in {"OK", "ZERO_RESULTS"}:
+                reason = "misconfigured" if provider_status in {"REQUEST_DENIED", "INVALID_REQUEST"} else "unavailable"
+                error = LocationProviderError(
+                    "Address lookup is not configured." if reason == "misconfigured" else "Address lookup is temporarily unavailable.",
+                    reason=reason,
+                    status_code=provider_status,
+                    response_snippet=_safe_body_snippet(response.text),
+                    latency_ms=latency_ms,
+                    request_id=provider_request_id,
+                )
+                self._log_failure(path, error, attempt=attempt + 1)
+                raise error
             return payload
 
         raise LocationProviderError(request_id=provider_request_id)
@@ -211,7 +239,7 @@ class OlaMapsLocationProvider:
     @staticmethod
     def _log_failure(path, error, *, attempt=1):
         logger.warning(
-            "ola_maps_failure endpoint=%s request_id=%s status=%s latency_ms=%s attempt=%s body=%s",
+            "google_maps_failure endpoint=%s request_id=%s status=%s latency_ms=%s attempt=%s body=%s",
             path,
             error.request_id,
             error.status_code or "misconfigured",
@@ -265,6 +293,16 @@ def autocomplete(
         request_id=request_id,
     )
     cache.set(cache_key, result, timeout=settings.LOCATION_AUTOCOMPLETE_CACHE_SECONDS)
+    return result
+
+
+def geocode_place(place_id: str, *, request_id: str = "") -> dict:
+    cache_key = f"location:place:{hashlib.sha256(place_id.encode('utf-8')).hexdigest()[:24]}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
+    result = _call_with_optional_fallback("get_geocode", place_id, request_id=request_id)
+    cache.set(cache_key, result, timeout=settings.LOCATION_REVERSE_CACHE_SECONDS)
     return result
 
 
@@ -404,4 +442,4 @@ def _track_provider_call():
         count = 1
     if count in {1, 50_000, 80_000, 90_000, 100_000}:
         log = logger.warning if count >= 80_000 else logger.info
-        log("Ola Maps monthly call count is %s for %s.", count, month)
+        log("Google Maps Platform monthly call count is %s for %s.", count, month)

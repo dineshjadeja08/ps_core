@@ -668,17 +668,13 @@ class AdminSettingsView(APIView):
             "allowed_hosts": list(settings.ALLOWED_HOSTS),
             "cors_allowed_origins": list(getattr(settings, "CORS_ALLOWED_ORIGINS", [])),
             "csrf_trusted_origins": list(getattr(settings, "CSRF_TRUSTED_ORIGINS", [])),
-            "otp_provider": settings.OTP_AUTH_PROVIDER,
             "notification_provider": getattr(settings, "NOTIFICATION_PROVIDER", ""),
             "razorpay_configured": bool(settings.RAZORPAY_KEY_ID and settings.RAZORPAY_KEY_SECRET),
-            "msg91_configured": bool(
-                settings.MSG91_AUTH_KEY
-                and settings.MSG91_TEMPLATE_ID
-                and settings.MSG91_WHATSAPP_INTEGRATED_NUMBER
-                and settings.MSG91_WHATSAPP_TEMPLATE_NAME
-                and settings.MSG91_WHATSAPP_TEMPLATE_NAMESPACE
+            "firebase_configured": bool(
+                getattr(settings, "FIREBASE_CREDENTIALS_PATH", "")
+                or getattr(settings, "FIREBASE_PROJECT_ID", "")
             ),
-            "firebase_configured": bool(getattr(settings, "FIREBASE_CREDENTIALS_JSON", "")),
+            "google_maps_configured": bool(getattr(settings, "GOOGLE_MAPS_API_KEY", "")),
             "cloudinary_media_enabled": bool(getattr(settings, "USE_CLOUDINARY_MEDIA", False)),
             "cloudinary_media_configured": bool(
                 getattr(settings, "CLOUDINARY_URL", "")

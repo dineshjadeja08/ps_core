@@ -7,7 +7,7 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.locations.models import ServiceArea
-from apps.locations.providers import LocationProviderError, OlaMapsLocationProvider, autocomplete, reverse_geocode
+from apps.locations.providers import LocationProviderError, GoogleMapsLocationProvider, autocomplete, reverse_geocode
 from common.throttles import LocationIPThrottle
 
 
@@ -28,7 +28,7 @@ def normalized_address(latitude=13.0827, longitude=80.2707):
     }
 
 
-def ola_response(status_code, payload=None, text=None):
+def google_response(status_code, payload=None, text=None):
     response = Mock()
     response.status_code = status_code
     response.text = text if text is not None else "{}"
@@ -44,7 +44,7 @@ def test_location_lookup_is_available_to_guests(client, monkeypatch):
     )
     monkeypatch.setattr(
         "apps.locations.views.autocomplete",
-        lambda query, **kwargs: [{"id": "ola:1", "description": "Avadi, Chennai", "main_text": "Avadi", "secondary_text": "Chennai", **normalized_address()}],
+        lambda query, **kwargs: [{"id": "google:1", "description": "Avadi, Chennai", "main_text": "Avadi", "secondary_text": "Chennai", **normalized_address()}],
     )
 
     reverse_response = client.get("/api/v1/location/reverse-geocode/?lat=13.0827&lng=80.2707")
@@ -107,10 +107,10 @@ def test_location_throttle_is_per_ip(client, monkeypatch):
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key", LOCATION_PROVIDER_TIMEOUT_SECONDS=3)
-def test_ola_provider_uses_documented_contract_and_normalizes(monkeypatch):
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key", LOCATION_PROVIDER_TIMEOUT_SECONDS=3)
+def test_google_provider_uses_documented_contract_and_normalizes(monkeypatch):
     ServiceArea.objects.create(name="Chennai Central", city="Chennai", state="Tamil Nadu", postal_code="600002")
-    response = ola_response(
+    response = google_response(
         200,
         {
             "results": [
@@ -128,39 +128,39 @@ def test_ola_provider_uses_documented_contract_and_normalizes(monkeypatch):
                     ],
                 }
             ],
-            "status": "ok",
+            "status": "OK",
         },
     )
     get = Mock(return_value=response)
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
-    result = OlaMapsLocationProvider().get_reverse_geocode(13.0827, 80.2707, request_id="request-123")
+    result = GoogleMapsLocationProvider().get_reverse_geocode(13.0827, 80.2707, request_id="request-123")
 
     assert result["city"] == "Chennai"
     assert result["pincode"] == "600002"
     assert result["supported_city"] is True
     assert result["serviceable"] is True
     assert get.call_args.kwargs["params"]["latlng"] == "13.0827,80.2707"
-    assert get.call_args.kwargs["params"]["api_key"] == "test-api-key"
+    assert get.call_args.kwargs["params"]["key"] == "test-api-key"
     assert get.call_args.kwargs["headers"]["X-Request-Id"] == "request-123"
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key")
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_autocomplete_uses_location_bias_and_parses_missing_components(monkeypatch):
     ServiceArea.objects.create(name="Anna Nagar", city="Chennai", state="Tamil Nadu", postal_code="600040")
-    get = Mock(return_value=ola_response(200, {
+    get = Mock(return_value=google_response(200, {
         "predictions": [{
-            "place_id": "ola-platform:123",
+            "place_id": "google-place:123",
             "description": "Anna Nagar, Chennai, Tamil Nadu 600040, India",
             "structured_formatting": {"main_text": "Anna Nagar", "secondary_text": "Chennai, Tamil Nadu"},
             "geometry": {"location": {"lat": 13.085, "lng": 80.21}},
         }],
-        "status": "ok",
+        "status": "OK",
     }))
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
-    result = OlaMapsLocationProvider().get_autocomplete("Anna", latitude=13.08, longitude=80.27)
+    result = GoogleMapsLocationProvider().get_autocomplete("Anna", latitude=13.08, longitude=80.27)
 
     assert get.call_args.kwargs["params"]["location"] == "13.08,80.27"
     assert result[0]["city"] == "Chennai"
@@ -169,14 +169,14 @@ def test_autocomplete_uses_location_bias_and_parses_missing_components(monkeypat
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key")
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 @pytest.mark.parametrize("status_code", [401, 403])
-def test_ola_auth_failures_are_misconfigured_without_retry(monkeypatch, status_code):
-    get = Mock(return_value=ola_response(status_code, text='{"message":"invalid api_key=test-api-key"}'))
+def test_google_auth_failures_are_misconfigured_without_retry(monkeypatch, status_code):
+    get = Mock(return_value=google_response(status_code, text='{"message":"invalid api_key=test-api-key"}'))
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
     with pytest.raises(LocationProviderError) as caught:
-        OlaMapsLocationProvider().get_autocomplete("avadi")
+        GoogleMapsLocationProvider().get_autocomplete("avadi")
 
     assert caught.value.reason == "misconfigured"
     assert "test-api-key" not in caught.value.response_snippet
@@ -184,49 +184,49 @@ def test_ola_auth_failures_are_misconfigured_without_retry(monkeypatch, status_c
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key")
-def test_ola_429_is_unavailable_without_retry(monkeypatch):
-    get = Mock(return_value=ola_response(429, text='{"message":"rate limit"}'))
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_google_429_is_unavailable_without_retry(monkeypatch):
+    get = Mock(return_value=google_response(429, text='{"message":"rate limit"}'))
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
     with pytest.raises(LocationProviderError) as caught:
-        OlaMapsLocationProvider().get_autocomplete("avadi")
+        GoogleMapsLocationProvider().get_autocomplete("avadi")
 
     assert caught.value.reason == "unavailable"
     assert get.call_count == 1
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key")
-def test_ola_5xx_retries_once(monkeypatch):
-    get = Mock(side_effect=[ola_response(503, text='{"message":"down"}'), ola_response(200, {"predictions": [], "status": "zero_results"})])
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_google_5xx_retries_once(monkeypatch):
+    get = Mock(side_effect=[google_response(503, text='{"message":"down"}'), google_response(200, {"predictions": [], "status": "ZERO_RESULTS"})])
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
-    assert OlaMapsLocationProvider().get_autocomplete("avadi") == []
+    assert GoogleMapsLocationProvider().get_autocomplete("avadi") == []
     assert get.call_count == 2
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key")
-def test_ola_timeout_retries_once(monkeypatch):
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_google_timeout_retries_once(monkeypatch):
     get = Mock(side_effect=requests.Timeout("secret URL must not be logged"))
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
     with pytest.raises(LocationProviderError) as caught:
-        OlaMapsLocationProvider().get_autocomplete("avadi")
+        GoogleMapsLocationProvider().get_autocomplete("avadi")
 
     assert caught.value.status_code == "timeout"
     assert get.call_count == 2
 
 
 @pytest.mark.django_db
-@override_settings(OLA_MAPS_API_KEY="test-api-key")
-def test_malformed_ola_body_is_unavailable(monkeypatch):
-    get = Mock(return_value=ola_response(200, {"status": "ok"}, text='{"status":"ok"}'))
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_malformed_google_body_is_unavailable(monkeypatch):
+    get = Mock(return_value=google_response(200, {"status": "OK"}, text='{"status":"ok"}'))
     monkeypatch.setattr("apps.locations.providers.requests.get", get)
 
     with pytest.raises(LocationProviderError) as caught:
-        OlaMapsLocationProvider().get_autocomplete("avadi")
+        GoogleMapsLocationProvider().get_autocomplete("avadi")
 
     assert caught.value.reason == "unavailable"
 

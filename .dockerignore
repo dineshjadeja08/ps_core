@@ -5,6 +5,9 @@
 .venv
 __pycache__/
 *.pyc
+firebase-service-account*.json
+*service-account*.json
+*.private-key.json
 db.sqlite3
 dev.sqlite3
 test.sqlite3

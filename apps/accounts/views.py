@@ -18,18 +18,12 @@ from apps.accounts.serializers import (
     AdminStaffCreateSerializer,
     AdminStaffSerializer,
     AdminStaffUpdateSerializer,
-    AdminMfaVerifyRequestSerializer,
     CustomerSupportNoteSerializer,
-    CustomerAccessRequestSerializer,
     DevPhoneLoginRequestSerializer,
     FirebaseLoginRequestSerializer,
     AuthLoginResponseSerializer,
-    OtpSendRequestSerializer,
-    OtpSendResponseSerializer,
-    OtpVerifyRequestSerializer,
     PasswordLoginRequestSerializer,
     PasswordLoginResponseSerializer,
-    PasswordSignupRequestSerializer,
     StaffGroupSerializer,
     UserSerializer,
     UserProfileUpdateSerializer,
@@ -41,25 +35,14 @@ from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.accounts.services import (
     authenticate_dev_phone,
-    authenticate_customer_access,
     authenticate_with_firebase,
-    authenticate_with_otp,
     authenticate_with_password,
-    complete_admin_mfa,
-    register_with_password,
-    send_login_otp,
 )
 from django.conf import settings
 from common.throttles import (
     LoginIPThrottle,
     LoginPhoneThrottle,
-    MfaChallengeThrottle,
-    OtpSendIPThrottle,
-    OtpSendPhoneThrottle,
-    OtpVerifyIPThrottle,
-    OtpVerifyPhoneThrottle,
 )
-from common.turnstile import verify_turnstile
 
 
 class FirebaseLoginView(APIView):
@@ -164,57 +147,6 @@ class DevPhoneLoginView(APIView):
         )
 
 
-class CustomerAccessView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    throttle_scope = "auth"
-    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
-
-    @extend_schema(
-        summary="Customer access with name and mobile",
-        description="Creates or updates a customer and returns a session without OTP or password.",
-        request=CustomerAccessRequestSerializer,
-        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
-    )
-    def post(self, request):
-        serializer = CustomerAccessRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        result = authenticate_customer_access(**serializer.validated_data)
-        return Response(
-            {
-                "user": UserSerializer(result["user"]).data,
-                "tokens": result["tokens"],
-                "created": result["created"],
-            }
-        )
-
-
-class PasswordSignupView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    throttle_scope = "auth"
-    throttle_classes = [LoginIPThrottle, LoginPhoneThrottle]
-
-    @extend_schema(
-        summary="Create account with phone and password",
-        description="Temporary phone-password customer account creation while OTP delivery is being configured.",
-        request=PasswordSignupRequestSerializer,
-        responses={status.HTTP_201_CREATED: AuthLoginResponseSerializer},
-    )
-    def post(self, request):
-        serializer = PasswordSignupRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        result = register_with_password(**serializer.validated_data)
-        return Response(
-            {
-                "user": UserSerializer(result["user"]).data,
-                "tokens": result["tokens"],
-                "created": result["created"],
-            },
-            status=status.HTTP_201_CREATED,
-        )
-
-
 class PasswordLoginView(APIView):
     authentication_classes = []
     permission_classes = []
@@ -233,84 +165,6 @@ class PasswordLoginView(APIView):
         result = authenticate_with_password(**serializer.validated_data)
         if result.get("mfa_required"):
             return Response(result)
-        return Response(
-            {
-                "user": UserSerializer(result["user"]).data,
-                "tokens": result["tokens"],
-                "created": result["created"],
-            }
-        )
-
-
-class AdminMfaVerifyView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    throttle_classes = [OtpVerifyIPThrottle, MfaChallengeThrottle]
-
-    @extend_schema(
-        summary="Complete administrator MFA",
-        description="Verifies the OTP for a short-lived password-authenticated administrator challenge.",
-        request=AdminMfaVerifyRequestSerializer,
-        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
-    )
-    def post(self, request):
-        serializer = AdminMfaVerifyRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        result = complete_admin_mfa(**serializer.validated_data)
-        return Response(
-            {
-                "user": UserSerializer(result["user"]).data,
-                "tokens": result["tokens"],
-                "created": result["created"],
-            }
-        )
-
-
-class OtpSendView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    throttle_scope = "auth"
-    throttle_classes = [OtpSendIPThrottle, OtpSendPhoneThrottle]
-
-    @extend_schema(
-        summary="Send phone OTP",
-        description="Sends a login OTP through the configured backend OTP provider.",
-        request=OtpSendRequestSerializer,
-        responses={status.HTTP_200_OK: OtpSendResponseSerializer},
-    )
-    def post(self, request):
-        serializer = OtpSendRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        verify_turnstile(
-            token=serializer.validated_data.get("captcha_token", ""),
-            remote_ip=request.META.get("REMOTE_ADDR", ""),
-        )
-        result = send_login_otp(
-            serializer.validated_data["phone_number"],
-            serializer.validated_data["channel"],
-        )
-        return Response(result)
-
-
-class OtpVerifyView(APIView):
-    authentication_classes = []
-    permission_classes = []
-    throttle_scope = "auth"
-    throttle_classes = [OtpVerifyIPThrottle, OtpVerifyPhoneThrottle]
-
-    @extend_schema(
-        summary="Verify phone OTP",
-        description="Verifies a phone OTP and returns Purple Squad JWT credentials.",
-        request=OtpVerifyRequestSerializer,
-        responses={status.HTTP_200_OK: AuthLoginResponseSerializer},
-    )
-    def post(self, request):
-        serializer = OtpVerifyRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        result = authenticate_with_otp(
-            serializer.validated_data["phone_number"],
-            serializer.validated_data["otp"],
-        )
         return Response(
             {
                 "user": UserSerializer(result["user"]).data,

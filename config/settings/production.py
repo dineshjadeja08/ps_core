@@ -103,31 +103,8 @@ if USE_CLOUDINARY_MEDIA:
             "API_SECRET": CLOUDINARY_API_SECRET,
         }
 
-REQUIRE_OTP_PROVIDER_CONFIG = env.bool("REQUIRE_OTP_PROVIDER_CONFIG", default=False)  # noqa: F405
+if not FIREBASE_CREDENTIALS_PATH and not FIREBASE_PROJECT_ID:  # noqa: F405
+    raise RuntimeError("Set FIREBASE_PROJECT_ID for ADC or FIREBASE_CREDENTIALS_PATH for file credentials.")
 
-if REQUIRE_OTP_PROVIDER_CONFIG and OTP_AUTH_PROVIDER.endswith("Msg91OtpProvider"):  # noqa: F405
-    if not MSG91_AUTH_KEY:  # noqa: F405
-        raise RuntimeError("MSG91_AUTH_KEY must be set in production.")
-    if not MSG91_TEMPLATE_ID:  # noqa: F405
-        raise RuntimeError("MSG91_TEMPLATE_ID must be set in production.")
-    if not MSG91_WHATSAPP_INTEGRATED_NUMBER:  # noqa: F405
-        raise RuntimeError("MSG91_WHATSAPP_INTEGRATED_NUMBER must be set in production.")
-    if not MSG91_WHATSAPP_TEMPLATE_NAME:  # noqa: F405
-        raise RuntimeError("MSG91_WHATSAPP_TEMPLATE_NAME must be set in production.")
-    if not MSG91_WHATSAPP_TEMPLATE_NAMESPACE:  # noqa: F405
-        raise RuntimeError("MSG91_WHATSAPP_TEMPLATE_NAMESPACE must be set in production.")
-
-if REQUIRE_OTP_PROVIDER_CONFIG and NOTIFICATION_PROVIDER.endswith("Msg91WhatsAppNotificationProvider"):  # noqa: F405
-    if not MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME:  # noqa: F405
-        raise RuntimeError("MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME must be set in production.")
-    if not MSG91_WEBHOOK_SECRET:  # noqa: F405
-        raise RuntimeError("MSG91_WEBHOOK_SECRET must be set in production.")
-
-if REQUIRE_TURNSTILE_FOR_OTP and not TURNSTILE_SECRET_KEY:  # noqa: F405
-    raise RuntimeError("TURNSTILE_SECRET_KEY must be set when OTP CAPTCHA protection is enabled.")
-
-if OTP_AUTH_PROVIDER.endswith("FirebaseAdminAuthProvider") and not (  # noqa: F405
-    os.environ.get("FIREBASE_CREDENTIALS_JSON")
-    or os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-):
-    raise RuntimeError("Firebase Admin credentials must be configured server-side in production.")
+if not GOOGLE_MAPS_API_KEY:  # noqa: F405
+    raise RuntimeError("GOOGLE_MAPS_API_KEY must be configured server-side in production.")

@@ -7,6 +7,7 @@ from apps.locations.views import (
     PublicServiceAreaListView,
     autocomplete_location,
     check_service_area,
+    geocode_location,
     reverse_geocode_location,
 )
 
@@ -19,5 +20,6 @@ urlpatterns = [
     path("service-areas/check/", check_service_area, name="service-area-check"),
     path("location/reverse-geocode/", reverse_geocode_location, name="location-reverse-geocode"),
     path("location/autocomplete/", autocomplete_location, name="location-autocomplete"),
+    path("location/geocode/", geocode_location, name="location-geocode"),
     *router.urls,
 ]

@@ -167,7 +167,7 @@ class LeadScheduleSerializer(serializers.Serializer):
 
 
 class LeadReminderSerializer(serializers.Serializer):
-    channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="SMS")
+    channel = serializers.ChoiceField(choices=("PUSH",), default="PUSH")
 
 
 class LeadContactSerializer(serializers.Serializer):
@@ -176,7 +176,7 @@ class LeadContactSerializer(serializers.Serializer):
 
 
 class LeadPaymentLinkSerializer(serializers.Serializer):
-    channel = serializers.ChoiceField(choices=("SMS", "WHATSAPP"), default="WHATSAPP")
+    channel = serializers.ChoiceField(choices=("PUSH",), default="PUSH")
     payment_scope = serializers.ChoiceField(choices=("FULL", "ADVANCE"), default="ADVANCE")
 
 
@@ -310,11 +310,10 @@ class AdminSettingsSerializer(serializers.Serializer):
     allowed_hosts = serializers.ListField(child=serializers.CharField())
     cors_allowed_origins = serializers.ListField(child=serializers.CharField())
     csrf_trusted_origins = serializers.ListField(child=serializers.CharField())
-    otp_provider = serializers.CharField()
     notification_provider = serializers.CharField()
     razorpay_configured = serializers.BooleanField()
-    msg91_configured = serializers.BooleanField()
     firebase_configured = serializers.BooleanField()
+    google_maps_configured = serializers.BooleanField()
     cloudinary_media_enabled = serializers.BooleanField()
     cloudinary_media_configured = serializers.BooleanField()
     booking_require_balance_before_completion = serializers.BooleanField()

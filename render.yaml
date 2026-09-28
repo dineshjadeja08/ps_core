@@ -35,35 +35,15 @@ services:
         sync: false
       - key: CSRF_TRUSTED_ORIGINS
         sync: false
-      - key: OTP_AUTH_PROVIDER
-        value: apps.accounts.otp.providers.Msg91OtpProvider
-      - key: REQUIRE_OTP_PROVIDER_CONFIG
-        value: "true"
-      - key: REQUIRE_TURNSTILE_FOR_OTP
-        value: "true"
-      - key: TURNSTILE_SECRET_KEY
+      - key: FIREBASE_CREDENTIALS_PATH
         sync: false
-      - key: OLA_MAPS_API_KEY
+      - key: GOOGLE_MAPS_API_KEY
         sync: false
       - key: BUSINESS_LEGAL_NAME
         sync: false
       - key: BUSINESS_GSTIN
         sync: false
       - key: BUSINESS_ADDRESS
-        sync: false
-      - key: MSG91_AUTH_KEY
-        sync: false
-      - key: MSG91_TEMPLATE_ID
-        sync: false
-      - key: MSG91_WHATSAPP_INTEGRATED_NUMBER
-        sync: false
-      - key: MSG91_WHATSAPP_TEMPLATE_NAME
-        sync: false
-      - key: MSG91_WHATSAPP_TEMPLATE_NAMESPACE
-        sync: false
-      - key: MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME
-        sync: false
-      - key: MSG91_WEBHOOK_SECRET
         sync: false
       - key: RAZORPAY_KEY_ID
         sync: false
@@ -78,7 +58,7 @@ services:
       - key: CLOUDINARY_URL
         sync: false
       - key: NOTIFICATION_PROVIDER
-        value: apps.notifications.providers.Msg91WhatsAppNotificationProvider
+        value: apps.notifications.fcm.FirebaseCloudMessagingProvider
       - key: DEV_PHONE_LOGIN_ENABLED
         value: "false"
       - key: SHOW_API_DOCS

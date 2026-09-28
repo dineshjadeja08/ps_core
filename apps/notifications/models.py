@@ -6,10 +6,6 @@ from common.models import BaseModel
 
 
 class NotificationChannel(models.TextChoices):
-    SMS = "SMS", "SMS"
-    EMAIL = "EMAIL", "Email"
-    WHATSAPP = "WHATSAPP", "WhatsApp"
-    IN_APP = "IN_APP", "In-app"
     PUSH = "PUSH", "Push"
 
 
@@ -75,3 +71,22 @@ class Notification(BaseModel):
 
     def __str__(self):
         return f"{self.event} {self.channel} {self.status}"
+
+
+class DeviceToken(BaseModel):
+    class Platform(models.TextChoices):
+        WEB = "WEB", "Web"
+        ANDROID = "ANDROID", "Android"
+        IOS = "IOS", "iOS"
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="device_tokens")
+    token = models.TextField(unique=True)
+    platform = models.CharField(max_length=16, choices=Platform.choices, default=Platform.WEB)
+    is_active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "is_active"])]
+
+    def __str__(self):
+        return f"{self.user_id} {self.platform}"

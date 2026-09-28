@@ -6,7 +6,7 @@ Keep `DJANGO_SECRET_KEY`, Razorpay secrets, Firebase credentials, database passw
 
 ## Authentication Architecture
 
-Customers can authenticate through the configured phone/OTP or password flow. Administrators must first verify their password and then complete an MSG91 SMS or WhatsApp OTP challenge. Admin JWTs require an `mfa=true` claim, so older tokens and tokens issued outside the MFA flow cannot access any authenticated endpoint. The built-in Django admin route is disabled in production to prevent a password-only bypass.
+Customers authenticate with Firebase Phone Authentication and exchange the verified Firebase ID token for Purple Squad JWTs. Firebase credentials remain backend-only. Administrators use the separate staff password flow, and the built-in Django admin route is disabled in production.
 
 Access tokens expire after 10 minutes and refresh tokens after seven days. Refresh tokens rotate on every successful refresh and the submitted token is blacklisted, so clients must persist the replacement refresh token. A dedicated `JWT_SIGNING_KEY` is required in production.
 

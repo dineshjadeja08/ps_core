@@ -13,11 +13,12 @@ from apps.locations.serializers import (
     AutocompleteResponseSerializer,
     AdminServiceAreaSerializer,
     NormalizedAddressSerializer,
+    PlaceGeocodeQuerySerializer,
     ReverseGeocodeQuerySerializer,
     ServiceAreaSerializer,
     ServiceAreaCheckResponseSerializer,
 )
-from apps.locations.providers import LocationProviderError, autocomplete, reverse_geocode
+from apps.locations.providers import LocationProviderError, autocomplete, geocode_place, reverse_geocode
 from apps.locations.services import enforce_single_default, get_active_service_area
 from common.throttles import LocationIPThrottle
 
@@ -93,6 +94,29 @@ def autocomplete_location(request):
     except LocationProviderError as exc:
         _raise_location_provider_error(exc)
     return Response({"suggestions": suggestions})
+
+
+@extend_schema(
+    tags=["Location"],
+    summary="Resolve a Google Places result",
+    parameters=[OpenApiParameter("place_id", str, required=True)],
+    responses={status.HTTP_200_OK: NormalizedAddressSerializer},
+)
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
+@throttle_classes([LocationIPThrottle])
+def geocode_location(request):
+    serializer = PlaceGeocodeQuerySerializer(data=request.query_params)
+    serializer.is_valid(raise_exception=True)
+    try:
+        result = geocode_place(
+            serializer.validated_data["place_id"],
+            request_id=getattr(request, "request_id", ""),
+        )
+    except LocationProviderError as exc:
+        _raise_location_provider_error(exc)
+    return Response(result)
 
 
 @extend_schema(tags=["Admin - Service Areas"])

@@ -1,12 +1,10 @@
 from django.conf import settings
-from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from django.utils import timezone
 from django.utils.module_loading import import_string
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from apps.accounts.models import AdminMfaChallenge, CustomerProfile, User, UserRole
+from apps.accounts.models import CustomerProfile, User, UserRole
 from apps.accounts.validators import normalize_phone_number
 
 
@@ -15,62 +13,51 @@ def get_firebase_auth_provider():
     return provider_class()
 
 
-def get_otp_auth_provider():
-    provider_class = import_string(settings.OTP_AUTH_PROVIDER)
-    return provider_class()
-
-
 @transaction.atomic
 def authenticate_with_firebase(id_token: str):
     verified_token = get_firebase_auth_provider().verify_id_token(id_token)
     phone_number = normalize_phone_number(verified_token.phone_number)
-    return authenticate_verified_phone(phone_number)
-
-
-def send_login_otp(phone_number: str, channel: str, *, allow_admin=False):
-    phone_number = normalize_phone_number(phone_number)
-    user = User.objects.filter(phone_number=phone_number).only("role").first()
-    if user and user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN} and not allow_admin:
-        raise serializers.ValidationError("Administrator accounts must use password and MFA login.")
-    mobile = phone_number.replace("+", "")
-    return {
-        "phone_number": phone_number,
-        "request_id": get_otp_auth_provider().send_otp(mobile=mobile, channel=channel).request_id,
-        "channel": channel,
-    }
-
-
-def authenticate_with_otp(phone_number: str, otp: str):
-    phone_number = normalize_phone_number(phone_number)
-    user = User.objects.filter(phone_number=phone_number).only("role").first()
-    if user and user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
-        raise serializers.ValidationError("Administrator accounts must use password and MFA login.")
-    mobile = phone_number.replace("+", "")
-    get_otp_auth_provider().verify_otp(mobile=mobile, otp=otp)
-    return authenticate_verified_phone(phone_number)
+    return authenticate_verified_phone(phone_number, firebase_uid=verified_token.uid)
 
 
 @transaction.atomic
-def authenticate_verified_phone(phone_number: str):
+def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = ""):
     phone_number = normalize_phone_number(phone_number)
-    user, created = User.objects.get_or_create(
-        phone_number=phone_number,
-        defaults={
-            "role": UserRole.CUSTOMER,
-            "is_verified": True,
-            "is_active": True,
-        },
-    )
+    user = User.objects.select_for_update().filter(firebase_uid=firebase_uid).first() if firebase_uid else None
+    if user is None:
+        user = User.objects.select_for_update().filter(phone_number=phone_number).first()
+    created = user is None
+    if user is None:
+        user = User.objects.create(
+            phone_number=phone_number,
+            firebase_uid=firebase_uid or None,
+            role=UserRole.CUSTOMER,
+            is_verified=True,
+            is_active=True,
+        )
 
     if not user.is_active:
         raise serializers.ValidationError("This account is disabled.")
     if user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
-        raise serializers.ValidationError("Administrator accounts must use password and MFA login.")
+        raise serializers.ValidationError("Administrator accounts must use the staff login portal.")
+
+    if firebase_uid:
+        uid_owner = User.objects.filter(firebase_uid=firebase_uid).exclude(pk=user.pk).first()
+        if uid_owner:
+            raise serializers.ValidationError("This Firebase identity is already linked to another account.")
 
     changed_fields = []
+    if user.phone_number != phone_number:
+        if User.objects.filter(phone_number=phone_number).exclude(pk=user.pk).exists():
+            raise serializers.ValidationError("This phone number is already linked to another account.")
+        user.phone_number = phone_number
+        changed_fields.append("phone_number")
     if not user.is_verified:
         user.is_verified = True
         changed_fields.append("is_verified")
+    if firebase_uid and user.firebase_uid != firebase_uid:
+        user.firebase_uid = firebase_uid
+        changed_fields.append("firebase_uid")
     if changed_fields:
         user.save(update_fields=changed_fields + ["updated_at"])
 
@@ -81,71 +68,7 @@ def authenticate_verified_phone(phone_number: str):
 
 
 @transaction.atomic
-def authenticate_customer_access(*, name: str, phone_number: str):
-    """Temporary customer access using name and mobile, without OTP or password."""
-    phone_digits = "".join(character for character in str(phone_number) if character.isdigit())
-    if len(phone_digits) == 10:
-        phone_number = f"+91{phone_digits}"
-    phone_number = normalize_phone_number(phone_number)
-    normalized_name = " ".join(name.strip().split())
-    if len(normalized_name) < 2:
-        raise serializers.ValidationError({"name": "Enter your name."})
-
-    user = User.objects.select_for_update().filter(phone_number=phone_number).first()
-    created = user is None
-    if user is None:
-        user = User(phone_number=phone_number, role=UserRole.CUSTOMER, is_active=True, is_verified=False)
-        user.set_unusable_password()
-    elif user.role != UserRole.CUSTOMER:
-        raise serializers.ValidationError("Staff accounts must use their secure login portal.")
-    elif not user.is_active:
-        raise serializers.ValidationError("This account is disabled.")
-
-    name_parts = normalized_name.split(" ", 1)
-    user.first_name = name_parts[0]
-    user.last_name = name_parts[1] if len(name_parts) > 1 else ""
-    user.save()
-    profile, _ = CustomerProfile.objects.get_or_create(user=user)
-    if profile.display_name != normalized_name:
-        profile.display_name = normalized_name
-        profile.save(update_fields=["display_name", "updated_at"])
-    return _login_result(user=user, created=created)
-
-
-@transaction.atomic
-def register_with_password(phone_number: str, password: str, **profile_fields):
-    phone_number = normalize_phone_number(phone_number)
-    existing_user = User.objects.filter(phone_number=phone_number).first()
-
-    if existing_user and existing_user.role != UserRole.CUSTOMER:
-        raise serializers.ValidationError("This phone number cannot create a customer account.")
-
-    if existing_user and existing_user.has_usable_password():
-        raise serializers.ValidationError("An account already exists for this phone number. Please login.")
-
-    user = existing_user or User(phone_number=phone_number, role=UserRole.CUSTOMER, is_active=True)
-    validate_password(password, user=user)
-
-    user.role = user.role or UserRole.CUSTOMER
-    user.is_verified = True
-    user.is_active = True
-    user.set_password(password)
-
-    for field in ("first_name", "last_name", "email"):
-        if field in profile_fields:
-            value = profile_fields[field]
-            setattr(user, field, None if field == "email" and value == "" else value)
-
-    user.save()
-
-    if user.role == UserRole.CUSTOMER:
-        CustomerProfile.objects.get_or_create(user=user)
-
-    return _login_result(user=user, created=existing_user is None)
-
-
-@transaction.atomic
-def authenticate_with_password(phone_number: str, password: str, channel="WHATSAPP"):
+def authenticate_with_password(phone_number: str, password: str):
     phone_number = normalize_phone_number(phone_number)
 
     try:
@@ -159,20 +82,8 @@ def authenticate_with_password(phone_number: str, password: str, channel="WHATSA
     if not user.has_usable_password() or not user.check_password(password):
         raise serializers.ValidationError("Invalid phone number or password.")
 
-    if user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN} and settings.ADMIN_MFA_ENABLED:
-        send_login_otp(user.phone_number, channel, allow_admin=True)
-        AdminMfaChallenge.objects.filter(user=user, consumed_at__isnull=True).update(consumed_at=timezone.now())
-        challenge = AdminMfaChallenge.objects.create(
-            user=user,
-            channel=channel,
-            expires_at=timezone.now() + timezone.timedelta(minutes=settings.ADMIN_MFA_TTL_MINUTES),
-        )
-        return {
-            "mfa_required": True,
-            "challenge_id": challenge.id,
-            "channel": channel,
-            "expires_in": settings.ADMIN_MFA_TTL_MINUTES * 60,
-        }
+    if user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+        raise serializers.ValidationError("Customers must sign in with Firebase phone verification.")
 
     if user.role == UserRole.CUSTOMER:
         CustomerProfile.objects.get_or_create(user=user)
@@ -181,22 +92,6 @@ def authenticate_with_password(phone_number: str, password: str, channel="WHATSA
         created=False,
         mfa_verified=user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN},
     )
-
-
-@transaction.atomic
-def complete_admin_mfa(challenge_id, otp: str):
-    challenge = AdminMfaChallenge.objects.select_for_update().select_related("user").filter(id=challenge_id).first()
-    now = timezone.now()
-    if not challenge or challenge.consumed_at or challenge.expires_at <= now:
-        raise serializers.ValidationError("Invalid or expired MFA challenge. Start admin login again.")
-    user = challenge.user
-    if not user.is_active or user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
-        raise serializers.ValidationError("This administrator account is not active.")
-    mobile = user.phone_number.replace("+", "")
-    get_otp_auth_provider().verify_otp(mobile=mobile, otp=otp)
-    challenge.consumed_at = now
-    challenge.save(update_fields=["consumed_at", "updated_at"])
-    return _login_result(user=user, created=False, mfa_verified=True)
 
 
 def _login_result(*, user, created, mfa_verified=False):

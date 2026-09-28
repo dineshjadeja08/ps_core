@@ -32,26 +32,6 @@ class LoginPhoneThrottle(RequestIdentifierThrottle):
     scope = "login_phone"
 
 
-class OtpSendIPThrottle(ClientIPThrottle):
-    scope = "otp_send_ip"
-
-
-class OtpSendPhoneThrottle(RequestIdentifierThrottle):
-    scope = "otp_send_phone"
-
-
-class OtpVerifyIPThrottle(ClientIPThrottle):
-    scope = "otp_verify_ip"
-
-
-class OtpVerifyPhoneThrottle(RequestIdentifierThrottle):
-    scope = "otp_verify_phone"
-
-
-class MfaChallengeThrottle(OtpVerifyPhoneThrottle):
-    request_field = "challenge_id"
-
-
 class PaymentIPThrottle(ClientIPThrottle):
     scope = "payment_ip"
 

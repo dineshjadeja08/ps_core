@@ -52,15 +52,13 @@ def test_adding_existing_cart_item_refreshes_admin_lead(authenticated_client, cu
     assert lead.activities.filter(action=LeadActivityAction.ADDED_TO_CART).count() == first_activity_count + 1
 
 
-def test_name_and_mobile_login_cart_add_appears_in_admin_leads(service):
+def test_firebase_customer_cart_add_appears_in_admin_leads(service, customer):
+    customer.first_name = "Launch"
+    customer.last_name = "Customer"
+    customer.phone_number = "+919876543210"
+    customer.save(update_fields=["first_name", "last_name", "phone_number", "updated_at"])
     client = APIClient()
-    login = client.post(
-        "/api/v1/auth/customer-access/",
-        {"name": "Launch Customer", "phone_number": "9876543210"},
-        format="json",
-    )
-    assert login.status_code == 200
-    client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['tokens']['access']}")
+    client.force_authenticate(customer)
 
     response = add(client, service)
 

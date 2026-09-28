@@ -31,6 +31,10 @@ class AutocompleteQuerySerializer(serializers.Serializer):
         return attrs
 
 
+class PlaceGeocodeQuerySerializer(serializers.Serializer):
+    place_id = serializers.CharField(min_length=3, max_length=512, trim_whitespace=True)
+
+
 class NormalizedAddressSerializer(serializers.Serializer):
     formatted_address = serializers.CharField(allow_blank=True)
     house_number = serializers.CharField(allow_blank=True)

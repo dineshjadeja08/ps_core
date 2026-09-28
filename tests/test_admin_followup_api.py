@@ -235,7 +235,7 @@ def test_dashboard_summary_uses_database_aggregates_beyond_first_page(admin_clie
     Notification.objects.create(
         booking=booking,
         event=NotificationEvent.PAYMENT_FAILED,
-        channel=NotificationChannel.WHATSAPP,
+        channel=NotificationChannel.PUSH,
         status=NotificationStatus.FAILED,
         title="Payment failed",
         message="Please retry.",

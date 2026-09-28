@@ -8,6 +8,7 @@ from apps.accounts.models import CustomerSupportNote, UserRole
 from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, NotificationStatus
 from apps.operations.models import Lead, LeadStatus, LeadStatusHistory
+from apps.operations.services import link_booking_to_lead
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
 from tests.factories import address_factory, booking_factory, service_area_factory, service_factory, slot_factory, user_factory
 
@@ -116,6 +117,43 @@ def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client)
 
 
 @pytest.mark.django_db
+def test_admin_create_work_order_reuses_pending_booking_with_slot_range(admin_client, booking):
+    lead = link_booking_to_lead(booking=booking)
+
+    response = admin_client.post(f"/api/v1/admin/leads/{lead.id}/convert/", {}, format="json")
+
+    assert response.status_code == 200
+    lead.refresh_from_db()
+    booking.refresh_from_db()
+    assert lead.converted_booking_id == booking.id
+    assert lead.pending_booking_id is None
+    assert booking.is_manual_work_order is True
+    assert booking.booking_status == BookingStatus.CONFIRMED
+
+
+@pytest.mark.django_db
+def test_admin_create_work_order_returns_400_for_invalid_legacy_slot(admin_client):
+    service_area = service_area_factory(postal_code="600001", name="Chennai Central")
+    service = service_factory()
+    service_area.services.add(service)
+    lead = Lead.objects.create(
+        customer_name="Legacy Lead",
+        primary_mobile="+919620000199",
+        required_service=service,
+        address="12 Service Street",
+        city="Chennai",
+        pincode="600001",
+        preferred_date=timezone.localdate() + timezone.timedelta(days=2),
+        preferred_slot="morning",
+    )
+
+    response = admin_client.post(f"/api/v1/admin/leads/{lead.id}/convert/", {}, format="json")
+
+    assert response.status_code == 400
+    assert "scheduled time is invalid" in response.json()["error"]["message"].lower()
+
+
+@pytest.mark.django_db
 def test_admin_customer_history_and_support_note(admin_client, customer, booking):
     Lead.objects.create(customer_name="Customer", primary_mobile=customer.phone_number, status=LeadStatus.CLOSED)
 
@@ -190,7 +228,7 @@ def test_admin_notification_list_cancel_and_send(admin_client, customer, booking
         recipient=customer,
         booking=booking,
         event=NotificationEvent.BOOKING_CONFIRMED,
-        channel=NotificationChannel.IN_APP,
+        channel=NotificationChannel.PUSH,
         title="Queued",
         message="Queued message",
     )
@@ -198,7 +236,7 @@ def test_admin_notification_list_cancel_and_send(admin_client, customer, booking
         recipient=customer,
         booking=booking,
         event=NotificationEvent.BOOKING_CONFIRMED,
-        channel=NotificationChannel.IN_APP,
+        channel=NotificationChannel.PUSH,
         status=NotificationStatus.FAILED,
         title="Failed",
         message="Failed message",

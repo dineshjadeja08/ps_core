@@ -3,7 +3,7 @@ from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.accounts.models import CustomerProfile, CustomerSupportNote, OtpDeliveryChannel, User, UserRole
+from apps.accounts.models import CustomerProfile, CustomerSupportNote, User, UserRole
 from apps.accounts.validators import normalize_phone_number
 
 
@@ -15,45 +15,9 @@ class DevPhoneLoginRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
 
 
-class CustomerAccessRequestSerializer(serializers.Serializer):
-    name = serializers.CharField(min_length=2, max_length=150, trim_whitespace=True)
-    phone_number = serializers.CharField()
-
-
-class PasswordSignupRequestSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    password = serializers.CharField(write_only=True, min_length=8, max_length=128, trim_whitespace=False)
-    first_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-    last_name = serializers.CharField(required=False, allow_blank=True, max_length=150)
-    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
-
-
 class PasswordLoginRequestSerializer(serializers.Serializer):
     phone_number = serializers.CharField()
     password = serializers.CharField(write_only=True, trim_whitespace=False)
-    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.WHATSAPP)
-
-
-class AdminMfaVerifyRequestSerializer(serializers.Serializer):
-    challenge_id = serializers.UUIDField()
-    otp = serializers.RegexField(regex=r"^\d{4,8}$")
-
-
-class OtpSendRequestSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, default=OtpDeliveryChannel.SMS)
-    captcha_token = serializers.CharField(required=False, allow_blank=True, write_only=True)
-
-
-class OtpSendResponseSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    request_id = serializers.CharField(allow_blank=True)
-    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices)
-
-
-class OtpVerifyRequestSerializer(serializers.Serializer):
-    phone_number = serializers.CharField()
-    otp = serializers.RegexField(regex=r"^\d{4,8}$")
 
 
 class TokenPairSerializer(serializers.Serializer):
@@ -133,14 +97,8 @@ class AuthLoginResponseSerializer(serializers.Serializer):
     created = serializers.BooleanField()
 
 
-class PasswordLoginResponseSerializer(serializers.Serializer):
-    user = UserSerializer(required=False)
-    tokens = TokenPairSerializer(required=False)
-    created = serializers.BooleanField(required=False)
-    mfa_required = serializers.BooleanField(required=False)
-    challenge_id = serializers.UUIDField(required=False)
-    channel = serializers.ChoiceField(choices=OtpDeliveryChannel.choices, required=False)
-    expires_in = serializers.IntegerField(required=False)
+class PasswordLoginResponseSerializer(AuthLoginResponseSerializer):
+    pass
 
 
 class CustomerSupportNoteSerializer(serializers.ModelSerializer):

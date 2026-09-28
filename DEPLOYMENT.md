@@ -1,5 +1,9 @@
 # Purple Squad Deployment
 
+For the Google Cloud deployment path, use [`deploy/gcp/README.md`](deploy/gcp/README.md).
+The Render instructions below remain available as a rollback reference during
+the GCP cutover.
+
 Phase 13 target:
 
 - Django backend on Render
@@ -39,23 +43,15 @@ JWT_SIGNING_KEY=<dedicated random secret, different from SECRET_KEY>
 CORS_ALLOWED_ORIGINS=https://FRONTEND_DOMAIN.vercel.app
 CSRF_TRUSTED_ORIGINS=https://ps-core.onrender.com,https://FRONTEND_DOMAIN.vercel.app
 
-OTP_AUTH_PROVIDER=apps.accounts.otp.providers.Msg91OtpProvider
-MSG91_AUTH_KEY=<MSG91 auth key, backend secret only>
-MSG91_TEMPLATE_ID=<approved MSG91 SMS OTP template id>
-MSG91_OTP_EXPIRY_MINUTES=5
-MSG91_WHATSAPP_INTEGRATED_NUMBER=<connected WhatsApp Business number with country code>
-MSG91_WHATSAPP_TEMPLATE_NAME=<approved WhatsApp authentication template name>
-MSG91_WHATSAPP_TEMPLATE_NAMESPACE=<approved template namespace>
-MSG91_WHATSAPP_TEMPLATE_LANGUAGE=en
-MSG91_WHATSAPP_NOTIFICATION_TEMPLATE_NAME=<approved booking update template name>
-MSG91_WEBHOOK_SECRET=<long random callback secret>
+FIREBASE_CREDENTIALS_PATH=/etc/secrets/firebase-service-account.json
+GOOGLE_MAPS_API_KEY=<server-restricted Google Maps Platform key>
 
 RAZORPAY_KEY_ID=<test or live key id>
 RAZORPAY_KEY_SECRET=<test or live secret>
 RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook signing secret>
 RAZORPAY_ADAPTER=apps.payments.providers.RazorpayApiAdapter
 
-NOTIFICATION_PROVIDER=apps.notifications.providers.Msg91WhatsAppNotificationProvider
+NOTIFICATION_PROVIDER=apps.notifications.fcm.FirebaseCloudMessagingProvider
 DEV_PHONE_LOGIN_ENABLED=false
 SHOW_API_DOCS=false
 LOG_LEVEL=INFO
@@ -70,11 +66,11 @@ postgresql://USER:PASSWORD@HOST-pooler.REGION.aws.neon.tech/DATABASE?sslmode=req
 
 Do not commit that URL. Replace `FRONTEND_DOMAIN` after Vercel gives you the actual frontend domain. Do not include trailing slashes in `CORS_ALLOWED_ORIGINS` or `CSRF_TRUSTED_ORIGINS`.
 
-Start with MSG91/Razorpay sandbox or test credentials where available. Switch to live credentials only after acceptance testing passes. Never use the Firebase Admin keys that were pasted during development; revoke them in Google Cloud first.
+Start with Razorpay test credentials and a dedicated Firebase/Google Cloud staging project. Switch to production credentials only after acceptance testing passes. Never commit the Firebase service-account file.
 
-Administrator API tokens are accepted only when they carry an MFA claim issued by the password-plus-MSG91 OTP flow. The production deployment disables Django's built-in `/admin/` route so it cannot provide a password-only bypass; operators must use the frontend operations portal.
+The production deployment disables Django's built-in `/admin/` route; operators use the frontend operations portal.
 
-Redis is mandatory in production. DRF uses it as the shared cache for login, OTP, and payment limits across all Gunicorn workers. Keep `DRF_NUM_PROXIES` aligned with the number of trusted reverse proxies and add an upstream Cloudflare rate limit because application throttling is not DDoS protection.
+Redis is mandatory in production. DRF uses it as the shared cache for login, location, and payment limits across all Gunicorn workers. Keep `DRF_NUM_PROXIES` aligned with the number of trusted reverse proxies and add an upstream rate limit because application throttling is not DDoS protection.
 
 ## Static and Media Strategy
 
@@ -91,17 +87,17 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 5. Set Vercel preview/staging frontend origin in `CORS_ALLOWED_ORIGINS`.
 6. Set backend/frontend HTTPS origins in `CSRF_TRUSTED_ORIGINS`.
 7. Revoke every Firebase Admin key that was pasted during development.
-8. Add the MSG91 auth key, SMS template, integrated WhatsApp number, and WhatsApp template values only as backend secrets.
-9. Confirm MSG91 DLT/SMS setup and the Meta WhatsApp authentication template are approved for India.
-10. Add Razorpay test keys and webhook secret. Configure Razorpay to post payment and refund events to `/api/v1/payments/webhooks/razorpay/`.
-11. Configure the MSG91 delivery-report webhook as `/api/v1/notifications/webhooks/msg91/` and send the secret in `X-MSG91-Webhook-Secret`.
+8. Mount the Firebase service-account JSON outside the repository and set `FIREBASE_CREDENTIALS_PATH`.
+9. Enable Firebase Phone Authentication and Cloud Messaging; add the web app's authorized domains and Web Push certificate.
+10. Enable Google Places API and Geocoding API, restrict the server key, and set `GOOGLE_MAPS_API_KEY`.
+11. Add Razorpay test keys and webhook secret. Configure Razorpay to post payment and refund events to `/api/v1/payments/webhooks/razorpay/`.
 12. Deploy.
 13. Confirm `/api/v1/health/` returns `200`.
 14. Run `python manage.py seed_service_areas` for Chennai, Bangalore, and Coimbatore launch coverage.
 15. Run `python manage.py seed_catalogue` for the Purple Squad service catalogue.
 16. Create a staging superuser.
 17. Run the backend acceptance flow with test payments.
-18. Confirm duplicate payment/refund webhooks, WhatsApp delivery callbacks, and audit logs.
+18. Confirm duplicate payment/refund webhooks, FCM delivery, and audit logs.
 
 ## Production Checklist
 
@@ -114,7 +110,7 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 7. Confirm the Render start command runs migrations, collectstatic, and Gunicorn successfully.
 8. Run `python manage.py seed_service_areas` and `python manage.py seed_catalogue`.
 9. Create production superuser.
-10. Verify the frontend `/admin/login` password-plus-OTP flow and confirm a legacy/non-MFA admin JWT is rejected.
+10. Verify the frontend customer Firebase phone flow and separate `/admin/login` staff flow.
 11. Verify health endpoint.
 12. Run acceptance flow with a controlled live payment.
 13. Review Render application logs during the controlled launch period.
@@ -182,7 +178,7 @@ Do not put `DJANGO_SUPERUSER_PASSWORD` permanently in Render environment variabl
 After creating the superuser:
 
 1. Open the frontend `/admin/login` route.
-2. Log in with the superuser phone number and password, then complete the MSG91 OTP factor.
+2. Log in with the superuser phone number and password.
 3. Confirm access to Users and Customer profiles.
 4. Confirm service categories can be created/edited.
 5. Confirm services can be created/edited with prices, descriptions, advance settings, and cover images.
@@ -192,10 +188,10 @@ After creating the superuser:
 
 Run this once in staging with test/sandbox credentials and once in production with a controlled live payment:
 
-1. Customer opens frontend and chooses SMS or WhatsApp OTP.
-2. Frontend calls `POST /api/v1/auth/otp/send/` with `channel: "SMS"` or `channel: "WHATSAPP"`.
-3. Customer enters OTP.
-4. Frontend calls `POST /api/v1/auth/otp/verify/` and receives Purple Squad JWT credentials.
+1. Customer opens the frontend and Firebase Phone Authentication sends an SMS OTP after web reCAPTCHA (or the native mobile verification flow).
+2. Customer enters the OTP and the Firebase client SDK verifies it.
+3. Frontend sends the Firebase ID token to `POST /api/v1/auth/firebase-login/` and receives Purple Squad JWT credentials.
+4. Frontend registers its FCM token with `POST /api/v1/devices/register/`.
 5. Customer adds or selects a serviceable address.
 6. Customer selects service and slot.
 7. Customer creates booking.
