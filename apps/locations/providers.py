@@ -250,7 +250,13 @@ class GoogleMapsLocationProvider:
 
 
 def get_location_provider(provider_path=None) -> LocationProvider:
-    provider_class = import_string(provider_path or settings.LOCATION_PROVIDER)
+    configured_path = provider_path or settings.LOCATION_PROVIDER
+    # Cloud Run may retain the provider path from deployments made before the
+    # Google Maps migration. Keep those revisions functional while the stale
+    # environment override is removed.
+    if configured_path == "apps.locations.providers.OlaMapsLocationProvider":
+        configured_path = "apps.locations.providers.GoogleMapsLocationProvider"
+    provider_class = import_string(configured_path)
     return provider_class()
 
 

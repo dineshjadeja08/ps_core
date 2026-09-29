@@ -7,7 +7,7 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.locations.models import ServiceArea
-from apps.locations.providers import LocationProviderError, GoogleMapsLocationProvider, autocomplete, reverse_geocode
+from apps.locations.providers import LocationProviderError, GoogleMapsLocationProvider, autocomplete, get_location_provider, reverse_geocode
 from common.throttles import LocationIPThrottle
 
 
@@ -34,6 +34,11 @@ def google_response(status_code, payload=None, text=None):
     response.text = text if text is not None else "{}"
     response.json.return_value = payload if payload is not None else {}
     return response
+
+
+@override_settings(LOCATION_PROVIDER="apps.locations.providers.OlaMapsLocationProvider")
+def test_legacy_ola_provider_setting_uses_google_maps_provider():
+    assert isinstance(get_location_provider(), GoogleMapsLocationProvider)
 
 
 @pytest.mark.django_db
