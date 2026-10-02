@@ -313,7 +313,7 @@ def post_webhook(body, settings):
 
 
 @pytest.mark.django_db
-def test_payment_failed_webhook_allows_new_order_and_notifies(
+def test_payment_failed_webhook_allows_new_order_without_disabled_sms(
     authenticated_client,
     booking,
     settings,
@@ -335,7 +335,7 @@ def test_payment_failed_webhook_allows_new_order_and_notifies(
     booking.refresh_from_db()
     assert booking.booking_status == BookingStatus.PAYMENT_FAILED
     assert booking.payment_status == PaymentStatus.FAILED
-    assert Notification.objects.filter(event=NotificationEvent.PAYMENT_FAILED, booking=booking).exists()
+    assert not Notification.objects.filter(event=NotificationEvent.PAYMENT_FAILED, booking=booking).exists()
 
     retry = authenticated_client.post(
         f"/api/v1/bookings/{booking.id}/payments/order/",
@@ -414,5 +414,5 @@ def test_admin_can_create_idempotent_refund_and_booking_is_reconciled(
     booking.refresh_from_db()
     assert booking.booking_status == BookingStatus.REFUNDED
     assert booking.payment_status == PaymentStatus.REFUNDED
-    assert Notification.objects.filter(event=NotificationEvent.REFUND_INITIATED, booking=booking).exists()
-    assert Notification.objects.filter(event=NotificationEvent.REFUND_COMPLETED, booking=booking).exists()
+    assert not Notification.objects.filter(event=NotificationEvent.REFUND_INITIATED, booking=booking).exists()
+    assert not Notification.objects.filter(event=NotificationEvent.REFUND_COMPLETED, booking=booking).exists()

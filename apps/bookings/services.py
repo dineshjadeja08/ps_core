@@ -247,7 +247,7 @@ def complete_booking(*, booking_id, changed_by, notes=""):
         notes=notes or "Booking completed.",
     )
     emit_notification_event(
-        event=NotificationEvent.SERVICE_COMPLETED,
+        event=NotificationEvent.REVIEW_REQUEST,
         recipient=booking.customer,
         booking=booking,
     )

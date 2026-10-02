@@ -34,6 +34,8 @@ class Msg91SmsNotificationProvider(BaseNotificationProvider):
     def send(self, notification):
         if notification.channel != "SMS":
             raise ValueError("MSG91 SMS provider only supports SMS notifications.")
+        if notification.event not in getattr(settings, "MSG91_SMS_ENABLED_EVENTS", ()):
+            raise ValueError("SMS notifications are disabled for this event.")
 
         phone_number = (notification.payload or {}).get("mobile")
         if not phone_number and notification.recipient:

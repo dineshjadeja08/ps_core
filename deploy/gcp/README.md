@@ -148,6 +148,12 @@ Firebase Phone Authentication remains responsible only for login OTP. Booking,
 payment, technician, refund, review, and admin reminder messages use MSG91's SMS
 Flow API.
 
+The initial rollout intentionally enables only `BOOKING_CONFIRMED`,
+`TECHNICIAN_ASSIGNED`, and `REVIEW_REQUEST` through
+`MSG91_SMS_ENABLED_EVENTS`. Other business workflows continue normally but do
+not send SMS or consume MSG91 credits. Add another
+event only after its DLT/MSG91 template is approved.
+
 Create approved MSG91/DLT templates with two variables. The provider supplies
 event-aware values:
 

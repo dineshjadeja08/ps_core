@@ -16,7 +16,13 @@ DEFAULT_CHANNELS = (NotificationChannel.SMS,)
 
 
 def emit_notification_event(*, event, recipient, booking=None, channels=None, payload=None):
-    channels = channels or DEFAULT_CHANNELS
+    channels = tuple(
+        channel
+        for channel in (channels or DEFAULT_CHANNELS)
+        if channel != NotificationChannel.SMS or notification_event_enabled(event)
+    )
+    if not channels:
+        return
     payload = payload or {}
 
     def _create_and_enqueue():
@@ -44,6 +50,10 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
                 )
 
     transaction.on_commit(_create_and_enqueue)
+
+
+def notification_event_enabled(event):
+    return event in getattr(settings, "MSG91_SMS_ENABLED_EVENTS", ())
 
 
 def send_notification(notification, *, raise_on_failure=False):

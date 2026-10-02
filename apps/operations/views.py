@@ -20,7 +20,7 @@ from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, NotificationStatus
-from apps.notifications.services import send_notification
+from apps.notifications.services import notification_event_enabled, send_notification
 from apps.operations.models import ACTIVE_LEAD_STATUSES, FAQ, HomepageBanner, Lead, LeadFunnelStatus, LeadStatus, LeadStatusHistory
 from apps.operations.serializers import (
     AdminDashboardSummarySerializer,
@@ -297,6 +297,8 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         lead = self.get_object()
         serializer = LeadReminderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        if not notification_event_enabled(NotificationEvent.BOOKING_RECEIVED):
+            raise serializers.ValidationError("SMS notifications are disabled for this event.")
         notification = Notification.objects.create(
             recipient=lead.customer,
             booking=lead.converted_booking or lead.pending_booking,

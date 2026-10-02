@@ -117,7 +117,8 @@ def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client)
 
 
 @pytest.mark.django_db
-def test_admin_can_send_full_payment_link_using_service_price(admin_client, customer):
+def test_admin_can_send_full_payment_link_using_service_price(admin_client, customer, settings):
+    settings.MSG91_SMS_ENABLED_EVENTS = [NotificationEvent.PAYMENT_PENDING]
     service = service_factory()
     lead = Lead.objects.create(
         customer=customer,
@@ -158,7 +159,7 @@ def test_admin_lead_validation_response_preserves_specific_message(admin_client)
 
 
 @pytest.mark.django_db
-def test_admin_can_send_sms_reminder_for_lead(admin_client, customer):
+def test_admin_sms_reminder_is_disabled_until_event_is_enabled(admin_client, customer):
     lead = Lead.objects.create(
         customer=customer,
         customer_name="Reminder Customer",
@@ -172,17 +173,14 @@ def test_admin_can_send_sms_reminder_for_lead(admin_client, customer):
         format="json",
     )
 
-    assert response.status_code == 200
-    assert Notification.objects.filter(
-        recipient=customer,
-        event=NotificationEvent.BOOKING_RECEIVED,
-        channel=NotificationChannel.SMS,
-    ).exists()
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "SMS notifications are disabled for this event."
 
 
 @pytest.mark.django_db
 def test_admin_sms_reminder_surfaces_delivery_failure(admin_client, customer, settings):
     settings.NOTIFICATION_PROVIDER = "tests.test_reviews_notifications.FailingNotificationProvider"
+    settings.MSG91_SMS_ENABLED_EVENTS = [NotificationEvent.BOOKING_RECEIVED]
     lead = Lead.objects.create(
         customer=customer,
         customer_name="Reminder Customer",

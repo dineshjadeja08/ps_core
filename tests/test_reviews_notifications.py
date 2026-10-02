@@ -290,7 +290,7 @@ def test_assignment_emits_notification(django_capture_on_commit_callbacks, custo
 
 
 @pytest.mark.django_db
-def test_cancel_and_complete_emit_notifications(
+def test_only_enabled_completion_review_event_sends_notification(
     django_capture_on_commit_callbacks,
     customer,
     service,
@@ -314,8 +314,8 @@ def test_cancel_and_complete_emit_notifications(
         cancel_booking(booking_id=cancellable.id, changed_by=admin_user)
         complete_booking(booking_id=completable.id, changed_by=admin_user)
 
-    assert Notification.objects.filter(event=NotificationEvent.BOOKING_CANCELLED, booking=cancellable).exists()
-    assert Notification.objects.filter(event=NotificationEvent.SERVICE_COMPLETED, booking=completable).exists()
+    assert not Notification.objects.filter(event=NotificationEvent.BOOKING_CANCELLED, booking=cancellable).exists()
+    assert Notification.objects.filter(event=NotificationEvent.REVIEW_REQUEST, booking=completable).exists()
 
 
 @pytest.mark.django_db

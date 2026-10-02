@@ -15,7 +15,7 @@ from apps.bookings.services import create_booking
 from apps.accounts.models import CustomerProfile, User, UserRole
 from apps.locations.models import Address, ServiceArea
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent
-from apps.notifications.services import send_notification
+from apps.notifications.services import notification_event_enabled, send_notification
 from apps.operations.models import (
     ACTIVE_LEAD_STATUSES,
     Lead,
@@ -293,30 +293,31 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
         request=request,
         note=f"{payment_scope.title()} payment link created for unpaid lead.",
     )
-    notification = Notification.objects.create(
-        recipient=lead.customer,
-        booking=lead.converted_booking,
-        event=NotificationEvent.PAYMENT_PENDING,
-        channel=channel,
-        title="Payment link",
-        message=f"Purple Squad {payment_scope.lower()} payment link for ₹{amount}: {lead.payment_link_url}",
-        payload={
-            "lead_id": str(lead.id),
-            "payment_link_url": lead.payment_link_url,
-            "payment_scope": payment_scope,
-            "amount": str(amount),
-            "mobile": lead.primary_mobile,
-        },
-    )
-    send_notification(notification)
-    record_lead_activity(
-        lead=lead,
-        action=LeadActivityAction.PAYMENT_LINK_SENT,
-        new_value={"notification_id": str(notification.id), "channel": channel, "status": notification.status},
-        performed_by=performed_by,
-        request=request,
-        note="Payment link delivery attempted.",
-    )
+    if notification_event_enabled(NotificationEvent.PAYMENT_PENDING):
+        notification = Notification.objects.create(
+            recipient=lead.customer,
+            booking=lead.converted_booking,
+            event=NotificationEvent.PAYMENT_PENDING,
+            channel=channel,
+            title="Payment link",
+            message=f"Purple Squad {payment_scope.lower()} payment link for ₹{amount}: {lead.payment_link_url}",
+            payload={
+                "lead_id": str(lead.id),
+                "payment_link_url": lead.payment_link_url,
+                "payment_scope": payment_scope,
+                "amount": str(amount),
+                "mobile": lead.primary_mobile,
+            },
+        )
+        send_notification(notification)
+        record_lead_activity(
+            lead=lead,
+            action=LeadActivityAction.PAYMENT_LINK_SENT,
+            new_value={"notification_id": str(notification.id), "channel": channel, "status": notification.status},
+            performed_by=performed_by,
+            request=request,
+            note="Payment link delivery attempted.",
+        )
     audit_event(
         action=AuditAction.ADMIN_PAYMENT_LINK_CREATED,
         actor=performed_by,

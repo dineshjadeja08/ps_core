@@ -45,6 +45,7 @@ def test_msg91_sms_provider_uses_payload_mobile_for_manual_lead(settings, monkey
     settings.MSG91_AUTH_KEY = "server-auth-key"
     settings.MSG91_SMS_TEMPLATE_ID = "fallback-template"
     settings.MSG91_SMS_TEMPLATE_IDS = {}
+    settings.MSG91_SMS_ENABLED_EVENTS = [NotificationEvent.PAYMENT_PENDING]
     notification = Notification.objects.create(
         event=NotificationEvent.PAYMENT_PENDING,
         channel=NotificationChannel.SMS,

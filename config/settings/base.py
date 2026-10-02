@@ -236,6 +236,10 @@ MSG91_AUTH_KEY = env("MSG91_AUTH_KEY", default="")
 MSG91_SMS_FLOW_URL = env("MSG91_SMS_FLOW_URL", default="https://control.msg91.com/api/v5/flow")
 MSG91_SMS_TEMPLATE_ID = env("MSG91_SMS_TEMPLATE_ID", default="")
 MSG91_SMS_SHORT_URL = env.bool("MSG91_SMS_SHORT_URL", default=True)
+MSG91_SMS_ENABLED_EVENTS = env.list(
+    "MSG91_SMS_ENABLED_EVENTS",
+    default=["BOOKING_CONFIRMED", "TECHNICIAN_ASSIGNED", "REVIEW_REQUEST"],
+)
 MSG91_SMS_TEMPLATE_IDS = {
     event: env(f"MSG91_SMS_TEMPLATE_{event}", default="")
     for event in (
