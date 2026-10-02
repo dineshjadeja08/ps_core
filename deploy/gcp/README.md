@@ -159,7 +159,7 @@ event-aware values:
 
 ```text
 VAR1 = booking/lead reference, amount for payment-link messages
-VAR2 = schedule, service, amount, title, or shortened payment URL
+VAR2 = schedule, technician name, service, amount, title, or shortened payment URL
 ```
 
 For example, a payment-pending template can contain the amount as its first

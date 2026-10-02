@@ -117,6 +117,10 @@ def _template_variables(notification):
         if booking.time_slot_id:
             schedule = f"{schedule} {booking.time_slot.start_time.strftime('%H:%M')}"
         return _limit_variable(reference), _limit_variable(schedule)
+    if notification.event == "TECHNICIAN_ASSIGNED" and booking and booking.assigned_technician_id:
+        technician = booking.assigned_technician
+        technician_name = f"{technician.first_name} {technician.last_name}".strip() or technician.phone_number
+        return _limit_variable(reference), _limit_variable(technician_name)
     if booking and booking.service_id:
         return _limit_variable(reference), _limit_variable(booking.service.name)
     return _limit_variable(reference), _limit_variable(notification.title)
