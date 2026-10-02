@@ -1,7 +1,27 @@
+import re
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
 from rest_framework import serializers
 
 from apps.catalogue.models import Service
 from apps.locations.models import Address, ServiceArea, normalize_postal_code
+
+
+PINCODE_PATTERN = re.compile(r"^\d{6}$")
+SIX_DECIMAL_PLACES = Decimal("0.000001")
+
+
+class SixDecimalCoordinateField(serializers.DecimalField):
+    """Round provider coordinates before DecimalField checks decimal places."""
+
+    def to_internal_value(self, data):
+        if data in (None, ""):
+            return super().to_internal_value(data)
+        try:
+            data = Decimal(str(data)).quantize(SIX_DECIMAL_PLACES, rounding=ROUND_HALF_UP)
+        except (InvalidOperation, TypeError, ValueError):
+            pass
+        return super().to_internal_value(data)
 
 
 class ServiceAreaCheckSerializer(serializers.Serializer):
@@ -120,6 +140,26 @@ class AdminServiceAreaSerializer(serializers.ModelSerializer):
 
 
 class AddressSerializer(serializers.ModelSerializer):
+    city = serializers.CharField(max_length=100, allow_blank=True, required=False)
+    state = serializers.CharField(max_length=100, allow_blank=True, required=False)
+    postal_code = serializers.CharField(max_length=20, allow_blank=True, required=False)
+    latitude = SixDecimalCoordinateField(
+        max_digits=9,
+        decimal_places=6,
+        min_value=Decimal("-90"),
+        max_value=Decimal("90"),
+        allow_null=True,
+        required=False,
+    )
+    longitude = SixDecimalCoordinateField(
+        max_digits=9,
+        decimal_places=6,
+        min_value=Decimal("-180"),
+        max_value=Decimal("180"),
+        allow_null=True,
+        required=False,
+    )
+
     class Meta:
         model = Address
         fields = (
@@ -146,8 +186,24 @@ class AddressSerializer(serializers.ModelSerializer):
     def validate_postal_code(self, value):
         normalized = normalize_postal_code(value)
         if not normalized:
-            raise serializers.ValidationError("Postal code is required.")
+            raise serializers.ValidationError("Pincode is required.")
+        if not PINCODE_PATTERN.fullmatch(normalized):
+            raise serializers.ValidationError("Enter a valid 6-digit pincode.")
         return normalized
+
+    def validate(self, attrs):
+        errors = {}
+        for field, message in (
+            ("city", "City is required."),
+            ("state", "State is required."),
+            ("postal_code", "Pincode is required."),
+        ):
+            value = attrs.get(field, getattr(self.instance, field, ""))
+            if not str(value or "").strip():
+                errors[field] = message
+        if errors:
+            raise serializers.ValidationError(errors)
+        return attrs
 
     def validate_latitude(self, value):
         if value is not None and not (-90 <= value <= 90):

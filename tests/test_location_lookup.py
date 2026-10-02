@@ -152,6 +152,41 @@ def test_google_provider_uses_documented_contract_and_normalizes(monkeypatch):
 
 @pytest.mark.django_db
 @override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_google_reverse_geocode_merges_components_across_results(monkeypatch):
+    ServiceArea.objects.create(name="East Tambaram", city="Chennai", state="Tamil Nadu", postal_code="600059")
+    response = google_response(200, {
+        "results": [
+            {
+                "formatted_address": "East Tambaram, Chennai, Tamil Nadu, India",
+                "geometry": {"location": {"lat": 12.9249301, "lng": 80.1274547}},
+                "address_components": [
+                    {"long_name": "East Tambaram", "types": ["sublocality_level_1"]},
+                    {"long_name": "Chennai", "types": ["locality"]},
+                    {"long_name": "Tamil Nadu", "types": ["administrative_area_level_1"]},
+                ],
+            },
+            {
+                "formatted_address": "East Tambaram, Chennai, Tamil Nadu 600059, India",
+                "geometry": {"location": {"lat": 12.9249301, "lng": 80.1274547}},
+                "address_components": [
+                    {"long_name": "600059", "types": ["postal_code"]},
+                ],
+            },
+        ],
+        "status": "OK",
+    })
+    monkeypatch.setattr("apps.locations.providers.requests.get", Mock(return_value=response))
+
+    result = GoogleMapsLocationProvider().get_reverse_geocode(12.9249301, 80.1274547)
+
+    assert result["city"] == "Chennai"
+    assert result["state"] == "Tamil Nadu"
+    assert result["pincode"] == "600059"
+    assert result["serviceable"] is True
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_autocomplete_uses_location_bias_and_parses_missing_components(monkeypatch):
     ServiceArea.objects.create(name="Anna Nagar", city="Chennai", state="Tamil Nadu", postal_code="600040")
     get = Mock(return_value=google_response(200, {

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 import pytest
 from rest_framework.test import APIClient
 
@@ -69,6 +71,44 @@ def test_create_address(authenticated_client):
     assert response.status_code == 201
     assert response.json()["postal_code"] == "635601"
     assert Address.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_create_address_rounds_coordinates_to_six_decimal_places(authenticated_client):
+    response = authenticated_client.post(
+        "/api/v1/addresses/",
+        address_payload(latitude="13.1234567", longitude="80.7654325"),
+        format="json",
+    )
+
+    assert response.status_code == 201
+    address = Address.objects.get(id=response.json()["id"])
+    assert address.latitude == Decimal("13.123457")
+    assert address.longitude == Decimal("80.765433")
+
+
+@pytest.mark.django_db
+def test_create_address_rejects_missing_pincode(authenticated_client):
+    response = authenticated_client.post(
+        "/api/v1/addresses/",
+        address_payload(postal_code=""),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["postal_code"] == ["Pincode is required."]
+
+
+@pytest.mark.django_db
+def test_create_address_rejects_non_six_digit_pincode(authenticated_client):
+    response = authenticated_client.post(
+        "/api/v1/addresses/",
+        address_payload(postal_code="60004"),
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["details"]["postal_code"] == ["Enter a valid 6-digit pincode."]
 
 
 @pytest.mark.django_db

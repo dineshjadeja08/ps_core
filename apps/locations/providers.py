@@ -83,7 +83,7 @@ class GoogleMapsLocationProvider:
         if not results:
             raise LocationProviderError(request_id=request_id)
         try:
-            return _normalise_place(results[0], fallback_latitude=latitude, fallback_longitude=longitude)
+            return _normalise_results(results, fallback_latitude=latitude, fallback_longitude=longitude)
         except (AttributeError, TypeError, ValueError) as exc:
             raise self._malformed_error(request_id) from exc
 
@@ -121,7 +121,7 @@ class GoogleMapsLocationProvider:
         if not results:
             raise LocationProviderError("Address was not found.", reason="not_found", request_id=request_id)
         try:
-            return _normalise_place(results[0])
+            return _normalise_results(results)
         except (AttributeError, TypeError, ValueError) as exc:
             raise self._malformed_error(request_id) from exc
 
@@ -323,13 +323,51 @@ def _call_with_optional_fallback(method_name, *args, **kwargs):
         return getattr(get_location_provider(fallback_path), method_name)(*args, **kwargs)
 
 
-def _normalise_place(place: dict, *, fallback_latitude=None, fallback_longitude=None) -> dict:
-    components = place.get("address_components") or []
+def parse_components(address_components) -> dict:
+    components = address_components or []
     if not isinstance(components, list):
         components = []
 
     def component(*types):
         for item in components:
+            if not isinstance(item, dict):
+                continue
+            item_types = item.get("types") or []
+            if any(item_type in item_types for item_type in types):
+                return str(item.get("long_name") or item.get("short_name") or "")
+        return ""
+
+    premise = component("premise")
+    street_number = component("street_number")
+    route = component("route")
+    return {
+        "line1": ", ".join(part for part in (premise, street_number, route) if part),
+        "area": component("sublocality_level_1", "sublocality", "neighborhood"),
+        "city": component("locality") or component("administrative_area_level_3") or component("administrative_area_level_2"),
+        "state": component("administrative_area_level_1"),
+        "pincode": component("postal_code"),
+    }
+
+
+def _normalise_results(results: list[dict], *, fallback_latitude=None, fallback_longitude=None) -> dict:
+    merged = _normalise_place(results[0], fallback_latitude=fallback_latitude, fallback_longitude=fallback_longitude)
+    for place in results[1:]:
+        candidate = _normalise_place(place, fallback_latitude=fallback_latitude, fallback_longitude=fallback_longitude)
+        for field in ("house_number", "street", "locality", "city", "state", "pincode", "country", "latitude", "longitude"):
+            if not merged.get(field) and candidate.get(field):
+                merged[field] = candidate[field]
+        if merged["city"] and merged["state"] and merged["pincode"]:
+            break
+    merged.update(_serviceability(merged["city"], merged["pincode"]))
+    return merged
+
+
+def _normalise_place(place: dict, *, fallback_latitude=None, fallback_longitude=None) -> dict:
+    components = place.get("address_components") or []
+    parsed = parse_components(components)
+
+    def component(*types):
+        for item in components if isinstance(components, list) else []:
             if not isinstance(item, dict):
                 continue
             item_types = item.get("types") or []
@@ -344,11 +382,11 @@ def _normalise_place(place: dict, *, fallback_latitude=None, fallback_longitude=
     formatted_address = str(place.get("formatted_address") or place.get("description") or "")
     house_number = component("street_number", "premise", "subpremise")
     street = component("street_address", "route") or str(place.get("name") or "")
-    locality = component("sublocality_level_1", "sublocality", "neighborhood")
-    component_city = component("locality", "administrative_area_level_2", "administrative_area_level_3")
+    locality = parsed["area"]
+    component_city = parsed["city"]
     city = _city_from_text(formatted_address) or component_city
-    pincode = component("postal_code") or _pincode_from_text(formatted_address)
-    state = component("administrative_area_level_1") or ("Tamil Nadu" if city.casefold() in SUPPORTED_CITIES else "")
+    pincode = parsed["pincode"] or _pincode_from_text(formatted_address)
+    state = parsed["state"] or ("Tamil Nadu" if city.casefold() in SUPPORTED_CITIES else "")
     result = {
         "formatted_address": formatted_address,
         "house_number": house_number,
