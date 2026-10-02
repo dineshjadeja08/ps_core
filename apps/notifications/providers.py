@@ -48,7 +48,7 @@ class Msg91SmsNotificationProvider(BaseNotificationProvider):
         if not auth_key or not template_id:
             raise ValueError("MSG91 SMS notifications are not fully configured.")
 
-        booking_number = notification.booking.booking_number if notification.booking else "Purple Squad"
+        variable_1, variable_2 = _template_variables(notification)
         response = requests.post(
             getattr(settings, "MSG91_SMS_FLOW_URL", "https://control.msg91.com/api/v5/flow"),
             headers={
@@ -63,10 +63,8 @@ class Msg91SmsNotificationProvider(BaseNotificationProvider):
                 "recipients": [
                     {
                         "mobiles": mobile,
-                        "VAR1": notification.title,
-                        "VAR2": notification.message,
-                        "VAR3": booking_number,
-                        "VAR4": str(notification.id),
+                        "VAR1": variable_1,
+                        "VAR2": variable_2,
                     }
                 ],
             },
@@ -101,3 +99,26 @@ def _normalise_mobile(phone_number):
     if len(digits) < 11 or len(digits) > 15:
         raise ValueError("Notification recipient does not have a valid mobile number.")
     return digits
+
+
+def _template_variables(notification):
+    payload = notification.payload or {}
+    booking = notification.booking
+    reference = booking.booking_number if booking else str(payload.get("lead_id") or notification.id)[:40]
+
+    if notification.event == "PAYMENT_PENDING":
+        return _limit_variable(payload.get("amount") or reference), str(payload.get("payment_link_url") or "")
+    if notification.event in {"PAYMENT_SUCCESSFUL", "REFUND_INITIATED", "REFUND_COMPLETED"}:
+        return _limit_variable(reference), _limit_variable(payload.get("amount") or "Updated")
+    if notification.event in {"BOOKING_CONFIRMED", "BOOKING_RESCHEDULED"} and booking:
+        schedule = booking.service_date.isoformat()
+        if booking.time_slot_id:
+            schedule = f"{schedule} {booking.time_slot.start_time.strftime('%H:%M')}"
+        return _limit_variable(reference), _limit_variable(schedule)
+    if booking and booking.service_id:
+        return _limit_variable(reference), _limit_variable(booking.service.name)
+    return _limit_variable(reference), _limit_variable(notification.title)
+
+
+def _limit_variable(value):
+    return str(value or "Update").strip()[:40]

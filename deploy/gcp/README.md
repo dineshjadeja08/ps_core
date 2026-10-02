@@ -148,16 +148,20 @@ Firebase Phone Authentication remains responsible only for login OTP. Booking,
 payment, technician, refund, review, and admin reminder messages use MSG91's SMS
 Flow API.
 
-Create an approved MSG91/DLT template with these variables:
+Create approved MSG91/DLT templates with two variables. The provider supplies
+event-aware values:
 
 ```text
-VAR1 = notification title
-VAR2 = notification message (including a payment URL when applicable)
-VAR3 = booking number, or Purple Squad when no booking exists
-VAR4 = notification UUID
+VAR1 = booking/lead reference, amount for payment-link messages
+VAR2 = schedule, service, amount, title, or shortened payment URL
 ```
 
-Set `MSG91_SMS_TEMPLATE_ID` to that fallback template ID. For event-specific
+For example, a payment-pending template can contain the amount as its first
+variable and the payment URL as its second variable. A booking-confirmed
+template can contain the booking number and schedule. MSG91's `short_url`
+option is enabled for payment links.
+
+Set `MSG91_SMS_TEMPLATE_ID` to a generic fallback template ID. For event-specific
 DLT templates, set `MSG91_SMS_TEMPLATE_<EVENT>` (for example,
 `MSG91_SMS_TEMPLATE_PAYMENT_PENDING`). Event-specific IDs override the fallback.
 Store `MSG91_AUTH_KEY` only in Secret Manager.

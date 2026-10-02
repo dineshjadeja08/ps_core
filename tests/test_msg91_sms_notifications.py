@@ -35,8 +35,9 @@ def test_msg91_sms_provider_sends_approved_flow_template(settings, monkeypatch):
     assert request.kwargs["json"]["template_id"] == "booking-template"
     recipient = request.kwargs["json"]["recipients"][0]
     assert recipient["mobiles"] == "919876543210"
-    assert recipient["VAR1"] == "Booking confirmed"
-    assert recipient["VAR2"] == "Your Purple Squad booking is confirmed."
+    assert recipient["VAR1"] == str(notification.id)[:40]
+    assert recipient["VAR2"] == "Booking confirmed"
+    assert "VAR3" not in recipient
 
 
 @pytest.mark.django_db
@@ -49,7 +50,7 @@ def test_msg91_sms_provider_uses_payload_mobile_for_manual_lead(settings, monkey
         channel=NotificationChannel.SMS,
         title="Payment link",
         message="Pay using https://example.com/pay",
-        payload={"mobile": "9876543210"},
+        payload={"mobile": "9876543210", "amount": "299.00", "payment_link_url": "https://example.com/pay"},
     )
     response = Mock(status_code=200)
     response.json.return_value = {"type": "success", "request_id": "msg91-request-2"}
@@ -58,7 +59,10 @@ def test_msg91_sms_provider_uses_payload_mobile_for_manual_lead(settings, monkey
 
     Msg91SmsNotificationProvider().send(notification)
 
-    assert post.call_args.kwargs["json"]["recipients"][0]["mobiles"] == "919876543210"
+    recipient = post.call_args.kwargs["json"]["recipients"][0]
+    assert recipient["mobiles"] == "919876543210"
+    assert recipient["VAR1"] == "299.00"
+    assert recipient["VAR2"] == "https://example.com/pay"
 
 
 @pytest.mark.django_db
