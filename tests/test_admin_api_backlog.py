@@ -117,6 +117,70 @@ def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client)
 
 
 @pytest.mark.django_db
+def test_admin_can_send_full_payment_link_using_service_price(admin_client, customer):
+    service = service_factory()
+    lead = Lead.objects.create(
+        customer=customer,
+        customer_name="Push Customer",
+        primary_mobile=customer.phone_number,
+        required_service=service,
+        status=LeadStatus.FOLLOW_UP,
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/leads/{lead.id}/send-payment-link/",
+        {"channel": "PUSH", "payment_scope": "FULL"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["payment_link_created"] is True
+    notification = Notification.objects.get(event=NotificationEvent.PAYMENT_PENDING)
+    assert notification.payload["amount"] == str(service.effective_price + service.training_fee)
+
+
+@pytest.mark.django_db
+def test_admin_lead_validation_response_preserves_specific_message(admin_client):
+    lead = Lead.objects.create(
+        customer_name="No Amount Customer",
+        primary_mobile="+919620000177",
+        status=LeadStatus.FOLLOW_UP,
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/leads/{lead.id}/send-payment-link/",
+        {"channel": "PUSH", "payment_scope": "FULL"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "Lead does not have a valid full amount."
+
+
+@pytest.mark.django_db
+def test_admin_can_send_push_reminder_for_lead(admin_client, customer):
+    lead = Lead.objects.create(
+        customer=customer,
+        customer_name="Reminder Customer",
+        primary_mobile=customer.phone_number,
+        status=LeadStatus.FOLLOW_UP,
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/leads/{lead.id}/send-reminder/",
+        {"channel": "PUSH"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert Notification.objects.filter(
+        recipient=customer,
+        event=NotificationEvent.BOOKING_RECEIVED,
+        channel=NotificationChannel.PUSH,
+    ).exists()
+
+
+@pytest.mark.django_db
 def test_admin_create_work_order_reuses_pending_booking_with_slot_range(admin_client, booking):
     lead = link_booking_to_lead(booking=booking)
 

@@ -49,20 +49,18 @@ def standard_exception_handler(exc, context):
 
 
 def _extract_message(data):
+    if isinstance(data, (str, exceptions.ErrorDetail)):
+        return str(data)
     if isinstance(data, dict):
         detail = data.get("detail")
         if detail is not None:
-            return str(detail)
+            return _extract_message(detail)
         for value in data.values():
-            if isinstance(value, (list, tuple)) and value:
-                return str(value[0])
-            if isinstance(value, (str, exceptions.ErrorDetail)):
-                return str(value)
+            if value not in (None, "", [], {}):
+                return _extract_message(value)
         return "Validation error."
-    if isinstance(data, list):
-        return "Validation error."
-    if isinstance(data, exceptions.ErrorDetail):
-        return str(data)
+    if isinstance(data, (list, tuple)):
+        return _extract_message(data[0]) if data else "Validation error."
     return "An error occurred."
 
 

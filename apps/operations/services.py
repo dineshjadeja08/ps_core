@@ -260,7 +260,7 @@ def upsert_lead(
 def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.PUSH, payment_scope="ADVANCE"):
     if lead.payment_status == LeadPaymentStatus.PAID:
         raise serializers.ValidationError("Lead is already paid.")
-    amount = lead.quoted_amount if payment_scope == "FULL" else lead.advance_amount
+    amount = _lead_full_payment_amount(lead) if payment_scope == "FULL" else lead.advance_amount
     if not amount or amount <= Decimal("0.00"):
         raise serializers.ValidationError(f"Lead does not have a valid {payment_scope.lower()} amount.")
     provider_id = f"lead-link-{lead.id}-{payment_scope.lower()}"
@@ -546,9 +546,18 @@ def _address_text(snapshot):
 
 def _lead_payment_url(lead):
     app_url = getattr(settings, "FRONTEND_APP_URL", "") or "https://purplesquad.netlify.app"
-    if lead.converted_booking_id:
-        return f"{app_url.rstrip('/')}/book/pay/{lead.converted_booking_id}"
+    booking_id = lead.converted_booking_id or lead.pending_booking_id
+    if booking_id:
+        return f"{app_url.rstrip('/')}/book/pay/{booking_id}"
     return f"{app_url.rstrip('/')}/support?lead={lead.id}"
+
+
+def _lead_full_payment_amount(lead):
+    subtotal = lead.quoted_amount
+    if subtotal is None and lead.required_service_id:
+        subtotal = lead.required_service.effective_price
+    training_fee = lead.required_service.training_fee if lead.required_service_id else Decimal("0.00")
+    return (subtotal or Decimal("0.00")) + (training_fee or Decimal("0.00"))
 
 
 def _ip_address(request):
