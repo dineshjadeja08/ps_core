@@ -167,7 +167,7 @@ class LeadScheduleSerializer(serializers.Serializer):
 
 
 class LeadReminderSerializer(serializers.Serializer):
-    channel = serializers.ChoiceField(choices=("PUSH",), default="PUSH")
+    channel = serializers.ChoiceField(choices=("SMS",), default="SMS")
 
 
 class LeadContactSerializer(serializers.Serializer):
@@ -176,7 +176,7 @@ class LeadContactSerializer(serializers.Serializer):
 
 
 class LeadPaymentLinkSerializer(serializers.Serializer):
-    channel = serializers.ChoiceField(choices=("PUSH",), default="PUSH")
+    channel = serializers.ChoiceField(choices=("SMS",), default="SMS")
     payment_scope = serializers.ChoiceField(choices=("FULL", "ADVANCE"), default="ADVANCE")
 
 
@@ -313,6 +313,7 @@ class AdminSettingsSerializer(serializers.Serializer):
     notification_provider = serializers.CharField()
     razorpay_configured = serializers.BooleanField()
     firebase_configured = serializers.BooleanField()
+    msg91_configured = serializers.BooleanField()
     google_maps_configured = serializers.BooleanField()
     cloudinary_media_enabled = serializers.BooleanField()
     cloudinary_media_configured = serializers.BooleanField()

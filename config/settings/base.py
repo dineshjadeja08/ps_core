@@ -232,6 +232,33 @@ FIREBASE_AUTH_PROVIDER = env(
     "FIREBASE_AUTH_PROVIDER",
     default="apps.accounts.auth.providers.FirebaseAdminAuthProvider",
 )
+MSG91_AUTH_KEY = env("MSG91_AUTH_KEY", default="")
+MSG91_SMS_FLOW_URL = env("MSG91_SMS_FLOW_URL", default="https://control.msg91.com/api/v5/flow")
+MSG91_SMS_TEMPLATE_ID = env("MSG91_SMS_TEMPLATE_ID", default="")
+MSG91_SMS_SHORT_URL = env.bool("MSG91_SMS_SHORT_URL", default=True)
+MSG91_SMS_TEMPLATE_IDS = {
+    event: env(f"MSG91_SMS_TEMPLATE_{event}", default="")
+    for event in (
+        "BOOKING_RECEIVED",
+        "PAYMENT_PENDING",
+        "PAYMENT_SUCCESSFUL",
+        "PAYMENT_FAILED",
+        "BOOKING_CONFIRMED",
+        "BOOKING_RESCHEDULED",
+        "TECHNICIAN_ASSIGNED",
+        "TECHNICIAN_CHANGED",
+        "BOOKING_CANCELLED",
+        "TECHNICIAN_EN_ROUTE",
+        "TECHNICIAN_ARRIVED",
+        "SERVICE_STARTED",
+        "SERVICE_COMPLETED",
+        "BALANCE_PAYMENT_PENDING",
+        "BALANCE_PAYMENT_SUCCESSFUL",
+        "REFUND_INITIATED",
+        "REFUND_COMPLETED",
+        "REVIEW_REQUEST",
+    )
+}
 ADMIN_MFA_ENABLED = env.bool("ADMIN_MFA_ENABLED", default=False)
 BUSINESS_LEGAL_NAME = env("BUSINESS_LEGAL_NAME", default="Purple Squad")
 BUSINESS_GSTIN = env("BUSINESS_GSTIN", default="")
@@ -248,7 +275,7 @@ BOOKING_CUSTOMER_RESCHEDULE_MIN_HOURS = env.int("BOOKING_CUSTOMER_RESCHEDULE_MIN
 BOOKING_REQUIRE_BALANCE_BEFORE_COMPLETION = env.bool("BOOKING_REQUIRE_BALANCE_BEFORE_COMPLETION", default=True)
 NOTIFICATION_PROVIDER = env(
     "NOTIFICATION_PROVIDER",
-    default="apps.notifications.fcm.FirebaseCloudMessagingProvider",
+    default="apps.notifications.providers.Msg91SmsNotificationProvider",
 )
 SHOW_API_DOCS = env.bool("SHOW_API_DOCS", default=DEBUG)
 ENABLE_DJANGO_ADMIN = env.bool("ENABLE_DJANGO_ADMIN", default=DEBUG)

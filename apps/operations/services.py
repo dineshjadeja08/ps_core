@@ -257,7 +257,7 @@ def upsert_lead(
 
 
 @transaction.atomic
-def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.PUSH, payment_scope="ADVANCE"):
+def send_lead_payment_link(*, lead, performed_by, request=None, channel=NotificationChannel.SMS, payment_scope="ADVANCE"):
     if lead.payment_status == LeadPaymentStatus.PAID:
         raise serializers.ValidationError("Lead is already paid.")
     amount = _lead_full_payment_amount(lead) if payment_scope == "FULL" else lead.advance_amount
@@ -300,7 +300,13 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
         channel=channel,
         title="Payment link",
         message=f"Purple Squad {payment_scope.lower()} payment link for ₹{amount}: {lead.payment_link_url}",
-        payload={"lead_id": str(lead.id), "payment_link_url": lead.payment_link_url, "payment_scope": payment_scope, "amount": str(amount)},
+        payload={
+            "lead_id": str(lead.id),
+            "payment_link_url": lead.payment_link_url,
+            "payment_scope": payment_scope,
+            "amount": str(amount),
+            "mobile": lead.primary_mobile,
+        },
     )
     send_notification(notification)
     record_lead_activity(

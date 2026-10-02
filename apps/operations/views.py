@@ -7,7 +7,7 @@ from django.http import HttpResponse
 from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.generics import ListAPIView
@@ -307,6 +307,8 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             payload={"lead_id": str(lead.id), "mobile": lead.primary_mobile},
         )
         send_notification(notification)
+        if notification.status == NotificationStatus.FAILED:
+            raise serializers.ValidationError(notification.error_message or "The SMS reminder could not be sent.")
         return Response(LeadSerializer(lead, context={"request": request}).data)
 
     @extend_schema(summary="Send payment link for unpaid lead", request=LeadPaymentLinkSerializer, responses={status.HTTP_200_OK: LeadSerializer})
@@ -673,6 +675,13 @@ class AdminSettingsView(APIView):
             "firebase_configured": bool(
                 getattr(settings, "FIREBASE_CREDENTIALS_PATH", "")
                 or getattr(settings, "FIREBASE_PROJECT_ID", "")
+            ),
+            "msg91_configured": bool(
+                getattr(settings, "MSG91_AUTH_KEY", "")
+                and (
+                    getattr(settings, "MSG91_SMS_TEMPLATE_ID", "")
+                    or any(getattr(settings, "MSG91_SMS_TEMPLATE_IDS", {}).values())
+                )
             ),
             "google_maps_configured": bool(getattr(settings, "GOOGLE_MAPS_API_KEY", "")),
             "cloudinary_media_enabled": bool(getattr(settings, "USE_CLOUDINARY_MEDIA", False)),

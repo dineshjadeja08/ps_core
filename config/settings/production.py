@@ -106,5 +106,11 @@ if USE_CLOUDINARY_MEDIA:
 if not FIREBASE_CREDENTIALS_PATH and not FIREBASE_PROJECT_ID:  # noqa: F405
     raise RuntimeError("Set FIREBASE_PROJECT_ID for ADC or FIREBASE_CREDENTIALS_PATH for file credentials.")
 
+if NOTIFICATION_PROVIDER.endswith("Msg91SmsNotificationProvider"):  # noqa: F405
+    if not MSG91_AUTH_KEY:  # noqa: F405
+        raise RuntimeError("MSG91_AUTH_KEY must be configured for SMS notifications.")
+    if not MSG91_SMS_TEMPLATE_ID and not any(MSG91_SMS_TEMPLATE_IDS.values()):  # noqa: F405
+        raise RuntimeError("Configure MSG91_SMS_TEMPLATE_ID or event-specific MSG91 SMS templates.")
+
 if not GOOGLE_MAPS_API_KEY:  # noqa: F405
     raise RuntimeError("GOOGLE_MAPS_API_KEY must be configured server-side in production.")

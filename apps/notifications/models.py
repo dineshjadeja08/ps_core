@@ -6,6 +6,7 @@ from common.models import BaseModel
 
 
 class NotificationChannel(models.TextChoices):
+    SMS = "SMS", "SMS"
     PUSH = "PUSH", "Push"
 
 

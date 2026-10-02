@@ -51,7 +51,10 @@ RAZORPAY_KEY_SECRET=<test or live secret>
 RAZORPAY_WEBHOOK_SECRET=<Razorpay webhook signing secret>
 RAZORPAY_ADAPTER=apps.payments.providers.RazorpayApiAdapter
 
-NOTIFICATION_PROVIDER=apps.notifications.fcm.FirebaseCloudMessagingProvider
+NOTIFICATION_PROVIDER=apps.notifications.providers.Msg91SmsNotificationProvider
+MSG91_AUTH_KEY=<server-only MSG91 auth key>
+MSG91_SMS_TEMPLATE_ID=<approved transactional SMS template id>
+MSG91_SMS_FLOW_URL=https://control.msg91.com/api/v5/flow
 DEV_PHONE_LOGIN_ENABLED=false
 SHOW_API_DOCS=false
 LOG_LEVEL=INFO
@@ -97,7 +100,7 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 15. Run `python manage.py seed_catalogue` for the Purple Squad service catalogue.
 16. Create a staging superuser.
 17. Run the backend acceptance flow with test payments.
-18. Confirm duplicate payment/refund webhooks, FCM delivery, and audit logs.
+18. Confirm duplicate payment/refund webhooks, MSG91 SMS delivery, and audit logs.
 
 ## Production Checklist
 

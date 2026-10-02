@@ -129,7 +129,7 @@ def test_admin_can_send_full_payment_link_using_service_price(admin_client, cust
 
     response = admin_client.post(
         f"/api/v1/admin/leads/{lead.id}/send-payment-link/",
-        {"channel": "PUSH", "payment_scope": "FULL"},
+        {"channel": "SMS", "payment_scope": "FULL"},
         format="json",
     )
 
@@ -149,7 +149,7 @@ def test_admin_lead_validation_response_preserves_specific_message(admin_client)
 
     response = admin_client.post(
         f"/api/v1/admin/leads/{lead.id}/send-payment-link/",
-        {"channel": "PUSH", "payment_scope": "FULL"},
+        {"channel": "SMS", "payment_scope": "FULL"},
         format="json",
     )
 
@@ -158,7 +158,7 @@ def test_admin_lead_validation_response_preserves_specific_message(admin_client)
 
 
 @pytest.mark.django_db
-def test_admin_can_send_push_reminder_for_lead(admin_client, customer):
+def test_admin_can_send_sms_reminder_for_lead(admin_client, customer):
     lead = Lead.objects.create(
         customer=customer,
         customer_name="Reminder Customer",
@@ -168,7 +168,7 @@ def test_admin_can_send_push_reminder_for_lead(admin_client, customer):
 
     response = admin_client.post(
         f"/api/v1/admin/leads/{lead.id}/send-reminder/",
-        {"channel": "PUSH"},
+        {"channel": "SMS"},
         format="json",
     )
 
@@ -176,8 +176,29 @@ def test_admin_can_send_push_reminder_for_lead(admin_client, customer):
     assert Notification.objects.filter(
         recipient=customer,
         event=NotificationEvent.BOOKING_RECEIVED,
-        channel=NotificationChannel.PUSH,
+        channel=NotificationChannel.SMS,
     ).exists()
+
+
+@pytest.mark.django_db
+def test_admin_sms_reminder_surfaces_delivery_failure(admin_client, customer, settings):
+    settings.NOTIFICATION_PROVIDER = "tests.test_reviews_notifications.FailingNotificationProvider"
+    lead = Lead.objects.create(
+        customer=customer,
+        customer_name="Reminder Customer",
+        primary_mobile=customer.phone_number,
+        status=LeadStatus.FOLLOW_UP,
+    )
+
+    response = admin_client.post(
+        f"/api/v1/admin/leads/{lead.id}/send-reminder/",
+        {"channel": "SMS"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "provider unavailable"
+    assert Notification.objects.get(event=NotificationEvent.BOOKING_RECEIVED).status == NotificationStatus.FAILED
 
 
 @pytest.mark.django_db

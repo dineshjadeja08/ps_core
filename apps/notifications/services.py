@@ -12,7 +12,7 @@ from common.monitoring import report_operational_failure
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_CHANNELS = (NotificationChannel.PUSH,)
+DEFAULT_CHANNELS = (NotificationChannel.SMS,)
 
 
 def emit_notification_event(*, event, recipient, booking=None, channels=None, payload=None):

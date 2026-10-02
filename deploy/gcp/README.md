@@ -71,6 +71,7 @@ razorpay-key-id
 razorpay-key-secret
 razorpay-webhook-secret
 cloudinary-url
+msg91-auth-key
 ```
 
 The Firebase Admin key previously shared during development must be revoked.
@@ -108,7 +109,7 @@ gcloud run deploy purple-squad-api `
   --timeout 120 `
   --add-cloudsql-instances purplesquad:asia-south1:purple-squad-db `
   --env-vars-file deploy/gcp/cloud-run.env.yaml.example `
-  --set-secrets "SECRET_KEY=django-secret-key:latest,JWT_SIGNING_KEY=jwt-signing-key:latest,DATABASE_URL=database-url:latest,REDIS_URL=redis-url:latest,GOOGLE_MAPS_API_KEY=google-maps-api-key:latest,RAZORPAY_KEY_ID=razorpay-key-id:latest,RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest,CLOUDINARY_URL=cloudinary-url:latest"
+  --set-secrets "SECRET_KEY=django-secret-key:latest,JWT_SIGNING_KEY=jwt-signing-key:latest,DATABASE_URL=database-url:latest,REDIS_URL=redis-url:latest,GOOGLE_MAPS_API_KEY=google-maps-api-key:latest,RAZORPAY_KEY_ID=razorpay-key-id:latest,RAZORPAY_KEY_SECRET=razorpay-key-secret:latest,RAZORPAY_WEBHOOK_SECRET=razorpay-webhook-secret:latest,CLOUDINARY_URL=cloudinary-url:latest,MSG91_AUTH_KEY=msg91-auth-key:latest"
 ```
 
 If using Memorystore, add Direct VPC egress to the service before testing.
@@ -136,10 +137,30 @@ automatic because it can overwrite operator-managed content.
 
 1. `GET /api/v1/health/` returns `200`.
 2. Firebase phone login exchanges an ID token at `/api/v1/auth/firebase-login/`.
-3. An authenticated browser registers at `/api/v1/devices/register/`.
-4. A booking event creates a `SENT` notification with provider `firebase-fcm`.
+3. Firebase Phone Authentication sends and verifies the login OTP.
+4. A booking event creates a `SENT` SMS notification with provider `msg91-sms`.
 5. Google Places/geocoding, Razorpay webhooks, and Cloudinary uploads succeed.
 6. Cloud Logging contains no `failure.category` events during the acceptance flow.
+
+## MSG91 transactional SMS
+
+Firebase Phone Authentication remains responsible only for login OTP. Booking,
+payment, technician, refund, review, and admin reminder messages use MSG91's SMS
+Flow API.
+
+Create an approved MSG91/DLT template with these variables:
+
+```text
+VAR1 = notification title
+VAR2 = notification message (including a payment URL when applicable)
+VAR3 = booking number, or Purple Squad when no booking exists
+VAR4 = notification UUID
+```
+
+Set `MSG91_SMS_TEMPLATE_ID` to that fallback template ID. For event-specific
+DLT templates, set `MSG91_SMS_TEMPLATE_<EVENT>` (for example,
+`MSG91_SMS_TEMPLATE_PAYMENT_PENDING`). Event-specific IDs override the fallback.
+Store `MSG91_AUTH_KEY` only in Secret Manager.
 
 Use a global external Application Load Balancer for the production
 `api.purplesquad.in` domain. Direct Cloud Run domain mapping is preview and is
