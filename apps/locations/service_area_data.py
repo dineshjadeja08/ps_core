@@ -102,6 +102,21 @@ CHENNAI_SERVICE_AREAS = (
     ("603210", "Urapakkam"),
 )
 
+
+def _expand_chennai_localities():
+    """Return one SEO locality per user-facing neighbourhood."""
+    localities = []
+    for postal_code, grouped_name in CHENNAI_SERVICE_AREAS:
+        if grouped_name == "Manali / Mathur (MMDA / Periya Mathur / China Mathur)":
+            names = ("Manali", "Mathur")
+        else:
+            names = tuple(part.strip() for part in grouped_name.split(" / "))
+        localities.extend((name, postal_code) for name in names)
+    return tuple(localities)
+
+
+CHENNAI_LOCALITIES = _expand_chennai_localities()
+
 COIMBATORE_SERVICE_AREAS = (
     ("641001", "Coimbatore Central"),
     ("641002", "RS Puram"),

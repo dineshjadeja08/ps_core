@@ -1,7 +1,9 @@
 from django.core.management.base import BaseCommand
 
-from apps.locations.models import ServiceArea
-from apps.locations.service_area_data import LAUNCH_SERVICE_AREAS
+from django.utils.text import slugify
+
+from apps.locations.models import ServiceArea, ServiceAreaLocality
+from apps.locations.service_area_data import CHENNAI_LOCALITIES, LAUNCH_SERVICE_AREAS
 
 
 class Command(BaseCommand):
@@ -30,6 +32,14 @@ class Command(BaseCommand):
                     "state": state,
                     "is_active": True,
                 },
+            )
+
+        for display_order, (name, postal_code) in enumerate(CHENNAI_LOCALITIES):
+            service_area = ServiceArea.objects.get(country="India", postal_code=postal_code)
+            ServiceAreaLocality.objects.update_or_create(
+                service_area=service_area,
+                slug=slugify(name),
+                defaults={"name": name, "is_active": True, "display_order": display_order},
             )
 
         self.stdout.write(

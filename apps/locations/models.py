@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.text import slugify
 
 from common.models import BaseModel
 
@@ -34,6 +35,41 @@ class ServiceArea(BaseModel):
 
     def supports_service(self, service):
         return not self.services_configured or self.services.filter(id=service.id).exists()
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        return super().save(*args, **kwargs)
+
+
+class ServiceAreaLocality(BaseModel):
+    """A user-facing locality within a postal-code service coverage record."""
+
+    service_area = models.ForeignKey(ServiceArea, on_delete=models.CASCADE, related_name="localities")
+    name = models.CharField(max_length=150)
+    slug = models.SlugField(max_length=180)
+    is_active = models.BooleanField(default=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("display_order", "name")
+        constraints = [
+            models.UniqueConstraint(fields=("service_area", "slug"), name="unique_service_area_locality_slug"),
+        ]
+        indexes = [
+            models.Index(fields=("service_area", "is_active")),
+            models.Index(fields=("slug",)),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.service_area.postal_code})"
+
+    def clean(self):
+        self.name = self.name.strip()
+        self.slug = slugify(self.slug or self.name)
+        if not self.name:
+            raise ValidationError({"name": "Locality name is required."})
+        if not self.slug:
+            raise ValidationError({"slug": "A valid locality slug is required."})
 
     def save(self, *args, **kwargs):
         self.full_clean()

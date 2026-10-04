@@ -4,7 +4,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
-from apps.locations.models import Address, ServiceArea
+from apps.locations.models import Address, ServiceArea, ServiceAreaLocality
 
 
 @pytest.fixture
@@ -146,11 +146,13 @@ def test_default_switching(authenticated_client, customer):
 
 @pytest.mark.django_db
 def test_supported_postal_code(client, service_area):
+    ServiceAreaLocality.objects.create(service_area=service_area, name="Central", slug="central")
     response = client.get("/api/v1/service-areas/check/?postal_code=635 601")
 
     assert response.status_code == 200
     assert response.json()["is_supported"] is True
     assert response.json()["service_area"]["postal_code"] == service_area.postal_code
+    assert response.json()["areas"] == ["Central"]
 
 
 @pytest.mark.django_db
@@ -162,7 +164,25 @@ def test_unsupported_postal_code(client):
         "postal_code": "000000",
         "is_supported": False,
         "service_area": None,
+        "areas": [],
     }
+
+
+@pytest.mark.django_db
+def test_shared_postal_code_returns_all_localities(client):
+    service_area = ServiceArea.objects.create(
+        name="Broadway / George Town / Mannadi / Parry's Corner",
+        city="Chennai",
+        state="Tamil Nadu",
+        postal_code="600001",
+    )
+    for name, slug in (("Broadway", "broadway"), ("George Town", "george-town"), ("Mannadi", "mannadi"), ("Parry's Corner", "parrys-corner")):
+        ServiceAreaLocality.objects.create(service_area=service_area, name=name, slug=slug)
+
+    response = client.get("/api/v1/service-areas/check/?postal_code=600001")
+
+    assert response.status_code == 200
+    assert response.json()["areas"] == ["Broadway", "George Town", "Mannadi", "Parry's Corner"]
 
 
 @pytest.mark.django_db

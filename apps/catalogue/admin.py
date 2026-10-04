@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
 
 
 @admin.register(ServiceCategory)
@@ -137,6 +137,24 @@ class ServiceImageInline(admin.TabularInline):
 
 
 ServiceAdmin.inlines = (ServiceImageInline,)
+
+
+@admin.register(SeoLandingPage)
+class SeoLandingPageAdmin(admin.ModelAdmin):
+    list_display = ("page_slug", "primary_keyword", "search_intent", "content_status", "meta_title", "is_active", "is_indexable", "updated_at")
+    list_filter = ("page_type", "content_status", "is_active", "is_indexable", "include_in_sitemap", "city", "service_slug")
+    search_fields = ("page_slug", "service_name", "area", "postal_code", "primary_keyword", "meta_title", "h1", "intro_content")
+    prepopulated_fields = {"service_slug": ("service_name",), "area_slug": ("area",)}
+    readonly_fields = ("page_slug", "created_at", "updated_at")
+    filter_horizontal = ("featured_services",)
+    fieldsets = (
+        ("URL", {"fields": ("page_type", "service_slug", "category_slug", "city", "area", "area_slug", "postal_code", "page_slug", "canonical_override")}),
+        ("Metadata", {"fields": ("service_name", "featured_services", "meta_title", "meta_description", "h1")}),
+        ("Keyword targeting", {"fields": ("primary_keyword", "secondary_keywords", "supporting_terms", "search_intent", "content_status"), "description": "Editorial targets only. They are not rendered as a visible keyword list or meta keywords tag."}),
+        ("Local content", {"fields": ("intro_content", "pricing_intro", "coverage_areas", "faqs")}),
+        ("Publishing", {"fields": ("is_active", "is_indexable", "include_in_sitemap", "published_at")}),
+        ("System", {"fields": ("created_at", "updated_at")}),
+    )
 
 
 class PackageItemInline(admin.TabularInline):

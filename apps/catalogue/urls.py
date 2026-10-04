@@ -9,6 +9,8 @@ from apps.catalogue.views import (
     ServiceCategoryListView,
     ServiceDetailView,
     ServiceListView,
+    SeoLandingPageDetailView,
+    SeoLandingPageListView,
 )
 
 router = SimpleRouter()
@@ -20,6 +22,8 @@ urlpatterns = [
     path("service-categories/", ServiceCategoryListView.as_view(), name="service-category-list"),
     path("services/", ServiceListView.as_view(), name="service-list"),
     path("services/<slug:slug>/", ServiceDetailView.as_view(), name="service-detail"),
+    path("seo-pages/", SeoLandingPageListView.as_view(), name="seo-page-list"),
+    path("seo-pages/<path:page_slug>/", SeoLandingPageDetailView.as_view(), name="seo-page-detail"),
     path(
         "admin/services/<uuid:service_id>/images/",
         AdminServiceImageViewSet.as_view({"get": "list", "post": "create"}),

@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from rest_framework import serializers
 
 from apps.catalogue.models import Service
-from apps.locations.models import Address, ServiceArea, normalize_postal_code
+from apps.locations.models import Address, ServiceArea, ServiceAreaLocality, normalize_postal_code
 
 
 PINCODE_PATTERN = re.compile(r"^\d{6}$")
@@ -32,6 +32,7 @@ class ServiceAreaCheckResponseSerializer(serializers.Serializer):
     postal_code = serializers.CharField()
     is_supported = serializers.BooleanField()
     service_area = serializers.DictField(allow_null=True)
+    areas = serializers.ListField(child=serializers.CharField())
 
 
 class ReverseGeocodeQuerySerializer(serializers.Serializer):
@@ -81,10 +82,24 @@ class AutocompleteResponseSerializer(serializers.Serializer):
     suggestions = AddressSuggestionSerializer(many=True)
 
 
+class ServiceAreaLocalitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ServiceAreaLocality
+        fields = ("id", "name", "slug")
+
+
 class ServiceAreaSerializer(serializers.ModelSerializer):
+    localities = serializers.SerializerMethodField()
+
     class Meta:
         model = ServiceArea
-        fields = ("id", "name", "city", "state", "country", "postal_code")
+        fields = ("id", "name", "city", "state", "country", "postal_code", "localities")
+
+    def get_localities(self, obj):
+        localities = getattr(obj, "active_localities", None)
+        if localities is None:
+            localities = obj.localities.filter(is_active=True)
+        return ServiceAreaLocalitySerializer(localities, many=True).data
 
 
 class AdminServiceAreaSerializer(serializers.ModelSerializer):

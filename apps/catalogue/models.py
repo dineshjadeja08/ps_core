@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
+from django.utils.text import slugify
 
 from common.models import BaseModel
 
@@ -127,6 +129,91 @@ class ServiceImage(BaseModel):
 
     def __str__(self):
         return f"{self.service.name} image"
+
+
+class SeoLandingPage(BaseModel):
+    class PageType(models.TextChoices):
+        SERVICE_CITY = "SERVICE_CITY", "Service + city"
+        SERVICE_AREA = "SERVICE_AREA", "Service + area"
+
+    class ContentStatus(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        NEEDS_REVIEW = "NEEDS_REVIEW", "Needs editorial review"
+        READY = "READY", "Ready for publication"
+
+    page_type = models.CharField(max_length=20, choices=PageType.choices, default=PageType.SERVICE_CITY)
+    service_slug = models.SlugField(max_length=180)
+    service_name = models.CharField(max_length=150)
+    category_slug = models.SlugField(max_length=180)
+    featured_services = models.ManyToManyField("catalogue.Service", blank=True, related_name="seo_landing_pages")
+    city = models.CharField(max_length=100, default="Chennai")
+    area = models.CharField(max_length=150, blank=True)
+    area_slug = models.SlugField(max_length=180, blank=True)
+    postal_code = models.CharField(max_length=6, blank=True)
+    page_slug = models.CharField(max_length=380, unique=True, editable=False)
+    meta_title = models.CharField(max_length=180)
+    meta_description = models.CharField(max_length=320)
+    h1 = models.CharField(max_length=180)
+    primary_keyword = models.CharField(max_length=180, blank=True)
+    secondary_keywords = models.JSONField(default=list, blank=True)
+    supporting_terms = models.JSONField(default=list, blank=True)
+    search_intent = models.CharField(max_length=120, blank=True)
+    content_status = models.CharField(max_length=20, choices=ContentStatus.choices, default=ContentStatus.NEEDS_REVIEW)
+    intro_content = models.TextField()
+    pricing_intro = models.TextField(blank=True)
+    coverage_areas = models.JSONField(default=list, blank=True)
+    faqs = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    is_indexable = models.BooleanField(default=False)
+    include_in_sitemap = models.BooleanField(default=True)
+    canonical_override = models.URLField(blank=True)
+    published_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ("service_slug", "area_slug")
+        constraints = [
+            models.UniqueConstraint(fields=("service_slug", "area_slug"), name="unique_seo_service_area_page"),
+        ]
+        indexes = [
+            models.Index(fields=("is_active", "is_indexable")),
+            models.Index(fields=("service_slug", "area_slug")),
+        ]
+
+    def __str__(self):
+        return self.page_slug
+
+    def clean(self):
+        errors = {}
+        if self.service_slug != slugify(self.service_slug):
+            errors["service_slug"] = "Use a lowercase, hyphenated service slug."
+        if self.area_slug != slugify(self.area_slug):
+            errors["area_slug"] = "Use a lowercase, hyphenated area slug."
+        if bool(self.area) != bool(self.area_slug):
+            errors["area"] = "Area and area slug must be supplied together."
+        expected_page_type = self.PageType.SERVICE_AREA if self.area_slug else self.PageType.SERVICE_CITY
+        if self.page_type != expected_page_type:
+            errors["page_type"] = f"Use {expected_page_type} for this URL."
+        if self.area_slug and (not self.postal_code.isdigit() or len(self.postal_code) != 6):
+            errors["postal_code"] = "Area pages require a valid 6-digit PIN code."
+        if not self.area_slug and self.postal_code:
+            errors["postal_code"] = "City-level pages must not have a PIN code."
+        if self.is_indexable:
+            if self.content_status != self.ContentStatus.READY:
+                errors["content_status"] = "Content must be editorially ready before indexing is enabled."
+            if not self.primary_keyword.strip():
+                errors["primary_keyword"] = "Indexable pages require a primary keyword target."
+            if len(self.intro_content.strip()) < 80:
+                errors["intro_content"] = "Indexable pages require meaningful original introductory content."
+            if self.area_slug and not self.coverage_areas:
+                errors["coverage_areas"] = "Indexable area pages require genuine local coverage information."
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.page_slug = "/".join(part for part in (self.service_slug, self.area_slug) if part)
+        self.page_type = self.PageType.SERVICE_AREA if self.area_slug else self.PageType.SERVICE_CITY
+        self.full_clean()
+        return super().save(*args, **kwargs)
 
 
 class Package(BaseModel):

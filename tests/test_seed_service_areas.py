@@ -1,8 +1,8 @@
 import pytest
 from django.core.management import call_command
 
-from apps.locations.models import ServiceArea
-from apps.locations.service_area_data import CHENNAI_SERVICE_AREAS, COIMBATORE_SERVICE_AREAS
+from apps.locations.models import ServiceArea, ServiceAreaLocality
+from apps.locations.service_area_data import CHENNAI_LOCALITIES, CHENNAI_SERVICE_AREAS, COIMBATORE_SERVICE_AREAS
 
 
 @pytest.mark.django_db
@@ -20,5 +20,9 @@ def test_seed_service_areas_adds_chennai_coverage_and_preserves_existing_areas()
     assert ServiceArea.objects.filter(city="Coimbatore", is_active=True).count() == len(COIMBATORE_SERVICE_AREAS)
     assert ServiceArea.objects.get(postal_code="600001").name == "Broadway / George Town / Mannadi / Parry's Corner"
     assert ServiceArea.objects.get(postal_code="600040").name == "Anna Nagar / Thirumangalam"
+    assert ServiceAreaLocality.objects.filter(service_area__city="Chennai", is_active=True).count() == len(CHENNAI_LOCALITIES)
+    assert set(ServiceAreaLocality.objects.filter(service_area__postal_code="600001").values_list("name", flat=True)) == {
+        "Broadway", "George Town", "Mannadi", "Parry's Corner"
+    }
     existing.refresh_from_db()
     assert existing.is_active is True

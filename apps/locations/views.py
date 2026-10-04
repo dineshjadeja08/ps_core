@@ -1,12 +1,13 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
+from django.db.models import Prefetch
 from rest_framework import exceptions, generics, mixins, status, viewsets
 from rest_framework.decorators import api_view, authentication_classes, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from apps.accounts.permissions import IsAdminRole
-from apps.locations.models import Address, ServiceArea, normalize_postal_code
+from apps.locations.models import Address, ServiceArea, ServiceAreaLocality, normalize_postal_code
 from apps.locations.serializers import (
     AddressSerializer,
     AutocompleteQuerySerializer,
@@ -128,7 +129,7 @@ class AdminServiceAreaViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        return ServiceArea.objects.prefetch_related("services").all().order_by("city", "postal_code", "name")
+        return ServiceArea.objects.prefetch_related("services", "localities").all().order_by("city", "postal_code", "name")
 
     def perform_destroy(self, instance):
         instance.is_active = False
@@ -142,7 +143,13 @@ class PublicServiceAreaListView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        queryset = ServiceArea.objects.filter(is_active=True).order_by("city", "name", "postal_code")
+        queryset = ServiceArea.objects.prefetch_related(
+            Prefetch(
+                "localities",
+                queryset=ServiceAreaLocality.objects.filter(is_active=True).order_by("display_order", "name"),
+                to_attr="active_localities",
+            )
+        ).filter(is_active=True).order_by("city", "name", "postal_code")
         city = self.request.query_params.get("city", "").strip()
         if city:
             queryset = queryset.filter(city__iexact=city)
@@ -168,6 +175,7 @@ class PublicServiceAreaListView(generics.ListAPIView):
                     "country": "India",
                     "postal_code": "635601",
                 },
+                "areas": ["Tirupattur Central"],
             },
             response_only=True,
         )
@@ -185,11 +193,15 @@ def check_service_area(request):
         )
 
     service_area = get_active_service_area(postal_code)
+    areas = list(
+        service_area.localities.filter(is_active=True).values_list("name", flat=True)
+    ) if service_area else []
     return Response(
         {
             "postal_code": postal_code,
             "is_supported": service_area is not None,
             "service_area": _serialize_service_area(service_area) if service_area else None,
+            "areas": areas,
         }
     )
 

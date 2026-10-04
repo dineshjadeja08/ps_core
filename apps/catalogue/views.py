@@ -1,6 +1,7 @@
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from django.db import transaction
 from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework import generics, status, viewsets
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -10,7 +11,7 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
-from apps.catalogue.models import Package, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import Package, SeoLandingPage, Service, ServiceCategory, ServiceImage
 from apps.catalogue.serializers import (
     AdminPackageSerializer,
     AdminServiceCategorySerializer,
@@ -20,6 +21,8 @@ from apps.catalogue.serializers import (
     ServiceDetailSerializer,
     ServiceImageSerializer,
     ServiceListSerializer,
+    SeoLandingPageListSerializer,
+    SeoLandingPageSerializer,
 )
 from apps.locations.services import get_active_service_area
 
@@ -177,6 +180,32 @@ class ServiceDetailView(generics.RetrieveAPIView):
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+
+class SeoLandingPageListView(generics.ListAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = SeoLandingPageListSerializer
+    pagination_class = None
+
+    def get_queryset(self):
+        return SeoLandingPage.objects.filter(
+            is_active=True,
+            is_indexable=True,
+            include_in_sitemap=True,
+            published_at__lte=timezone.now(),
+        ).order_by("service_slug", "area_slug")
+
+
+class SeoLandingPageDetailView(generics.RetrieveAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = SeoLandingPageSerializer
+    lookup_field = "page_slug"
+    lookup_url_kwarg = "page_slug"
+
+    def get_queryset(self):
+        return SeoLandingPage.objects.filter(is_active=True, published_at__lte=timezone.now())
 
 
 @extend_schema(tags=["Admin - Categories"])

@@ -7,8 +7,9 @@ from cloudinary.exceptions import Error as CloudinaryError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
+from django.utils import timezone
 
-from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
 
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
@@ -113,6 +114,127 @@ class ServiceDetailSerializer(ServiceListSerializer):
             "whats_excluded",
             "important_notes",
         )
+
+
+class SeoLandingPageListSerializer(serializers.ModelSerializer):
+    path = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SeoLandingPage
+        fields = ("page_slug", "path", "service_name", "city", "area", "postal_code", "updated_at")
+
+    def get_path(self, obj):
+        return f"/{obj.page_slug}"
+
+
+class SeoLandingPageSerializer(serializers.ModelSerializer):
+    path = serializers.SerializerMethodField()
+    services = serializers.SerializerMethodField()
+    parent_page = serializers.SerializerMethodField()
+    area_pages = serializers.SerializerMethodField()
+    related_pages = serializers.SerializerMethodField()
+    nearby_pages = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SeoLandingPage
+        fields = (
+            "page_slug",
+            "path",
+            "service_slug",
+            "page_type",
+            "service_name",
+            "category_slug",
+            "city",
+            "area",
+            "area_slug",
+            "postal_code",
+            "meta_title",
+            "meta_description",
+            "h1",
+            "intro_content",
+            "pricing_intro",
+            "coverage_areas",
+            "faqs",
+            "is_indexable",
+            "canonical_override",
+            "services",
+            "parent_page",
+            "area_pages",
+            "related_pages",
+            "nearby_pages",
+            "updated_at",
+        )
+
+    def get_path(self, obj):
+        return f"/{obj.page_slug}"
+
+    def get_services(self, obj):
+        queryset = obj.featured_services.select_related("category").filter(
+            category__is_active=True,
+            is_active=True,
+        )
+        if not queryset.exists():
+            queryset = Service.objects.select_related("category").filter(
+                category__slug=obj.category_slug,
+                category__is_active=True,
+                is_active=True,
+            )
+        return ServiceListSerializer(queryset, many=True, context=self.context).data
+
+    def _link(self, page):
+        if not page:
+            return None
+        return {
+            "name": page.h1,
+            "path": f"/{page.page_slug}",
+            "area": page.area,
+            "postal_code": page.postal_code,
+        }
+
+    def get_parent_page(self, obj):
+        if not obj.area_slug:
+            return None
+        page = SeoLandingPage.objects.filter(
+            service_slug=obj.service_slug,
+            area_slug="",
+            is_active=True,
+            is_indexable=True,
+            published_at__lte=timezone.now(),
+        ).first()
+        return self._link(page)
+
+    def get_area_pages(self, obj):
+        if obj.area_slug:
+            return []
+        pages = SeoLandingPage.objects.filter(
+            service_slug=obj.service_slug,
+            is_active=True,
+            published_at__lte=timezone.now(),
+        ).exclude(area_slug="").order_by("area")
+        return [self._link(page) for page in pages]
+
+    def get_related_pages(self, obj):
+        if not obj.area_slug:
+            return []
+        pages = SeoLandingPage.objects.filter(
+            area_slug=obj.area_slug,
+            city__iexact=obj.city,
+            is_active=True,
+            published_at__lte=timezone.now(),
+        ).exclude(service_slug=obj.service_slug).order_by("service_name")[:12]
+        return [self._link(page) for page in pages]
+
+    def get_nearby_pages(self, obj):
+        if not obj.area_slug:
+            return []
+        pages = SeoLandingPage.objects.filter(
+            service_slug=obj.service_slug,
+            city__iexact=obj.city,
+            is_active=True,
+            is_indexable=True,
+            published_at__lte=timezone.now(),
+        ).exclude(area_slug__in=("", obj.area_slug)).order_by("area")[:12]
+        return [self._link(page) for page in pages]
 
 
 class AdminServiceCategorySerializer(serializers.ModelSerializer):
