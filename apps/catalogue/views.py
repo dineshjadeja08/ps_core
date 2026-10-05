@@ -189,12 +189,13 @@ class SeoLandingPageListView(generics.ListAPIView):
     pagination_class = None
 
     def get_queryset(self):
-        return SeoLandingPage.objects.filter(
+        queryset = SeoLandingPage.objects.filter(
             is_active=True,
-            is_indexable=True,
-            include_in_sitemap=True,
             published_at__lte=timezone.now(),
-        ).order_by("service_slug", "area_slug")
+        )
+        if self.request.query_params.get("include_unindexed") != "true":
+            queryset = queryset.filter(is_indexable=True, include_in_sitemap=True)
+        return queryset.order_by("service_slug", "area_slug")
 
 
 class SeoLandingPageDetailView(generics.RetrieveAPIView):

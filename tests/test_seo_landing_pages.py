@@ -84,6 +84,21 @@ def test_sitemap_feed_only_lists_active_indexable_pages(client):
 
 
 @pytest.mark.django_db
+def test_build_feed_includes_published_noindex_pages(client):
+    visible = SeoLandingPage.objects.create(**page_values())
+    noindex = SeoLandingPage.objects.create(**page_values(area="Guindy", area_slug="guindy", postal_code="600032", is_indexable=False))
+    SeoLandingPage.objects.create(**page_values(area="Pallavaram", area_slug="pallavaram", is_active=False))
+
+    response = client.get("/api/v1/seo-pages/?include_unindexed=true")
+
+    assert response.status_code == 200
+    assert {item["page_slug"]: item["is_indexable"] for item in response.json()} == {
+        visible.page_slug: True,
+        noindex.page_slug: False,
+    }
+
+
+@pytest.mark.django_db
 def test_noindex_page_is_retrievable_but_not_listed_and_invalid_page_is_404(client):
     page = SeoLandingPage.objects.create(**page_values(is_indexable=False))
 

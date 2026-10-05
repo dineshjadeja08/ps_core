@@ -121,7 +121,7 @@ class SeoLandingPageListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SeoLandingPage
-        fields = ("page_slug", "path", "service_name", "city", "area", "postal_code", "updated_at")
+        fields = ("page_slug", "path", "service_name", "city", "area", "postal_code", "is_indexable", "updated_at")
 
     def get_path(self, obj):
         return f"/{obj.page_slug}"
