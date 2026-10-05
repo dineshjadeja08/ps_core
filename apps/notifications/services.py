@@ -57,9 +57,10 @@ def notification_event_enabled(event):
 
 
 def send_notification(notification, *, raise_on_failure=False):
-    provider = get_notification_provider()
+    provider = None
     notification.send_attempts += 1
     try:
+        provider = get_notification_provider(notification)
         result = provider.send(notification)
     except Exception as exc:
         notification.status = NotificationStatus.FAILED
@@ -86,8 +87,11 @@ def send_notification(notification, *, raise_on_failure=False):
     return notification
 
 
-def get_notification_provider():
-    provider_path = getattr(settings, "NOTIFICATION_PROVIDER", "apps.notifications.providers.LocalNotificationProvider")
+def get_notification_provider(notification=None):
+    if notification is not None and notification.channel == NotificationChannel.WHATSAPP:
+        provider_path = settings.WHATSAPP_NOTIFICATION_PROVIDER
+    else:
+        provider_path = getattr(settings, "NOTIFICATION_PROVIDER", "apps.notifications.providers.LocalNotificationProvider")
     return import_string(provider_path)()
 
 

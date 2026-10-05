@@ -1,9 +1,10 @@
 from django.db import transaction
+from django.conf import settings
 from django.utils import timezone
 from rest_framework import serializers
 
 from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory
-from apps.notifications.models import NotificationEvent
+from apps.notifications.models import NotificationChannel, NotificationEvent
 from apps.notifications.services import emit_notification_event
 from apps.technicians.models import (
     TechnicianAssignment,
@@ -165,6 +166,15 @@ def assign_technician(*, booking_id, technician_id, assigned_by, notes="", reaso
         booking=booking,
         payload={"technician_id": str(technician.id)},
     )
+    changed_assignment = previous_assignment is None or previous_assignment.technician_id != technician.id
+    if changed_assignment and settings.MSG91_WHATSAPP_ENABLED and technician.whatsapp_notifications_enabled:
+        from apps.notifications.whatsapp import technician_assignment_payload
+
+        emit_notification_event(
+            event=NotificationEvent.TECHNICIAN_ASSIGNED, recipient=technician.user, booking=booking,
+            channels=(NotificationChannel.WHATSAPP,),
+            payload=technician_assignment_payload(assignment),
+        )
     return assignment
 
 

@@ -19,5 +19,6 @@ def deliver_notification(notification_id):
             NotificationStatus.CANCELLED,
         }:
             return notification.status
-        send_notification(notification, raise_on_failure=True)
+        # Keep FAILED status inside the transaction so the admin can inspect and retry it.
+        send_notification(notification)
         return notification.status

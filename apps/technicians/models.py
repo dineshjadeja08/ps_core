@@ -102,6 +102,7 @@ class TechnicianProfile(BaseModel):
     completed_job_count = models.PositiveIntegerField(default=0)
     cancellation_count = models.PositiveIntegerField(default=0)
     is_available = models.BooleanField(default=True)
+    whatsapp_notifications_enabled = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     joined_at = models.DateField(null=True, blank=True)
     internal_notes = models.TextField(blank=True)

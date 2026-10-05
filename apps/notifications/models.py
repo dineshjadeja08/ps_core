@@ -8,6 +8,7 @@ from common.models import BaseModel
 class NotificationChannel(models.TextChoices):
     SMS = "SMS", "SMS"
     PUSH = "PUSH", "Push"
+    WHATSAPP = "WHATSAPP", "WhatsApp"
 
 
 class NotificationEvent(models.TextChoices):

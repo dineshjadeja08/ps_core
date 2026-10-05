@@ -50,6 +50,7 @@ class TechnicianProfileSerializer(serializers.ModelSerializer):
             "completed_job_count",
             "cancellation_count",
             "is_available",
+            "whatsapp_notifications_enabled",
             "is_active",
             "joined_at",
             "id_document_available",
@@ -127,7 +128,7 @@ class AdminTechnicianWriteSerializer(serializers.ModelSerializer):
         fields = (
             "employee_code", "display_name", "phone", "alternate_phone", "email", "address", "city", "pincode",
             "technician_type", "employment_status", "experience_years", "languages", "joined_at",
-            "background_verification_status", "availability_status", "is_active", "internal_notes",
+            "background_verification_status", "availability_status", "is_active", "internal_notes", "whatsapp_notifications_enabled",
             "skill_names", "service_area_ids", "supported_service_ids",
         )
 

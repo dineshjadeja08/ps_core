@@ -92,6 +92,66 @@ class Msg91SmsNotificationProvider(BaseNotificationProvider):
         )
 
 
+class Msg91WhatsAppNotificationProvider(BaseNotificationProvider):
+    provider_name = "msg91-whatsapp"
+    timeout_seconds = 10
+
+    def send(self, notification):
+        if notification.channel != "WHATSAPP" or notification.event != "TECHNICIAN_ASSIGNED":
+            raise ValueError("This WhatsApp provider only supports technician assignment alerts.")
+        if not settings.MSG91_WHATSAPP_ENABLED:
+            raise ValueError("Technician WhatsApp notifications are disabled.")
+        from apps.technicians.models import TechnicianAssignment
+
+        data = notification.payload or {}
+        assignment = TechnicianAssignment.objects.select_related("technician", "booking").filter(
+            id=data.get("assignment_id"), technician__user_id=notification.recipient_id,
+            booking_id=notification.booking_id, unassigned_at__isnull=True,
+        ).first()
+        if not assignment or assignment.booking.assigned_technician_id != notification.recipient_id:
+            raise ValueError("This technician assignment is no longer active.")
+        if not assignment.technician.whatsapp_notifications_enabled:
+            raise ValueError("The technician has not opted in to WhatsApp assignment notifications.")
+        auth_key = settings.MSG91_WHATSAPP_AUTH_KEY or settings.MSG91_AUTH_KEY
+        if not auth_key or not settings.MSG91_WHATSAPP_INTEGRATED_NUMBER or not settings.MSG91_WHATSAPP_TECHNICIAN_TEMPLATE:
+            raise ValueError("MSG91 WhatsApp notifications are not fully configured.")
+        values = data.get("template_values")
+        if not isinstance(values, list) or len(values) != 8 or any(not str(value).strip() for value in values):
+            raise ValueError("Technician assignment template requires eight non-empty body variables.")
+        template = {
+            "name": settings.MSG91_WHATSAPP_TECHNICIAN_TEMPLATE,
+            "language": {"code": settings.MSG91_WHATSAPP_TEMPLATE_LANGUAGE, "policy": "deterministic"},
+            "to_and_components": [{
+                "to": [_normalise_mobile(assignment.technician.phone)],
+                "components": {f"body_{index}": {"type": "text", "value": " ".join(str(value).split())[:1024]}
+                               for index, value in enumerate(values, 1)},
+            }],
+        }
+        if settings.MSG91_WHATSAPP_TEMPLATE_NAMESPACE:
+            template["namespace"] = settings.MSG91_WHATSAPP_TEMPLATE_NAMESPACE
+        response = requests.post(
+            settings.MSG91_WHATSAPP_FLOW_URL,
+            headers={"authkey": auth_key, "content-type": "application/json", "accept": "application/json"},
+            json={"integrated_number": _normalise_mobile(settings.MSG91_WHATSAPP_INTEGRATED_NUMBER),
+                  "content_type": "template", "CRQID": str(notification.id),
+                  "payload": {"messaging_product": "whatsapp", "type": "template", "template": template}},
+            timeout=self.timeout_seconds,
+        )
+        try:
+            result = response.json()
+        except ValueError as exc:
+            raise ValueError("MSG91 returned an invalid WhatsApp response.") from exc
+        if response.status_code >= 400 or not isinstance(result, dict):
+            raise ValueError("MSG91 rejected the WhatsApp notification.")
+        status = str(result.get("type", result.get("status", ""))).lower()
+        if result.get("hasError") or result.get("error") or status in {"error", "failed", "failure"}:
+            raise ValueError("MSG91 rejected the WhatsApp notification.")
+        request_id = result.get("request_id") or result.get("requestId") or result.get("message_id")
+        if status not in {"success", "sent", "accepted"} and result.get("success") is not True and not request_id:
+            raise ValueError("MSG91 did not accept the WhatsApp notification.")
+        return NotificationDeliveryResult(provider=self.provider_name, provider_message_id=str(request_id or notification.id)[:128])
+
+
 def _normalise_mobile(phone_number):
     digits = re.sub(r"\D", "", str(phone_number or ""))
     if len(digits) == 10:
