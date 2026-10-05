@@ -4,6 +4,10 @@ from rest_framework.routers import DefaultRouter
 from apps.technicians.views import (
     AdminTechnicianLeaveViewSet,
     AdminTechnicianListView,
+    AdminTechnicianDetailView,
+    AdminTechnicianOptionsView,
+    AdminTechnicianJobsView,
+    AdminTechnicianActivityView,
     AssignTechnicianView,
     RemoveTechnicianAssignmentView,
     TechnicianJobViewSet,
@@ -16,6 +20,10 @@ router.register("admin/technician-leaves", AdminTechnicianLeaveViewSet, basename
 urlpatterns = [
     path("", include(router.urls)),
     path("admin/technicians/", AdminTechnicianListView.as_view(), name="admin-technician-list"),
+    path("admin/technicians/options/", AdminTechnicianOptionsView.as_view(), name="admin-technician-options"),
+    path("admin/technicians/<uuid:pk>/", AdminTechnicianDetailView.as_view(), name="admin-technician-detail"),
+    path("admin/technicians/<uuid:pk>/jobs/", AdminTechnicianJobsView.as_view(), name="admin-technician-jobs"),
+    path("admin/technicians/<uuid:pk>/activities/", AdminTechnicianActivityView.as_view(), name="admin-technician-activities"),
     path(
         "admin/bookings/<uuid:booking_id>/assign-technician/",
         AssignTechnicianView.as_view(),

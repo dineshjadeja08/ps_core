@@ -41,6 +41,10 @@ def get_technician_eligibility_errors(technician, booking):
 
     if not technician.is_active:
         errors.append("Technician is inactive.")
+    if not technician.user.is_active:
+        errors.append("Technician login account is disabled.")
+    if technician.employment_status != "ACTIVE":
+        errors.append("Technician employment is not active.")
     if technician.background_verification_status != TechnicianVerificationStatus.VERIFIED:
         errors.append("Technician is not verified.")
     if not technician.is_available or technician.availability_status != TechnicianAvailabilityStatus.AVAILABLE:
@@ -49,12 +53,12 @@ def get_technician_eligibility_errors(technician, booking):
         errors.append("Technician does not support this service.")
     if technician.service_areas.exists() and not technician.service_areas.filter(id=service_area.id).exists():
         errors.append("Technician does not cover this service area.")
-    if address and address.postal_code and technician.pincode and technician.pincode != address.postal_code:
+    if not technician.service_areas.exists() and address and address.postal_code and technician.pincode and technician.pincode != address.postal_code:
         errors.append("Technician pincode does not match the service address.")
 
     slot_start, slot_end = slot_start_end(slot)
     working_hours = technician.working_hours.filter(day_of_week=slot.date.weekday(), is_active=True)
-    if working_hours.exists() and not working_hours.filter(start_time__lte=slot.start_time, end_time__gte=slot.end_time).exists():
+    if technician.working_hours.filter(is_active=True).exists() and not working_hours.filter(start_time__lte=slot.start_time, end_time__gte=slot.end_time).exists():
         errors.append("Technician is not working during this slot.")
     if technician.leaves.filter(is_active=True, start_at__lt=slot_end, end_at__gt=slot_start).exists():
         errors.append("Technician is on leave during this slot.")

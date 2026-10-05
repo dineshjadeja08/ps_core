@@ -1,4 +1,7 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
+from django.db.models import Avg, Count, Q
+from rest_framework.exceptions import ValidationError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
@@ -10,18 +13,23 @@ from rest_framework.views import APIView
 from apps.accounts.permissions import IsAdminRole, IsTechnicianRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
-from apps.bookings.models import Booking
-from apps.bookings.serializers import AdminBookingSerializer, BookingOperationSerializer, BookingSerializer
+from apps.bookings.models import Booking, BookingStatus
+from apps.bookings.serializers import AdminBookingSerializer, BookingActivitySerializer, BookingOperationSerializer, BookingSerializer
+from apps.catalogue.models import Service
+from apps.locations.models import ServiceArea
 from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
-from apps.technicians.models import TechnicianLeave, TechnicianProfile
+from apps.technicians.models import TechnicianLeave, TechnicianProfile, TechnicianSkill
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
     TechnicianLeaveReviewSerializer,
     TechnicianLeaveSerializer,
-    TechnicianProfileSerializer,
+    AdminTechnicianProfileSerializer,
+    AdminTechnicianWriteSerializer,
 )
-from apps.technicians.services import assign_technician, get_eligible_technicians, remove_technician_assignment
+from apps.technicians.services import (
+    TECHNICIAN_BUSY_STATUSES, assign_technician, get_technician_eligibility_errors, remove_technician_assignment,
+)
 
 
 class TechnicianJobViewSet(
@@ -68,36 +76,140 @@ class TechnicianJobViewSet(
         return self._operate(request, "complete")
 
 
-class AdminTechnicianListView(generics.ListAPIView):
+class AdminTechnicianQueryMixin:
     permission_classes = [IsAuthenticated, IsAdminRole]
-    serializer_class = TechnicianProfileSerializer
-    pagination_class = None
+    include_inactive = False
+
+    def get_serializer_class(self):
+        return AdminTechnicianProfileSerializer if self.request.method in {"GET", "HEAD"} else AdminTechnicianWriteSerializer
 
     def get_queryset(self):
         queryset = (
             TechnicianProfile.objects.select_related("user")
             .prefetch_related("skills", "service_areas", "supported_services", "working_hours", "leaves")
-            .filter(is_active=True)
+            .annotate(
+                active_job_count=Count("user__assigned_bookings", distinct=True, filter=Q(user__assigned_bookings__booking_status__in=TECHNICIAN_BUSY_STATUSES)),
+                completed_jobs=Count("user__assigned_bookings", distinct=True, filter=Q(user__assigned_bookings__booking_status__in=[BookingStatus.COMPLETED, BookingStatus.CLOSED])),
+                cancelled_jobs=Count("user__assigned_bookings", distinct=True, filter=Q(user__assigned_bookings__booking_status=BookingStatus.CANCELLED)),
+                approved_rating=Avg("user__technician_reviews__rating", filter=Q(user__technician_reviews__is_visible=True)),
+                approved_review_count=Count("user__technician_reviews", distinct=True, filter=Q(user__technician_reviews__is_visible=True)),
+            )
             .order_by("display_name")
         )
+        if not self.include_inactive and self.request.query_params.get("include_inactive") != "true":
+            queryset = queryset.filter(is_active=True)
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(Q(display_name__icontains=search) | Q(phone__icontains=search) | Q(employee_code__icontains=search))
+        for param, field in (("service_id", "supported_services__id"), ("area_id", "service_areas__id")):
+            value = self.request.query_params.get(param)
+            if value:
+                try:
+                    queryset = queryset.filter(**{field: value})
+                except (ValueError, DjangoValidationError):
+                    raise ValidationError({param: "Use a valid ID."})
+        availability = self.request.query_params.get("availability_status")
+        if availability:
+            queryset = queryset.filter(availability_status=availability)
+        active = self.request.query_params.get("is_active")
+        if active in {"true", "false"}:
+            queryset = queryset.filter(is_active=active == "true")
         booking_id = self.request.query_params.get("booking_id")
         if not booking_id:
             return queryset
         try:
             booking = Booking.objects.select_related("address", "service", "time_slot", "time_slot__service_area").get(id=booking_id)
         except Booking.DoesNotExist:
-            return TechnicianProfile.objects.none()
-        eligible_ids = [technician.id for technician in get_eligible_technicians(booking)]
-        return queryset.filter(id__in=eligible_ids)
+            raise ValidationError({"booking_id": "Booking was not found."})
+        except (ValueError, DjangoValidationError):
+            raise ValidationError({"booking_id": "Use a valid booking ID."})
+        technicians = list(queryset)
+        for technician in technicians:
+            technician.eligibility_errors = get_technician_eligibility_errors(technician, booking)
+        if self.request.query_params.get("include_ineligible") == "true":
+            return technicians
+        return [technician for technician in technicians if not technician.eligibility_errors]
+
+    def record_change(self, serializer, created=False):
+        previous = None if created else {
+            "verification": serializer.instance.background_verification_status,
+            "availability": serializer.instance.availability_status,
+        }
+        with transaction.atomic():
+            technician = serializer.save()
+            action = AuditAction.TECHNICIAN_CREATED if created else AuditAction.TECHNICIAN_UPDATED
+            if previous and previous["verification"] != technician.background_verification_status:
+                action = AuditAction.TECHNICIAN_VERIFICATION_CHANGED
+            elif previous and previous["availability"] != technician.availability_status:
+                action = AuditAction.TECHNICIAN_AVAILABILITY_CHANGED
+            audit_event(
+                action=action, actor=self.request.user, request=self.request,
+                resource_type="technician", resource_id=technician.id,
+                metadata={"fields": list(serializer.validated_data), "verification": technician.background_verification_status,
+                          "availability": technician.availability_status, "is_active": technician.is_active},
+            )
+
+
+class AdminTechnicianListView(AdminTechnicianQueryMixin, generics.ListCreateAPIView):
+    pagination_class = None
+
+    def perform_create(self, serializer):
+        self.record_change(serializer, created=True)
 
     @extend_schema(
-        summary="List active technicians for admin",
-        description="Returns active technician profiles for booking assignment. Pass booking_id to list only eligible technicians.",
+        summary="List technicians for admin",
+        description="Active technicians by default. include_inactive=true includes inactive profiles. Pass booking_id for eligibility and include_ineligible=true for reasons.",
         parameters=[OpenApiParameter("booking_id", OpenApiTypes.UUID, OpenApiParameter.QUERY)],
-        responses={status.HTTP_200_OK: TechnicianProfileSerializer(many=True)},
+        responses={status.HTTP_200_OK: AdminTechnicianProfileSerializer(many=True)},
     )
     def get(self, request, *args, **kwargs):
         return super().get(request, *args, **kwargs)
+
+
+class AdminTechnicianDetailView(AdminTechnicianQueryMixin, generics.RetrieveUpdateAPIView):
+    include_inactive = True
+
+    def perform_update(self, serializer):
+        self.record_change(serializer)
+
+
+class AdminTechnicianOptionsView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="List technician coverage options", responses=OpenApiTypes.OBJECT)
+    def get(self, request):
+        return Response({
+            "skills": list(TechnicianSkill.objects.values("id", "name", "is_active")),
+            "services": list(Service.objects.values("id", "name", "is_active")),
+            "areas": list(ServiceArea.objects.values("id", "name", "city", "postal_code", "is_active")),
+        })
+
+
+class AdminTechnicianJobsView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = AdminBookingSerializer
+
+    def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Booking.objects.none()
+        technician = generics.get_object_or_404(TechnicianProfile, pk=self.kwargs["pk"])
+        queryset = Booking.objects.filter(assigned_technician=technician.user).select_related(
+            "customer", "customer__customer_profile", "service", "time_slot", "assigned_technician",
+        ).prefetch_related("status_history").order_by("-service_date", "time_slot__start_time")
+        if self.request.query_params.get("active") == "true":
+            queryset = queryset.filter(booking_status__in=TECHNICIAN_BUSY_STATUSES).order_by("service_date", "time_slot__start_time")
+        return queryset
+
+
+class AdminTechnicianActivityView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="List recent technician activity", responses=BookingActivitySerializer(many=True))
+    def get(self, request, pk):
+        from apps.technicians.activities import technician_activities
+
+        technician = generics.get_object_or_404(TechnicianProfile, pk=pk)
+        return Response(BookingActivitySerializer(technician_activities(technician), many=True).data)
 
 
 @extend_schema(tags=["Admin - Technician Leaves"])
