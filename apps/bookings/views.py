@@ -14,6 +14,7 @@ from apps.bookings.models import Booking
 from apps.bookings.cart import lock_customer
 from apps.bookings.idempotency import begin_checkout_request, complete_checkout_request
 from apps.bookings.serializers import (
+    BookingActivitySerializer,
     AdminBookingSerializer,
     BalanceCollectionSerializer,
     BookingCreateSerializer,
@@ -75,6 +76,13 @@ class AdminBookingViewSet(
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="List recent booking activity", responses=BookingActivitySerializer(many=True))
+    @action(detail=True, methods=["get"])
+    def activities(self, request, *args, **kwargs):
+        from apps.bookings.activities import booking_activities
+
+        return Response(BookingActivitySerializer(booking_activities(self.get_object()), many=True).data)
 
 
 class AdminWorkOrderViewSet(

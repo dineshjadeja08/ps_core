@@ -82,6 +82,14 @@ class BookingStatusHistorySerializer(serializers.ModelSerializer):
         fields = ("id", "from_status", "to_status", "notes", "created_at")
 
 
+class BookingActivitySerializer(serializers.Serializer):
+    id = serializers.CharField()
+    title = serializers.CharField()
+    description = serializers.CharField(allow_blank=True)
+    actor = serializers.CharField()
+    created_at = serializers.DateTimeField()
+
+
 class BookingSerializer(serializers.ModelSerializer):
     service = serializers.SerializerMethodField()
     time_slot = serializers.SerializerMethodField()
