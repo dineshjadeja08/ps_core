@@ -7,8 +7,10 @@ from common.models import BaseModel
 
 
 class Review(BaseModel):
-    booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name="review")
-    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="reviews")
+    booking = models.OneToOneField(Booking, on_delete=models.PROTECT, related_name="review", null=True, blank=True)
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="reviews", null=True, blank=True)
+    service = models.ForeignKey("catalogue.Service", on_delete=models.PROTECT, related_name="published_reviews", null=True, blank=True)
+    reviewer_name = models.CharField(max_length=150, blank=True)
     technician = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.PROTECT,
@@ -29,4 +31,4 @@ class Review(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.booking.booking_number}: {self.rating}"
+        return f"{self.booking.booking_number if self.booking_id else self.reviewer_name}: {self.rating}"

@@ -5,7 +5,7 @@ from apps.reviews.models import Review
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
-    list_display = ("booking", "customer", "technician", "rating", "is_visible", "created_at")
-    list_filter = ("rating", "is_visible", "created_at")
-    search_fields = ("booking__booking_number", "customer__phone_number", "technician__phone_number", "comment")
+    list_display = ("booking", "service", "reviewer_name", "customer", "rating", "is_visible", "created_at")
+    list_filter = ("service", "rating", "is_visible", "created_at")
+    search_fields = ("booking__booking_number", "service__name", "reviewer_name", "customer__phone_number", "comment")
     readonly_fields = ("created_at", "updated_at")
