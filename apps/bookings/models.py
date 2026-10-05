@@ -13,6 +13,7 @@ class BookingStatus(models.TextChoices):
     CONFIRMED = "CONFIRMED", "Confirmed"
     TECHNICIAN_ASSIGNED = "TECHNICIAN_ASSIGNED", "Technician assigned"
     TECHNICIAN_EN_ROUTE = "TECHNICIAN_EN_ROUTE", "Technician en route"
+    TECHNICIAN_ARRIVED = "TECHNICIAN_ARRIVED", "Technician arrived"
     IN_PROGRESS = "IN_PROGRESS", "In progress"
     COMPLETED = "COMPLETED", "Completed"
     CLOSED = "CLOSED", "Closed"

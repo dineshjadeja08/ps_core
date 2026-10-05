@@ -94,6 +94,7 @@ class BookingSerializer(serializers.ModelSerializer):
     service = serializers.SerializerMethodField()
     time_slot = serializers.SerializerMethodField()
     status_history = BookingStatusHistorySerializer(many=True, read_only=True)
+    assigned_technician = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -127,6 +128,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "status_history",
+            "assigned_technician",
         )
 
     @extend_schema_field(OpenApiTypes.OBJECT)
@@ -146,11 +148,24 @@ class BookingSerializer(serializers.ModelSerializer):
         }
 
 
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_assigned_technician(self, obj):
+        user = obj.assigned_technician
+        if not user:
+            return None
+        profile = getattr(user, "technician_profile", None)
+        return {
+            "id": str(profile.id) if profile else None,
+            "user_id": str(user.id),
+            "name": profile.display_name if profile else user.phone_number,
+            "phone": profile.phone if profile else user.phone_number,
+        }
+
+
 class AdminBookingSerializer(BookingSerializer):
     customer_name = serializers.SerializerMethodField()
     customer_phone = serializers.SerializerMethodField()
     service_category = serializers.CharField(source="service.category.name", read_only=True)
-    assigned_technician = serializers.SerializerMethodField()
     paid_at = serializers.SerializerMethodField()
 
     class Meta(BookingSerializer.Meta):
@@ -158,7 +173,6 @@ class AdminBookingSerializer(BookingSerializer):
             "customer_name",
             "customer_phone",
             "service_category",
-            "assigned_technician",
             "paid_at",
         )
 
@@ -172,19 +186,6 @@ class AdminBookingSerializer(BookingSerializer):
     @extend_schema_field(OpenApiTypes.STR)
     def get_customer_phone(self, obj):
         return obj.contact_phone or obj.customer.phone_number
-
-    @extend_schema_field(OpenApiTypes.OBJECT)
-    def get_assigned_technician(self, obj):
-        user = obj.assigned_technician
-        if not user:
-            return None
-        profile = getattr(user, "technician_profile", None)
-        return {
-            "id": str(profile.id) if profile else None,
-            "user_id": str(user.id),
-            "name": profile.display_name if profile else user.phone_number,
-            "phone": profile.phone if profile else user.phone_number,
-        }
 
     @extend_schema_field(OpenApiTypes.DATETIME)
     def get_paid_at(self, obj):

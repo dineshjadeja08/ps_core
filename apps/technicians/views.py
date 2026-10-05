@@ -17,7 +17,7 @@ from apps.bookings.models import Booking, BookingStatus
 from apps.bookings.serializers import AdminBookingSerializer, BookingActivitySerializer, BookingOperationSerializer, BookingSerializer
 from apps.catalogue.models import Service
 from apps.locations.models import ServiceArea
-from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
+from apps.bookings.services import complete_booking, mark_technician_arrived, mark_technician_en_route, start_booking
 from apps.technicians.models import TechnicianLeave, TechnicianProfile, TechnicianSkill
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
@@ -43,12 +43,23 @@ class TechnicianJobViewSet(
     lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_queryset(self):
-        return (
-            Booking.objects.filter(assigned_technician=self.request.user)
+        queryset = (
+            Booking.objects.filter(
+                assigned_technician=self.request.user,
+                assigned_technician__technician_profile__is_active=True,
+                assigned_technician__technician_profile__employment_status="ACTIVE",
+                assigned_technician__technician_profile__background_verification_status="VERIFIED",
+            ).exclude(assigned_technician__technician_profile__availability_status="SUSPENDED")
             .select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician")
             .prefetch_related("status_history")
             .order_by("service_date", "time_slot__start_time")
         )
+        job_status = self.request.query_params.get("job_status")
+        if job_status == "active":
+            queryset = queryset.filter(booking_status__in=TECHNICIAN_BUSY_STATUSES)
+        elif job_status == "history":
+            queryset = queryset.exclude(booking_status__in=TECHNICIAN_BUSY_STATUSES).order_by("-service_date", "-created_at")
+        return queryset
 
     def _operate(self, request, operation):
         serializer = BookingOperationSerializer(data=request.data)
@@ -57,6 +68,8 @@ class TechnicianJobViewSet(
         booking = self.get_object()
         if operation == "en-route":
             booking = mark_technician_en_route(booking_id=booking.id, changed_by=request.user, notes=notes)
+        elif operation == "arrived":
+            booking = mark_technician_arrived(booking_id=booking.id, changed_by=request.user, notes=notes)
         elif operation == "start":
             booking = start_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
         elif operation == "complete":
@@ -74,6 +87,10 @@ class TechnicianJobViewSet(
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, *args, **kwargs):
         return self._operate(request, "complete")
+
+    @action(detail=True, methods=["post"], url_path="arrived")
+    def arrived(self, request, *args, **kwargs):
+        return self._operate(request, "arrived")
 
 
 class AdminTechnicianQueryMixin:

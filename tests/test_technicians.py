@@ -370,13 +370,136 @@ def test_technician_portal_lists_only_assigned_jobs_and_updates_progress(booking
     assert en_route.status_code == 200
     assert en_route.json()["booking_status"] == BookingStatus.TECHNICIAN_EN_ROUTE
 
+    arrived = client.post(f"/api/v1/technician/jobs/{booking.id}/arrived/", {}, format="json")
+    assert arrived.status_code == 200
+    assert arrived.json()["booking_status"] == BookingStatus.TECHNICIAN_ARRIVED
+
     started = client.post(f"/api/v1/technician/jobs/{booking.id}/start/", {}, format="json")
     assert started.status_code == 200
     assert started.json()["booking_status"] == BookingStatus.IN_PROGRESS
 
 
+@pytest.fixture
+def assigned_job(booking, service_area):
+    technician = create_technician(service_area=service_area)
+    booking.assigned_technician = technician.user
+    booking.booking_status = BookingStatus.TECHNICIAN_ASSIGNED
+    booking.save(update_fields=["assigned_technician", "booking_status", "updated_at"])
+    client = APIClient()
+    client.force_authenticate(user=technician.user)
+    return booking, technician, client
+
+
 @pytest.mark.django_db
-def test_technician_cannot_access_another_technicians_job(booking, service_area):
+def test_job_progress_updates_customer_tracking_and_completion_once(assigned_job, customer_client, django_capture_on_commit_callbacks):
+    from apps.notifications.models import Notification, NotificationEvent
+
+    booking, technician, client = assigned_job
+    booking.balance_collected = booking.balance_due
+    booking.save(update_fields=["balance_collected"])
+    steps = [("en-route", BookingStatus.TECHNICIAN_EN_ROUTE), ("arrived", BookingStatus.TECHNICIAN_ARRIVED),
+             ("start", BookingStatus.IN_PROGRESS), ("complete", BookingStatus.COMPLETED)]
+    for operation, expected in steps:
+        url = f"/api/v1/technician/jobs/{booking.id}/{operation}/"
+        with django_capture_on_commit_callbacks(execute=True):
+            updated = client.post(url, {}, format="json")
+        assert updated.status_code == 200, updated.data
+        tracked = customer_client.get(f"/api/v1/bookings/{booking.id}/")
+        assert tracked.status_code == 200
+        assert tracked.data["booking_status"] == expected
+        assert tracked.data["assigned_technician"]["name"] == technician.display_name
+        assert tracked.data["assigned_technician"]["phone"] == technician.phone
+        assert tracked.data["status_history"][-1]["to_status"] == expected
+        assert booking.status_history.filter(to_status=expected, changed_by=technician.user).count() == 1
+        count = booking.status_history.count()
+        with django_capture_on_commit_callbacks(execute=True):
+            repeated = client.post(url, {}, format="json")
+        assert repeated.status_code == 200
+        assert booking.status_history.count() == count
+    booking.refresh_from_db()
+    assert booking.completed_at is not None
+    assert Notification.objects.filter(booking=booking, event=NotificationEvent.REVIEW_REQUEST).count() == 1
+    assert client.get("/api/v1/technician/jobs/?job_status=active").data["count"] == 0
+    assert client.get("/api/v1/technician/jobs/?job_status=history").data["count"] == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["arrived", "start", "complete"])
+def test_technician_cannot_skip_progress_steps(assigned_job, operation):
+    booking, _, client = assigned_job
+    response = client.post(f"/api/v1/technician/jobs/{booking.id}/{operation}/", {}, format="json")
+    assert response.status_code == 400
+    booking.refresh_from_db()
+    assert booking.booking_status == BookingStatus.TECHNICIAN_ASSIGNED
+    assert booking.status_history.count() == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("status", [BookingStatus.CANCELLED, BookingStatus.CLOSED])
+def test_technician_cannot_change_terminal_jobs(assigned_job, status):
+    booking, _, client = assigned_job
+    booking.booking_status = status
+    booking.save(update_fields=["booking_status"])
+    response = client.post(f"/api/v1/technician/jobs/{booking.id}/en-route/", {}, format="json")
+    assert response.status_code == 400
+    assert booking.status_history.count() == 0
+
+
+@pytest.mark.django_db
+def test_inactive_technician_cannot_read_or_update_job(assigned_job):
+    booking, technician, client = assigned_job
+    technician.is_active = False
+    technician.save(update_fields=["is_active"])
+    assert client.get("/api/v1/technician/jobs/").data["count"] == 0
+    assert client.post(f"/api/v1/technician/jobs/{booking.id}/en-route/", {}, format="json").status_code == 404
+
+
+@pytest.mark.django_db
+def test_progress_rechecks_assignment_after_view_lookup(assigned_job, monkeypatch):
+    from apps.technicians.views import TechnicianJobViewSet
+
+    booking, _, client = assigned_job
+    replacement = create_technician(code="REPLACEMENT", phone="+919876543309")
+    original = TechnicianJobViewSet.get_object
+
+    def reassign_after_lookup(view):
+        found = original(view)
+        Booking.objects.filter(pk=booking.pk).update(assigned_technician=replacement.user)
+        return found
+
+    monkeypatch.setattr(TechnicianJobViewSet, "get_object", reassign_after_lookup)
+    response = client.post(f"/api/v1/technician/jobs/{booking.id}/en-route/", {}, format="json")
+    assert response.status_code == 403
+    booking.refresh_from_db()
+    assert booking.booking_status == BookingStatus.TECHNICIAN_ASSIGNED
+    assert booking.status_history.count() == 0
+
+
+@pytest.mark.django_db
+def test_customer_cannot_update_job_and_other_customer_cannot_track(assigned_job, customer_client):
+    booking, _, _ = assigned_job
+    assert customer_client.post(f"/api/v1/technician/jobs/{booking.id}/arrived/", {}, format="json").status_code == 403
+    other = User.objects.create_user("+919876543308", role=UserRole.CUSTOMER, is_verified=True)
+    client = APIClient()
+    client.force_authenticate(user=other)
+    assert client.get(f"/api/v1/bookings/{booking.id}/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_arrived_job_still_reserves_slot_and_technician(assigned_job):
+    from apps.scheduling.services import count_reserved_bookings
+    from apps.technicians.services import TECHNICIAN_BUSY_STATUSES
+
+    booking, _, _ = assigned_job
+    booking.booking_status = BookingStatus.TECHNICIAN_ARRIVED
+    booking.save(update_fields=["booking_status"])
+    assert count_reserved_bookings(booking.time_slot) == 1
+    assert BookingStatus.TECHNICIAN_ARRIVED in TECHNICIAN_BUSY_STATUSES
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("operation", ["en-route", "arrived", "start", "complete"])
+def test_technician_cannot_access_another_technicians_job(booking, service_area, operation):
     assigned = create_technician(code="TECH-A", phone="+919876543301", service_area=service_area)
     other = create_technician(code="TECH-B", phone="+919876543302", service_area=service_area)
     booking.assigned_technician = assigned.user
@@ -385,7 +508,7 @@ def test_technician_cannot_access_another_technicians_job(booking, service_area)
     client = APIClient()
     client.force_authenticate(user=other.user)
 
-    response = client.post(f"/api/v1/technician/jobs/{booking.id}/start/", {}, format="json")
+    response = client.post(f"/api/v1/technician/jobs/{booking.id}/{operation}/", {}, format="json")
     assert response.status_code == 404
 
 

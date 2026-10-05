@@ -4,7 +4,9 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
+from apps.accounts.models import UserRole
 from apps.bookings.models import Booking, BookingNumberSequence, BookingStatus, BookingStatusHistory, PaymentStatus
 from apps.catalogue.models import AdvancePaymentType, Service
 from apps.locations.models import Address
@@ -23,6 +25,7 @@ ADMIN_CANCELLABLE_STATUSES = {
     BookingStatus.CONFIRMED,
     BookingStatus.TECHNICIAN_ASSIGNED,
     BookingStatus.TECHNICIAN_EN_ROUTE,
+    BookingStatus.TECHNICIAN_ARRIVED,
     BookingStatus.IN_PROGRESS,
 }
 CUSTOMER_CANCELLABLE_STATUSES = {
@@ -34,7 +37,7 @@ CUSTOMER_RESCHEDULABLE_STATUSES = {
     BookingStatus.CONFIRMED,
     BookingStatus.TECHNICIAN_ASSIGNED,
 }
-STARTABLE_STATUSES = {BookingStatus.TECHNICIAN_ASSIGNED, BookingStatus.TECHNICIAN_EN_ROUTE}
+STARTABLE_STATUSES = {BookingStatus.TECHNICIAN_ASSIGNED, BookingStatus.TECHNICIAN_EN_ROUTE, BookingStatus.TECHNICIAN_ARRIVED}
 COMPLETABLE_STATUSES = {BookingStatus.IN_PROGRESS}
 CLOSABLE_STATUSES = {BookingStatus.COMPLETED}
 
@@ -194,6 +197,8 @@ def generate_booking_number(*, for_date=None):
 @transaction.atomic
 def start_booking(*, booking_id, changed_by, notes=""):
     booking = _lock_booking(booking_id)
+    if _validate_technician_progress(booking, changed_by, BookingStatus.IN_PROGRESS, {BookingStatus.TECHNICIAN_ARRIVED}):
+        return booking
     if booking.booking_status not in STARTABLE_STATUSES:
         raise serializers.ValidationError("Booking cannot be started from its current status.")
     if booking.assigned_technician_id is None:
@@ -209,6 +214,8 @@ def start_booking(*, booking_id, changed_by, notes=""):
 @transaction.atomic
 def mark_technician_en_route(*, booking_id, changed_by, notes=""):
     booking = _lock_booking(booking_id)
+    if _validate_technician_progress(booking, changed_by, BookingStatus.TECHNICIAN_EN_ROUTE, {BookingStatus.TECHNICIAN_ASSIGNED}):
+        return booking
     if booking.booking_status != BookingStatus.TECHNICIAN_ASSIGNED:
         raise serializers.ValidationError("Booking must be assigned before the technician can start travelling.")
     booking = _transition_booking(
@@ -226,8 +233,25 @@ def mark_technician_en_route(*, booking_id, changed_by, notes=""):
 
 
 @transaction.atomic
+def mark_technician_arrived(*, booking_id, changed_by, notes=""):
+    booking = _lock_booking(booking_id)
+    if _validate_technician_progress(booking, changed_by, BookingStatus.TECHNICIAN_ARRIVED, {BookingStatus.TECHNICIAN_EN_ROUTE}):
+        return booking
+    if booking.booking_status != BookingStatus.TECHNICIAN_EN_ROUTE:
+        raise serializers.ValidationError("Technician must be on the way before marking arrival.")
+    return _transition_booking(
+        booking=booking,
+        to_status=BookingStatus.TECHNICIAN_ARRIVED,
+        changed_by=changed_by,
+        notes=notes or "Technician arrived at the service location.",
+    )
+
+
+@transaction.atomic
 def complete_booking(*, booking_id, changed_by, notes=""):
     booking = _lock_booking(booking_id)
+    if _validate_technician_progress(booking, changed_by, BookingStatus.COMPLETED, {BookingStatus.IN_PROGRESS}):
+        return booking
     if booking.booking_status not in COMPLETABLE_STATUSES:
         raise serializers.ValidationError("Booking must be in progress before completion.")
     if booking.assigned_technician_id is None:
@@ -339,7 +363,7 @@ def reschedule_booking(*, booking_id, slot_id, changed_by, notes=""):
 @transaction.atomic
 def record_balance_collection(*, booking_id, amount, method, changed_by, notes=""):
     booking = _lock_booking(booking_id)
-    if booking.booking_status not in {BookingStatus.IN_PROGRESS, BookingStatus.TECHNICIAN_ASSIGNED}:
+    if booking.booking_status not in {BookingStatus.IN_PROGRESS, BookingStatus.TECHNICIAN_ASSIGNED, BookingStatus.TECHNICIAN_ARRIVED}:
         raise serializers.ValidationError("Balance can only be recorded for an active assigned booking.")
     remaining_balance = booking.balance_due - booking.balance_collected
     if amount <= Decimal("0.00"):
@@ -378,6 +402,25 @@ def _lock_booking(booking_id):
         return Booking.objects.select_for_update().select_related("address", "time_slot").get(id=booking_id)
     except Booking.DoesNotExist as exc:
         raise serializers.ValidationError("Booking was not found.") from exc
+
+
+def _validate_technician_progress(booking, changed_by, to_status, allowed_statuses):
+    """Recheck assignment under the booking lock; duplicate updates are harmless."""
+    if changed_by.role != UserRole.TECHNICIAN:
+        return False
+    from apps.technicians.models import TechnicianProfile, TechnicianVerificationStatus
+
+    active = TechnicianProfile.objects.select_for_update().filter(
+        user=changed_by, is_active=True, employment_status="ACTIVE",
+        background_verification_status=TechnicianVerificationStatus.VERIFIED,
+    ).exclude(availability_status="SUSPENDED").exists()
+    if not changed_by.is_active or not active or booking.assigned_technician_id != changed_by.id:
+        raise PermissionDenied("Only the active assigned technician can update this job.")
+    if booking.booking_status == to_status:
+        return True
+    if booking.booking_status not in allowed_statuses:
+        raise serializers.ValidationError("This update is not allowed yet. Refresh the job and follow the next status step.")
+    return False
 
 
 def _transition_booking(*, booking, to_status, changed_by, notes):

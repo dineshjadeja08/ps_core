@@ -465,6 +465,7 @@ class AdminDashboardSummaryView(APIView):
             BookingStatus.CONFIRMED,
             BookingStatus.TECHNICIAN_ASSIGNED,
             BookingStatus.TECHNICIAN_EN_ROUTE,
+            BookingStatus.TECHNICIAN_ARRIVED,
             BookingStatus.IN_PROGRESS,
         }
         upcoming_excluded_statuses = {

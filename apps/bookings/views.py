@@ -172,7 +172,7 @@ class BookingViewSet(
 
     def get_queryset(self):
         return (
-            Booking.objects.select_related("service", "time_slot")
+            Booking.objects.select_related("service", "time_slot", "assigned_technician", "assigned_technician__technician_profile")
             .prefetch_related("status_history")
             .filter(customer=self.request.user)
             .order_by("-created_at")
