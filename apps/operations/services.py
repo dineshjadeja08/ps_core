@@ -331,7 +331,8 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
 
 @transaction.atomic
 def convert_lead_to_work_order(*, lead, performed_by, booking=None, notes=""):
-    lead = Lead.objects.select_for_update().select_related("pending_booking", "required_service").get(pk=lead.pk)
+    # PostgreSQL cannot lock the nullable related rows included by these outer joins.
+    lead = Lead.objects.select_for_update(of=("self",)).select_related("pending_booking", "required_service").get(pk=lead.pk)
     if lead.status == LeadStatus.CONVERTED and lead.converted_booking_id:
         return lead
 

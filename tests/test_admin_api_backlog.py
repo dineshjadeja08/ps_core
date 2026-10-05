@@ -117,6 +117,48 @@ def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client)
 
 
 @pytest.mark.django_db
+def test_work_order_conversion_locks_only_lead_in_postgresql_sql(admin_client, booking, monkeypatch):
+    from django.db.backends.postgresql.base import DatabaseWrapper
+    from django.db.models.query import QuerySet
+
+    lead = Lead.objects.create(
+        customer_name="Lock regression", primary_mobile=booking.customer.phone_number,
+        required_service=booking.service, pending_booking=booking,
+    )
+    locked_queries = []
+    original_get = QuerySet.get
+
+    def capture_locked_lead(queryset, *args, **kwargs):
+        if queryset.model is Lead and queryset.query.select_for_update:
+            locked_queries.append(queryset.filter(*args, **kwargs).query)
+        return original_get(queryset, *args, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "get", capture_locked_lead)
+    response = admin_client.post(f"/api/v1/admin/leads/{lead.id}/convert-to-booking/", {}, format="json")
+    assert response.status_code == 200, response.data
+    assert len(locked_queries) == 1
+    query = locked_queries[0]
+    assert query.select_for_update_of == ("self",)
+
+    # Compile with the real PostgreSQL compiler without connecting to any database.
+    postgres = DatabaseWrapper({"ENGINE": "django.db.backends.postgresql", "NAME": "unused"})
+    monkeypatch.setattr(postgres, "get_autocommit", lambda: False)
+    sql, _ = query.get_compiler(connection=postgres).as_sql()
+    assert "LEFT OUTER JOIN" in sql
+    assert sql.endswith('FOR UPDATE OF "operations_lead"')
+
+
+@pytest.mark.django_db
+def test_manual_work_order_missing_optional_service_remains_validation_error(admin_client):
+    lead = Lead.objects.create(customer_name="Unscheduled lead", primary_mobile="+919620000189")
+    response = admin_client.post(f"/api/v1/admin/leads/{lead.id}/convert-to-booking/", {}, format="json")
+    assert response.status_code == 400
+    assert "Select a service" in str(response.data)
+    lead.refresh_from_db()
+    assert lead.converted_booking_id is None
+
+
+@pytest.mark.django_db
 def test_admin_can_send_full_payment_link_using_service_price(admin_client, customer, settings):
     settings.MSG91_SMS_ENABLED_EVENTS = [NotificationEvent.PAYMENT_PENDING]
     service = service_factory()
