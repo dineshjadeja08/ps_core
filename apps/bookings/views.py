@@ -110,7 +110,7 @@ class AdminWorkOrderViewSet(
             )
             .prefetch_related("status_history", Prefetch("payments", queryset=successful, to_attr="successful_payments"))
             .distinct()
-            .order_by("service_date", "time_slot__start_time", "created_at")
+            .order_by("-created_at", "-id")
         )
         status_filter = self.request.query_params.get("status")
         if status_filter:

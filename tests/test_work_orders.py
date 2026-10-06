@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
 import pytest
@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.accounts.models import UserRole
-from apps.bookings.models import BookingStatus, PaymentStatus
+from apps.bookings.models import Booking, BookingStatus, PaymentStatus
 from apps.bookings.services import generate_booking_number
 from apps.operations.models import LeadFunnelStatus, LeadStatus
 from apps.operations.services import link_booking_to_lead, mark_booking_payment_paid
@@ -85,3 +85,41 @@ def test_work_orders_exclude_unpaid_bookings():
 
     assert response.status_code == 200
     assert response.json()["count"] == 0
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("manual", [False, True])
+def test_work_orders_list_newest_first_before_pagination(manual):
+    admin = user_factory("+919641000005", role=UserRole.ADMIN, is_staff=True)
+    customer = user_factory("+919641000006")
+    service = service_factory()
+    area = service_area_factory()
+    address = address_factory(customer)
+    slot = slot_factory(area)
+    now = timezone.now()
+    orders = []
+    for index in range(3):
+        order = booking_factory(
+            customer, service, address, slot,
+            is_manual_work_order=manual,
+            service_date=slot.date + timedelta(days=index),
+        )
+        Booking.objects.filter(pk=order.pk).update(created_at=now + timedelta(minutes=index))
+        if not manual:
+            Payment.objects.create(
+                booking=order,
+                provider=PaymentProvider.OFFLINE,
+                amount=Decimal("299.00"),
+                payment_type=PaymentType.BOOKING_ADVANCE,
+                status=PaymentRecordStatus.SUCCESS,
+                paid_at=now,
+            )
+        orders.append(order)
+
+    client = APIClient()
+    client.force_authenticate(admin)
+    for page, expected in enumerate(reversed(orders), start=1):
+        response = client.get("/api/v1/admin/work-orders/", {"page_size": 1, "page": page, "status": BookingStatus.CONFIRMED})
+        assert response.status_code == 200
+        assert response.json()["count"] == 3
+        assert [item["id"] for item in response.json()["results"]] == [str(expected.id)]
