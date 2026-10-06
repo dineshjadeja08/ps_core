@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 
 from django.utils.text import slugify
 
+from apps.catalogue.models import Service
 from apps.locations.models import ServiceArea, ServiceAreaLocality
 from apps.locations.service_area_data import CHENNAI_LOCALITIES, LAUNCH_SERVICE_AREAS
 
@@ -18,21 +19,27 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         launch_postal_codes = {postal_code for _, _, _, postal_code in LAUNCH_SERVICE_AREAS}
+        active_services = list(Service.objects.filter(is_active=True).order_by("id"))
 
         if not options["keep_existing_active"]:
             ServiceArea.objects.exclude(postal_code__in=launch_postal_codes).update(is_active=False)
 
         for name, city, state, postal_code in LAUNCH_SERVICE_AREAS:
-            ServiceArea.objects.update_or_create(
+            service_area, _ = ServiceArea.objects.update_or_create(
                 country="India",
                 postal_code=postal_code,
                 defaults={
                     "name": name,
                     "city": city,
                     "state": state,
+                    "services_configured": False,
                     "is_active": True,
                 },
             )
+            # Keep the explicit selections useful in the admin UI while
+            # services_configured=False preserves automatic coverage for any
+            # services added after this command runs.
+            service_area.services.set(active_services)
 
         for display_order, (name, postal_code) in enumerate(CHENNAI_LOCALITIES):
             service_area = ServiceArea.objects.get(country="India", postal_code=postal_code)

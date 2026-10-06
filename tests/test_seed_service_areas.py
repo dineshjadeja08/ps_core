@@ -1,6 +1,7 @@
 import pytest
 from django.core.management import call_command
 
+from apps.catalogue.models import Service, ServiceCategory
 from apps.locations.models import ServiceArea, ServiceAreaLocality
 from apps.locations.service_area_data import CHENNAI_LOCALITIES, CHENNAI_SERVICE_AREAS, COIMBATORE_SERVICE_AREAS
 
@@ -26,3 +27,33 @@ def test_seed_service_areas_adds_chennai_coverage_and_preserves_existing_areas()
     }
     existing.refresh_from_db()
     assert existing.is_active is True
+
+
+@pytest.mark.django_db
+def test_seed_service_areas_enables_every_active_service_for_each_launch_pincode():
+    category = ServiceCategory.objects.create(name="Home services", slug="home-services")
+    active_service = Service.objects.create(
+        category=category,
+        name="Active service",
+        slug="active-service",
+        base_price="500.00",
+        advance_amount="100.00",
+        estimated_duration_minutes=60,
+    )
+    inactive_service = Service.objects.create(
+        category=category,
+        name="Inactive service",
+        slug="inactive-service",
+        base_price="500.00",
+        advance_amount="100.00",
+        estimated_duration_minutes=60,
+        is_active=False,
+    )
+
+    call_command("seed_service_areas", keep_existing_active=True, verbosity=0)
+
+    chennai_areas = ServiceArea.objects.filter(city="Chennai", is_active=True)
+    assert chennai_areas.count() == len(CHENNAI_SERVICE_AREAS)
+    assert not chennai_areas.exclude(services=active_service).exists()
+    assert not chennai_areas.filter(services=inactive_service).exists()
+    assert not chennai_areas.filter(services_configured=True).exists()
