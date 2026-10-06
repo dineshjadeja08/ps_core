@@ -29,6 +29,9 @@ STAFF_ACCESS_PROFILES = {
             StaffAccessRule("/api/v1/admin/time-slots/", ALL_METHODS),
             StaffAccessRule("/api/v1/admin/schedule-closures/", ALL_METHODS),
             StaffAccessRule("/api/v1/admin/service-areas/", ALL_METHODS),
+            # Service-area management needs the catalogue list to populate the
+            # available-services selector. Keep this access read-only.
+            StaffAccessRule("/api/v1/admin/services/", SAFE_METHODS),
         ),
     },
     "Customer Support": {

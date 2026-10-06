@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 import pytest
+from django.contrib.auth.models import Group
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
@@ -62,6 +63,47 @@ def test_admin_can_create_and_update_services_available_by_pincode(admin_client,
 
     assert update.status_code == 200
     assert update.json()["services"] == [{"id": str(services[1].id), "name": "Gas Refill", "slug": "gas-refill"}]
+
+
+@pytest.mark.django_db
+def test_operations_admin_can_load_service_options_and_manage_service_areas(services):
+    user = User.objects.create_user(
+        "+919876543298",
+        role=UserRole.ADMIN,
+        is_verified=True,
+        is_staff=True,
+    )
+    user.groups.add(Group.objects.create(name="Operations Admin"))
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    options = client.get("/api/v1/admin/services/?page_size=100")
+    create = client.post(
+        "/api/v1/admin/service-areas/",
+        {
+            "name": "North Chennai",
+            "city": "Chennai",
+            "state": "Tamil Nadu",
+            "country": "India",
+            "postal_code": "600081",
+            "service_ids": [str(services[0].id)],
+            "is_active": True,
+        },
+        format="json",
+    )
+
+    assert options.status_code == 200
+    assert {item["id"] for item in options.json()["results"]} == {str(service.id) for service in services}
+    assert create.status_code == 201
+
+    update = client.patch(
+        f"/api/v1/admin/service-areas/{create.json()['id']}/",
+        {"name": "North Chennai Updated"},
+        format="json",
+    )
+
+    assert update.status_code == 200
+    assert update.json()["name"] == "North Chennai Updated"
 
 
 @pytest.mark.django_db
