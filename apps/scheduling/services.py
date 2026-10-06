@@ -14,8 +14,8 @@ DEFAULT_DAILY_SLOT_WINDOWS = (
     (12, 14),
     (14, 16),
     (16, 18),
-    (18, 20),
 )
+RETIRED_DAILY_SLOT_WINDOWS = ((18, 20),)
 DEFAULT_DAILY_SLOT_CAPACITY = 20
 BOOKING_CAPACITY_STATUSES = {
     "PENDING_PAYMENT",
@@ -54,6 +54,14 @@ def get_available_capacity(slot):
 def ensure_daily_slots(service_area, service_date):
     if service_date < timezone.localdate() or is_service_area_closed(service_area, service_date):
         return
+
+    for start_hour, end_hour in RETIRED_DAILY_SLOT_WINDOWS:
+        TimeSlot.objects.filter(
+            service_area=service_area,
+            date=service_date,
+            start_time=time(start_hour, 0),
+            end_time=time(end_hour, 0),
+        ).update(is_active=False)
 
     for start_hour, end_hour in DEFAULT_DAILY_SLOT_WINDOWS:
         TimeSlot.objects.get_or_create(
