@@ -6,6 +6,7 @@ import time
 from datetime import timedelta
 from typing import Protocol
 from uuid import uuid4
+from urllib.parse import quote
 
 import requests
 from django.conf import settings
@@ -62,8 +63,9 @@ class LocationProvider(Protocol):
 class GoogleMapsLocationProvider:
     BASE_URL = "https://maps.googleapis.com/maps/api"
     REVERSE_GEOCODE_PATH = "/geocode/json"
-    AUTOCOMPLETE_PATH = "/place/autocomplete/json"
-    GEOCODE_PATH = "/geocode/json"
+    PLACES_BASE_URL = "https://places.googleapis.com/v1"
+    AUTOCOMPLETE_PATH = "/places:autocomplete"
+    PLACE_FIELDS = "id,formattedAddress,addressComponents,location"
 
     def __init__(self):
         self.api_key = str(settings.GOOGLE_MAPS_API_KEY or "").strip()
@@ -96,36 +98,70 @@ class GoogleMapsLocationProvider:
         city: str = "",
         request_id: str = "",
     ) -> list[dict]:
-        params = {"input": query, "language": "en", "components": "country:in", "region": "in"}
+        params = {"input": query, "languageCode": "en", "includedRegionCodes": ["in"], "regionCode": "in"}
         if latitude is not None and longitude is not None:
-            params.update({"location": f"{latitude},{longitude}", "radius": 50000})
+            params["locationBias"] = {"circle": {"center": {"latitude": latitude, "longitude": longitude}, "radius": 50000.0}}
         elif city and city.casefold() not in query.casefold():
             params["input"] = f"{query}, {city}"
 
-        payload = self._get(self.AUTOCOMPLETE_PATH, params, request_id=request_id)
-        if "predictions" not in payload:
-            raise self._malformed_error(request_id)
-        predictions = payload.get("predictions") or []
+        payload = self._request(self.AUTOCOMPLETE_PATH, params, request_id=request_id, places=True, method="POST")
+        # Protobuf JSON may omit the empty suggestions array when there are no matches.
+        predictions = payload.get("suggestions", [])
         if not isinstance(predictions, list):
             raise self._malformed_error(request_id)
         try:
-            return [_normalise_suggestion(item) for item in predictions[:8] if isinstance(item, dict)]
+            suggestions = []
+            for item in predictions[:8]:
+                prediction = item.get("placePrediction") if isinstance(item, dict) else None
+                if not isinstance(prediction, dict) or not prediction.get("placeId"):
+                    raise self._malformed_error(request_id)
+                structured = prediction.get("structuredFormat") or {}
+                suggestions.append(_normalise_suggestion({
+                    "place_id": prediction["placeId"],
+                    "description": (prediction.get("text") or {}).get("text", ""),
+                    "structured_formatting": {
+                        "main_text": (structured.get("mainText") or {}).get("text", ""),
+                        "secondary_text": (structured.get("secondaryText") or {}).get("text", ""),
+                    },
+                }))
+            return suggestions
         except (AttributeError, TypeError, ValueError) as exc:
             raise self._malformed_error(request_id) from exc
 
     def get_geocode(self, place_id: str, *, request_id: str = "") -> dict:
-        payload = self._get(self.GEOCODE_PATH, {"place_id": place_id, "language": "en", "region": "in"}, request_id=request_id)
-        results = payload.get("results")
-        if not isinstance(results, list):
-            raise self._malformed_error(request_id)
-        if not results:
-            raise LocationProviderError("Address was not found.", reason="not_found", request_id=request_id)
+        path = f"/places/{quote(place_id, safe='')}"
+        payload = self._request(path, {"languageCode": "en", "regionCode": "in"}, request_id=request_id, places=True)
         try:
-            return _normalise_results(results)
-        except (AttributeError, TypeError, ValueError) as exc:
+            location = payload["location"]
+            latitude, longitude = float(location["latitude"]), float(location["longitude"])
+            if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+                raise ValueError("Invalid place coordinates")
+            components = payload.get("addressComponents", [])
+            if not isinstance(components, list):
+                raise ValueError("Invalid address components")
+            result = _normalise_place({
+                "formatted_address": payload.get("formattedAddress", ""),
+                "geometry": {"location": {"lat": latitude, "lng": longitude}},
+                "address_components": [{
+                    "long_name": item.get("longText", ""),
+                    "short_name": item.get("shortText", ""),
+                    "types": item.get("types", []),
+                } for item in components],
+            })
+        except (KeyError, AttributeError, TypeError, ValueError) as exc:
             raise self._malformed_error(request_id) from exc
+        if not all(result.get(field) for field in ("city", "state", "pincode")):
+            fallback = self.get_reverse_geocode(round(latitude, 6), round(longitude, 6), request_id=request_id)
+            for field in ("formatted_address", "house_number", "street", "locality", "city", "state", "pincode", "country"):
+                if not result.get(field):
+                    result[field] = fallback.get(field, "")
+            result.update(_serviceability(result["city"], result["pincode"]))
+        return result
 
     def _get(self, path: str, params: dict, *, request_id: str = "") -> dict:
+        return self._request(path, params, request_id=request_id)
+
+    def _request(self, path: str, params: dict, *, request_id: str = "", places=False, method="GET") -> dict:
         provider_request_id = _safe_request_id(request_id)
         if not self.api_key:
             error = LocationProviderError(
@@ -140,12 +176,16 @@ class GoogleMapsLocationProvider:
         for attempt in range(2):
             started = time.monotonic()
             try:
-                response = requests.get(
-                    f"{self.BASE_URL}{path}",
-                    params={**params, "key": self.api_key},
-                    headers={"Accept": "application/json", "X-Request-Id": provider_request_id},
-                    timeout=self.timeout,
-                )
+                headers = {"Accept": "application/json", "X-Request-Id": provider_request_id}
+                if places:
+                    headers["X-Goog-Api-Key"] = self.api_key
+                    if method == "GET":
+                        headers["X-Goog-FieldMask"] = self.PLACE_FIELDS
+                url = f"{self.PLACES_BASE_URL if places else self.BASE_URL}{path}"
+                if method == "POST":
+                    response = requests.post(url, json=params, headers=headers, timeout=self.timeout)
+                else:
+                    response = requests.get(url, params=params if places else {**params, "key": self.api_key}, headers=headers, timeout=self.timeout)
             except requests.Timeout as exc:
                 error = LocationProviderError(
                     status_code="timeout",
@@ -192,6 +232,7 @@ class GoogleMapsLocationProvider:
                 raise error
             if status_code >= 400:
                 error = LocationProviderError(
+                    reason="not_found" if places and status_code == 404 else "unavailable",
                     status_code=status_code,
                     response_snippet=snippet,
                     latency_ms=latency_ms,
@@ -211,6 +252,10 @@ class GoogleMapsLocationProvider:
                 self._log_failure(path, error, attempt=attempt + 1)
                 raise error
             provider_status = str(payload.get("status", "OK"))
+            if places and "error" in payload:
+                error = LocationProviderError(status_code=status_code, response_snippet=snippet, latency_ms=latency_ms, request_id=provider_request_id)
+                self._log_failure(path, error, attempt=attempt + 1)
+                raise error
             if provider_status not in {"OK", "ZERO_RESULTS"}:
                 reason = "misconfigured" if provider_status in {"REQUEST_DENIED", "INVALID_REQUEST"} else "unavailable"
                 error = LocationProviderError(
@@ -461,10 +506,17 @@ def _safe_body_snippet(body: str) -> str:
                 for key in ("status", "error_message", "message", "info_messages")
                 if key in payload
             }
+            if isinstance(payload.get("error"), dict):
+                safe_payload["error"] = {
+                    key: payload["error"][key]
+                    for key in ("code", "status", "message")
+                    if key in payload["error"]
+                }
             snippet = json.dumps(safe_payload, ensure_ascii=True)[:500]
         else:
             snippet = "<non-object response>"
     snippet = re.sub(r"(?i)(api[_-]?key)([=\"':%20 ]+)[^&\"', }]+", r"\1\2<redacted>", snippet)
+    snippet = re.sub(r"AIza[A-Za-z0-9_-]+", "<redacted-key>", snippet)
     snippet = re.sub(r'(?i)("(?:input|address|latlng)"\s*:\s*")[^"]*', r'\1<redacted>', snippet)
     snippet = re.sub(r"(?<!\d)[1-9]\d{5}(?!\d)", "<redacted-pincode>", snippet)
     snippet = re.sub(r"(?<!\d)-?\d{1,2}\.\d{3,},\s*-?\d{1,3}\.\d{3,}(?!\d)", "<redacted-coordinates>", snippet)

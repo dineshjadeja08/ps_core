@@ -189,20 +189,25 @@ def test_google_reverse_geocode_merges_components_across_results(monkeypatch):
 @override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_autocomplete_uses_location_bias_and_parses_missing_components(monkeypatch):
     ServiceArea.objects.create(name="Anna Nagar", city="Chennai", state="Tamil Nadu", postal_code="600040")
-    get = Mock(return_value=google_response(200, {
-        "predictions": [{
-            "place_id": "google-place:123",
-            "description": "Anna Nagar, Chennai, Tamil Nadu 600040, India",
-            "structured_formatting": {"main_text": "Anna Nagar", "secondary_text": "Chennai, Tamil Nadu"},
-            "geometry": {"location": {"lat": 13.085, "lng": 80.21}},
-        }],
-        "status": "OK",
+    post = Mock(return_value=google_response(200, {
+        "suggestions": [{"placePrediction": {
+            "placeId": "google-place:123",
+            "text": {"text": "Anna Nagar, Chennai, Tamil Nadu 600040, India"},
+            "structuredFormat": {"mainText": {"text": "Anna Nagar"}, "secondaryText": {"text": "Chennai, Tamil Nadu"}},
+        }}],
     }))
-    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    monkeypatch.setattr("apps.locations.providers.requests.post", post)
 
     result = GoogleMapsLocationProvider().get_autocomplete("Anna", latitude=13.08, longitude=80.27)
 
-    assert get.call_args.kwargs["params"]["location"] == "13.08,80.27"
+    assert post.call_args.args[0] == "https://places.googleapis.com/v1/places:autocomplete"
+    assert post.call_args.kwargs["json"]["locationBias"]["circle"]["center"] == {"latitude": 13.08, "longitude": 80.27}
+    assert post.call_args.kwargs["json"]["includedRegionCodes"] == ["in"]
+    assert post.call_args.kwargs["headers"]["X-Goog-Api-Key"] == "test-api-key"
+    assert "key" not in post.call_args.kwargs["json"]
+    assert result[0]["id"] == "google-place:123"
+    assert result[0]["main_text"] == "Anna Nagar"
+    assert result[0]["secondary_text"] == "Chennai, Tamil Nadu"
     assert result[0]["city"] == "Chennai"
     assert result[0]["pincode"] == "600040"
     assert result[0]["serviceable"] is True
@@ -213,7 +218,7 @@ def test_autocomplete_uses_location_bias_and_parses_missing_components(monkeypat
 @pytest.mark.parametrize("status_code", [401, 403])
 def test_google_auth_failures_are_misconfigured_without_retry(monkeypatch, status_code):
     get = Mock(return_value=google_response(status_code, text='{"message":"invalid api_key=test-api-key"}'))
-    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    monkeypatch.setattr("apps.locations.providers.requests.post", get)
 
     with pytest.raises(LocationProviderError) as caught:
         GoogleMapsLocationProvider().get_autocomplete("avadi")
@@ -227,7 +232,7 @@ def test_google_auth_failures_are_misconfigured_without_retry(monkeypatch, statu
 @override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_google_429_is_unavailable_without_retry(monkeypatch):
     get = Mock(return_value=google_response(429, text='{"message":"rate limit"}'))
-    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    monkeypatch.setattr("apps.locations.providers.requests.post", get)
 
     with pytest.raises(LocationProviderError) as caught:
         GoogleMapsLocationProvider().get_autocomplete("avadi")
@@ -239,8 +244,8 @@ def test_google_429_is_unavailable_without_retry(monkeypatch):
 @pytest.mark.django_db
 @override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_google_5xx_retries_once(monkeypatch):
-    get = Mock(side_effect=[google_response(503, text='{"message":"down"}'), google_response(200, {"predictions": [], "status": "ZERO_RESULTS"})])
-    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    get = Mock(side_effect=[google_response(503, text='{"message":"down"}'), google_response(200, {})])
+    monkeypatch.setattr("apps.locations.providers.requests.post", get)
 
     assert GoogleMapsLocationProvider().get_autocomplete("avadi") == []
     assert get.call_count == 2
@@ -250,7 +255,7 @@ def test_google_5xx_retries_once(monkeypatch):
 @override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_google_timeout_retries_once(monkeypatch):
     get = Mock(side_effect=requests.Timeout("secret URL must not be logged"))
-    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    monkeypatch.setattr("apps.locations.providers.requests.post", get)
 
     with pytest.raises(LocationProviderError) as caught:
         GoogleMapsLocationProvider().get_autocomplete("avadi")
@@ -262,8 +267,8 @@ def test_google_timeout_retries_once(monkeypatch):
 @pytest.mark.django_db
 @override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
 def test_malformed_google_body_is_unavailable(monkeypatch):
-    get = Mock(return_value=google_response(200, {"status": "OK"}, text='{"status":"ok"}'))
-    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    get = Mock(return_value=google_response(200, {"suggestions": "invalid"}))
+    monkeypatch.setattr("apps.locations.providers.requests.post", get)
 
     with pytest.raises(LocationProviderError) as caught:
         GoogleMapsLocationProvider().get_autocomplete("avadi")
@@ -302,3 +307,101 @@ class CachedProvider:
     def get_reverse_geocode(self, latitude, longitude, **kwargs):
         self.__class__.reverse_calls += 1
         return normalized_address(latitude, longitude)
+
+
+def places_address():
+    return {
+        "id": "place-123",
+        "formattedAddress": "Anna Nagar, Chennai, Tamil Nadu 600040, India",
+        "location": {"latitude": 13.0851234, "longitude": 80.2101234},
+        "addressComponents": [
+            {"longText": "Anna Nagar", "types": ["sublocality_level_1"]},
+            {"longText": "Chennai", "types": ["locality"]},
+            {"longText": "Tamil Nadu", "types": ["administrative_area_level_1"]},
+            {"longText": "600040", "types": ["postal_code"]},
+        ],
+    }
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_places_details_preserve_address_contract_without_legacy_places_call(monkeypatch):
+    ServiceArea.objects.create(name="Anna Nagar", city="Chennai", state="Tamil Nadu", postal_code="600040")
+    get = Mock(return_value=google_response(200, places_address()))
+    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+
+    result = GoogleMapsLocationProvider().get_geocode("place-123", request_id="details-123")
+
+    assert get.call_count == 1
+    assert get.call_args.args[0] == "https://places.googleapis.com/v1/places/place-123"
+    assert get.call_args.kwargs["params"] == {"languageCode": "en", "regionCode": "in"}
+    assert get.call_args.kwargs["headers"]["X-Goog-FieldMask"] == "id,formattedAddress,addressComponents,location"
+    assert get.call_args.kwargs["headers"]["X-Goog-Api-Key"] == "test-api-key"
+    assert result["locality"] == "Anna Nagar"
+    assert result["pincode"] == "600040"
+    assert result["latitude"] == 13.0851234
+    assert result["serviceable"] is True
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_places_details_fill_missing_fields_from_reverse_geocoding(monkeypatch):
+    payload = places_address()
+    payload["formattedAddress"] = "Anna Nagar, Chennai, India"
+    payload["addressComponents"] = payload["addressComponents"][:2]
+    get = Mock(return_value=google_response(200, payload))
+    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    reverse = Mock(return_value=normalized_address())
+    monkeypatch.setattr(GoogleMapsLocationProvider, "get_reverse_geocode", reverse)
+
+    result = GoogleMapsLocationProvider().get_geocode("place-123", request_id="details-123")
+
+    reverse.assert_called_once_with(13.085123, 80.210123, request_id="details-123")
+    assert result["pincode"] == "600002"
+    assert result["state"] == "Tamil Nadu"
+    assert result["locality"] == "Anna Nagar"
+    assert result["formatted_address"] == payload["formattedAddress"]
+    assert result["latitude"] == payload["location"]["latitude"]
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+@pytest.mark.parametrize("payload", [{}, {"location": {"latitude": 999, "longitude": 80}}, {"location": {"latitude": 13, "longitude": 80}, "addressComponents": "invalid"}])
+def test_places_details_reject_malformed_responses(monkeypatch, payload):
+    monkeypatch.setattr("apps.locations.providers.requests.get", Mock(return_value=google_response(200, payload)))
+    with pytest.raises(LocationProviderError):
+        GoogleMapsLocationProvider().get_geocode("place-123")
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_places_details_missing_place_is_not_found_without_retry(monkeypatch):
+    get = Mock(return_value=google_response(404, {"error": {"status": "NOT_FOUND"}}))
+    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+    with pytest.raises(LocationProviderError) as caught:
+        GoogleMapsLocationProvider().get_geocode("missing")
+    assert caught.value.reason == "not_found"
+    assert get.call_count == 1
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_places_autocomplete_city_bias_and_empty_results(monkeypatch):
+    post = Mock(return_value=google_response(200, {}))
+    monkeypatch.setattr("apps.locations.providers.requests.post", post)
+    assert GoogleMapsLocationProvider().get_autocomplete("Anna", city="Chennai") == []
+    assert post.call_args.kwargs["json"]["input"] == "Anna, Chennai"
+    assert "locationBias" not in post.call_args.kwargs["json"]
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="test-api-key")
+def test_places_new_error_message_is_logged_without_key_or_details(monkeypatch):
+    response = google_response(403, text='{"error":{"code":403,"status":"PERMISSION_DENIED","message":"Invalid key AIzaExampleSecret","details":[{"private":"do not log"}]}}')
+    monkeypatch.setattr("apps.locations.providers.requests.post", Mock(return_value=response))
+    with pytest.raises(LocationProviderError) as caught:
+        GoogleMapsLocationProvider().get_autocomplete("Anna Nagar")
+    assert caught.value.reason == "misconfigured"
+    assert "PERMISSION_DENIED" in caught.value.response_snippet
+    assert "AIzaExampleSecret" not in caught.value.response_snippet
+    assert "do not log" not in caught.value.response_snippet

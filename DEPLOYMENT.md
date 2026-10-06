@@ -92,7 +92,7 @@ Uploaded media currently uses Django filesystem storage at `MEDIA_ROOT=/app/medi
 7. Revoke every Firebase Admin key that was pasted during development.
 8. Mount the Firebase service-account JSON outside the repository and set `FIREBASE_CREDENTIALS_PATH`.
 9. Enable Firebase Phone Authentication and Cloud Messaging; add the web app's authorized domains and Web Push certificate.
-10. Enable Google Places API and Geocoding API, restrict the server key, and set `GOOGLE_MAPS_API_KEY`.
+10. Enable **Places API (New)** (`places.googleapis.com`) and **Geocoding API** (`geocoding-backend.googleapis.com`) in the project that owns the Maps key. Allow both in the server key's API restrictions and set `GOOGLE_MAPS_API_KEY` (prefer a Secret Manager reference). Do not use website/referrer restrictions on this server key. Address search uses the new Places autocomplete and details endpoints; current-location detection continues to use Geocoding API. Existing frontend environment names and API response fields are unchanged.
 11. Add Razorpay test keys and webhook secret. Configure Razorpay to post payment and refund events to `/api/v1/payments/webhooks/razorpay/`.
 12. Deploy.
 13. Confirm `/api/v1/health/` returns `200`.
