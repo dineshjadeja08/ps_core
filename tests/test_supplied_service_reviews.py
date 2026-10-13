@@ -1,11 +1,14 @@
 from io import StringIO
+from uuid import NAMESPACE_URL, uuid5
 
 import pytest
 from django.core.management import call_command
 
 from apps.catalogue.models import Service, ServiceCategory
+from apps.reviews.legacy_supplied_reviews import AC_REVIEWS
 from apps.reviews.models import Review
-from apps.reviews.supplied_reviews import AC_REVIEWS, WASHING_REVIEWS
+from apps.reviews.supplied_reviews import SERVICE_REVIEWS
+from tests.factories import address_factory, booking_factory, service_area_factory, slot_factory, user_factory
 
 
 def create_service(category, name, slug):
@@ -13,40 +16,65 @@ def create_service(category, name, slug):
 
 
 @pytest.mark.django_db
-def test_import_supplied_reviews_targets_only_ac_and_washing_services():
+def test_workbook_reviews_go_to_their_named_services():
     category = ServiceCategory.objects.create(name="Appliances", slug="appliances")
-    ac = create_service(category, "AC Repair & Services", "ac-services")
-    washing = create_service(category, "Washing Machine Repair", "washing-machine-repair")
+    services = {
+        name: create_service(category, name, f"review-service-{index}")
+        for index, name in enumerate(SERVICE_REVIEWS, start=1)
+    }
     tv = create_service(category, "TV Repair", "tv-repair")
-    installation = create_service(category, "AC Installation", "ac-installation")
-    removal = create_service(category, "AC Uninstallation", "ac-uninstallation")
-    call_command("import_supplied_service_reviews", stdout=StringIO())
-    assert Review.objects.filter(service=ac).count() == 5
-    assert set(Review.objects.filter(service=ac).values_list("reviewer_name", "comment", "rating")) == set(AC_REVIEWS[:5])
-    assert set(Review.objects.filter(service=washing).values_list("reviewer_name", "comment", "rating")) == set(WASHING_REVIEWS)
+    call_command("import_supplied_service_reviews", stdout=StringIO(), stderr=StringIO())
+    assert Review.objects.count() == 110
+    for name, service in services.items():
+        actual = set(Review.objects.filter(service=service).values_list("reviewer_name", "comment", "rating"))
+        assert actual == set(SERVICE_REVIEWS[name])
+        assert Review.objects.filter(service=service).count() == len(SERVICE_REVIEWS[name])
     assert not Review.objects.filter(service=tv).exists()
-    assert Review.objects.filter(service=installation, reviewer_name="Ishwarya", rating=5).exists()
-    assert Review.objects.filter(service=removal, reviewer_name="Parthiban", rating=5).exists()
-    assert Review.objects.filter(service=removal).count() == 5
     assert not Review.objects.exclude(booking=None, customer=None).exists()
 
 
 @pytest.mark.django_db
-def test_import_is_repeatable_and_preserves_existing_reviews_and_moderation(client):
+def test_aliases_match_existing_service_names():
+    category = ServiceCategory.objects.create(name="Appliances", slug="appliances")
+    aliases = [
+        ("Full AC Chemical Wash", "full-ac-chemical-wash", "AC Chemical Wash"),
+        ("AC Repair & Gas Refill", "ac-repair-gas-refill", "AC Gas Refill"),
+        ("Washing Machine Repair & Service", "washing-machine-repair-service", "Washing Machine Repair"),
+    ]
+    services = [(create_service(category, name, slug), group) for name, slug, group in aliases]
+    call_command("import_supplied_service_reviews", stdout=StringIO(), stderr=StringIO())
+    for service, group in services:
+        assert Review.objects.filter(service=service).count() == len(SERVICE_REVIEWS[group])
+
+
+@pytest.mark.django_db
+def test_replacement_removes_only_legacy_import_and_preserves_real_and_manual_reviews():
     category = ServiceCategory.objects.create(name="AC", slug="ac")
-    ac = create_service(category, "AC Service", "ac-service")
-    existing = Review.objects.create(service=ac, reviewer_name="Existing customer", comment="Keep this review", rating=1)
-    call_command("import_supplied_service_reviews", stdout=StringIO())
-    imported = Review.objects.filter(service=ac).exclude(id=existing.id).first()
+    ac = create_service(category, "AC Installation", "ac-installation")
+    name, comment, rating = AC_REVIEWS[0]
+    old_id = uuid5(NAMESPACE_URL, f"purplesquad:supplied-reviews:2026-10:{ac.id}:{name}:{comment}")
+    Review.objects.create(id=old_id, service=ac, reviewer_name=name, comment="Admin edited old imported text", rating=rating)
+    manual = Review.objects.create(service=ac, reviewer_name="Manual", comment="Keep this review", rating=1)
+    customer = user_factory("+919321456780")
+    address = address_factory(customer)
+    slot = slot_factory(service_area_factory())
+    booking = booking_factory(customer, ac, address, slot)
+    booking_review = Review.objects.create(booking=booking, customer=customer, rating=2, comment="Keep booking feedback")
+    preview = StringIO()
+    call_command("import_supplied_service_reviews", dry_run=True, stdout=preview, stderr=StringIO())
+    assert Review.objects.filter(id=old_id).exists()
+    assert "Would remove 1" in preview.getvalue()
+
+    call_command("import_supplied_service_reviews", stdout=StringIO(), stderr=StringIO())
+    assert not Review.objects.filter(id=old_id).exists()
+    assert Review.objects.filter(id=manual.id).exists()
+    assert Review.objects.filter(id=booking_review.id).exists()
+    imported = Review.objects.filter(service=ac, booking__isnull=True).exclude(id=manual.id).first()
     imported.is_visible = False
-    imported.comment = "Admin edited feedback"
+    imported.comment = "Admin-edited workbook review"
     imported.save()
-    call_command("import_supplied_service_reviews", stdout=StringIO())
-    assert Review.objects.filter(service=ac).count() == 6
+    call_command("import_supplied_service_reviews", stdout=StringIO(), stderr=StringIO())
     imported.refresh_from_db()
-    assert imported.comment == "Admin edited feedback"
     assert imported.is_visible is False
-    response = client.get(f"/api/v1/services/{ac.id}/reviews/")
-    assert response.status_code == 200
-    assert response.json()["count"] == 5
-    assert all(not review["is_booking_review"] for review in response.json()["results"])
+    assert imported.comment == "Admin-edited workbook review"
+    assert Review.objects.filter(service=ac).count() == len(SERVICE_REVIEWS["AC Installation"]) + 1
