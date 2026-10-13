@@ -1,7 +1,17 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import AdvancePaymentType, BlogPost, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
+
+
+@admin.register(BlogPost)
+class BlogPostAdmin(admin.ModelAdmin):
+    list_display = ("title", "slug", "author_name", "is_published", "published_at", "updated_at")
+    list_filter = ("is_published",)
+    search_fields = ("title", "slug", "excerpt")
+    prepopulated_fields = {"slug": ("title",)}
+    autocomplete_fields = ("related_service",)
+    readonly_fields = ("published_at", "created_at", "updated_at")
 
 
 @admin.register(ServiceCategory)

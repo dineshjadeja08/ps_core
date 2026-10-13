@@ -11,12 +11,15 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
-from apps.catalogue.models import Package, SeoLandingPage, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import BlogPost, Package, SeoLandingPage, Service, ServiceCategory, ServiceImage
 from apps.catalogue.serializers import (
+    AdminBlogPostSerializer,
     AdminPackageSerializer,
     AdminServiceCategorySerializer,
     AdminServiceListSerializer,
     AdminServiceSerializer,
+    BlogPostDetailSerializer,
+    BlogPostListSerializer,
     ServiceCategorySerializer,
     ServiceDetailSerializer,
     ServiceImageSerializer,
@@ -25,6 +28,45 @@ from apps.catalogue.serializers import (
     SeoLandingPageSerializer,
 )
 from apps.locations.services import get_active_service_area
+
+
+class BlogPostListView(generics.ListAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = BlogPostListSerializer
+
+    def get_queryset(self):
+        return BlogPost.objects.select_related("related_service").filter(
+            is_published=True, published_at__lte=timezone.now(),
+        ).order_by("-published_at", "-created_at")
+
+
+class BlogPostDetailView(generics.RetrieveAPIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    serializer_class = BlogPostDetailSerializer
+    lookup_field = "slug"
+
+    def get_queryset(self):
+        return BlogPost.objects.select_related("related_service").filter(
+            is_published=True, published_at__lte=timezone.now(),
+        )
+
+
+@extend_schema(tags=["Admin - Blog"])
+class AdminBlogPostViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = AdminBlogPostSerializer
+    http_method_names = ["get", "post", "patch", "put", "head", "options"]
+    lookup_field = "id"
+    lookup_value_regex = "[0-9a-f-]{36}"
+
+    def get_queryset(self):
+        queryset = BlogPost.objects.select_related("related_service")
+        search = self.request.query_params.get("search", "").strip()
+        if search:
+            queryset = queryset.filter(Q(title__icontains=search) | Q(slug__icontains=search))
+        return queryset.order_by("-updated_at")
 
 
 class ServiceCategoryListView(generics.ListAPIView):

@@ -34,6 +34,34 @@ class ServiceCategory(BaseModel):
         return self.name
 
 
+class BlogPost(BaseModel):
+    title = models.CharField(max_length=220)
+    slug = models.SlugField(max_length=240, unique=True)
+    excerpt = models.CharField(max_length=320)
+    body = models.TextField(help_text="Plain text. Start a line with ## for a section heading.")
+    author_name = models.CharField(max_length=120, default="Purple Squad Team")
+    cover_image_url = models.URLField(blank=True)
+    related_service = models.ForeignKey(
+        "catalogue.Service", on_delete=models.SET_NULL, null=True, blank=True, related_name="blog_posts",
+    )
+    is_published = models.BooleanField(default=False)
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-published_at", "-created_at")
+        indexes = [models.Index(fields=["is_published", "published_at"])]
+
+    def save(self, *args, **kwargs):
+        if self.is_published and self.published_at is None:
+            self.published_at = timezone.now()
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = set(kwargs["update_fields"]) | {"published_at"}
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+
 class Service(BaseModel):
     category = models.ForeignKey(ServiceCategory, on_delete=models.PROTECT, related_name="services")
     name = models.CharField(max_length=180)

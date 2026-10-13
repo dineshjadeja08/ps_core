@@ -9,11 +9,50 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from django.utils import timezone
 
-from apps.catalogue.models import AdvancePaymentType, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
+from apps.catalogue.models import AdvancePaymentType, BlogPost, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
 
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024
 ALLOWED_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+
+class BlogPostListSerializer(serializers.ModelSerializer):
+    related_service_slug = serializers.CharField(source="related_service.slug", read_only=True, allow_null=True)
+
+    class Meta:
+        model = BlogPost
+        fields = (
+            "id", "title", "slug", "excerpt", "author_name", "cover_image_url",
+            "related_service_slug", "published_at", "updated_at",
+        )
+
+
+class BlogPostDetailSerializer(BlogPostListSerializer):
+    class Meta(BlogPostListSerializer.Meta):
+        fields = BlogPostListSerializer.Meta.fields + ("body",)
+
+
+class AdminBlogPostSerializer(BlogPostDetailSerializer):
+    class Meta(BlogPostDetailSerializer.Meta):
+        fields = BlogPostDetailSerializer.Meta.fields + ("related_service", "is_published", "created_at")
+        read_only_fields = ("published_at", "created_at", "updated_at")
+
+    def validate_cover_image_url(self, value):
+        if value and not value.startswith("https://"):
+            raise serializers.ValidationError("Use a public HTTPS image URL.")
+        return value
+
+    def validate_slug(self, value):
+        if self.instance and self.instance.published_at and value != self.instance.slug:
+            raise serializers.ValidationError("The URL of a published article cannot be changed.")
+        return value
+
+    def validate(self, attrs):
+        if attrs.get("is_published", getattr(self.instance, "is_published", False)):
+            for field in ("title", "excerpt", "body", "author_name"):
+                if not attrs.get(field, getattr(self.instance, field, "")).strip():
+                    raise serializers.ValidationError({field: "Required before publishing."})
+        return attrs
 
 
 def raise_drf_validation(exc):

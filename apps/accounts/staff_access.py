@@ -46,7 +46,7 @@ STAFF_ACCESS_PROFILES = {
         ),
     },
     "Catalogue Manager": {
-        "description": "Manage categories, services, packages, FAQs, reviews, banners, and homepage carousel content.",
+        "description": "Manage categories, services, packages, FAQs, reviews, blog posts, banners, and homepage carousel content.",
         "rules": (
             StaffAccessRule("/api/v1/admin/dashboard/", SAFE_METHODS),
             StaffAccessRule("/api/v1/admin/service-categories/", ALL_METHODS),
@@ -54,6 +54,7 @@ STAFF_ACCESS_PROFILES = {
             StaffAccessRule("/api/v1/admin/packages/", ALL_METHODS),
             StaffAccessRule("/api/v1/admin/faqs/", ALL_METHODS),
             StaffAccessRule("/api/v1/admin/reviews/", ALL_METHODS),
+            StaffAccessRule("/api/v1/admin/blog-posts/", WRITE_METHODS),
             StaffAccessRule("/api/v1/admin/homepage-banners/", ALL_METHODS),
         ),
     },
