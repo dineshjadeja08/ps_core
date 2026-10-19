@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 from django.utils.html import format_html
 
 from apps.catalogue.models import AdvancePaymentType, BlogPost, Package, PackageItem, SeoLandingPage, Service, ServiceCategory, ServiceImage
@@ -52,11 +53,15 @@ class ServiceAdmin(admin.ModelAdmin):
         "estimated_duration_minutes",
         "is_featured",
         "is_popular",
+        "show_in_app",
+        "app_category",
         "is_active",
         "display_order",
         "updated_at",
     )
-    list_filter = ("is_active", "is_featured", "is_popular", "category")
+    list_editable = ("show_in_app", "app_category")
+    list_filter = ("is_active", "is_featured", "is_popular", "show_in_app", "app_category", "category")
+    actions = ("show_selected_in_app", "hide_selected_from_app")
     search_fields = ("name", "slug", "short_description", "description")
     prepopulated_fields = {"slug": ("name",)}
     ordering = ("category__display_order", "display_order", "name")
@@ -91,10 +96,21 @@ class ServiceAdmin(admin.ModelAdmin):
                 )
             },
         ),
+        ("Mobile app", {"fields": ("show_in_app", "app_category")}),
         ("Display", {"fields": ("estimated_duration_minutes", "display_order", "is_featured", "is_popular", "is_active")}),
         ("System", {"fields": ("created_at", "updated_at")}),
     )
     autocomplete_fields = ("category",)
+
+    @admin.action(description="Show selected services in app")
+    def show_selected_in_app(self, request, queryset):
+        updated = queryset.update(show_in_app=True, updated_at=timezone.now())
+        self.message_user(request, f"{updated} service(s) enabled in the mobile app.")
+
+    @admin.action(description="Hide selected services from app")
+    def hide_selected_from_app(self, request, queryset):
+        updated = queryset.update(show_in_app=False, updated_at=timezone.now())
+        self.message_user(request, f"{updated} service(s) hidden from the mobile app.")
 
     @admin.display(description="Cover preview")
     def cover_preview(self, obj):

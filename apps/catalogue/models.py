@@ -8,6 +8,23 @@ from django.utils.text import slugify
 from common.models import BaseModel
 
 
+APP_CATEGORY_CHOICES = (
+    ("water-tank", "Water Tank Cleaning"),
+    ("sofa", "Sofa Repair"),
+    ("mosquito-net", "Mosquito Net"),
+    ("ac", "AC Service"),
+    ("washing-machine", "Washing Machine"),
+    ("refrigerator", "Refrigerator"),
+    ("water-purifier", "Water Purifier"),
+    ("tv", "TV Repair"),
+    ("geyser", "Geyser"),
+    ("microwave", "Microwave"),
+    ("dishwasher", "Dishwasher"),
+    ("chimney", "Chimney"),
+    ("cctv", "CCTV"),
+)
+
+
 class AdvancePaymentType(models.TextChoices):
     FIXED = "FIXED", "Fixed amount"
     PERCENTAGE = "PERCENTAGE", "Percentage"
@@ -91,6 +108,14 @@ class Service(BaseModel):
     list_image = models.ImageField(upload_to="services/list-images/", blank=True)
     is_featured = models.BooleanField(default=False)
     is_popular = models.BooleanField(default=False)
+    show_in_app = models.BooleanField(default=False, db_index=True, help_text="Show this service in the mobile app")
+    app_category = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        choices=APP_CATEGORY_CHOICES,
+        help_text="Icon group in the mobile app",
+    )
     is_active = models.BooleanField(default=True)
     display_order = models.PositiveIntegerField(default=0)
 

@@ -3,7 +3,8 @@ from decimal import Decimal
 import pytest
 from django.core.exceptions import ValidationError
 
-from apps.catalogue.models import Service, ServiceCategory
+from apps.catalogue.models import APP_CATEGORY_CHOICES, Service, ServiceCategory
+from apps.catalogue.serializers import ServiceListSerializer
 from apps.locations.models import ServiceArea
 
 
@@ -110,8 +111,45 @@ def test_service_detail(client, ac_category):
 
 
 @pytest.mark.django_db
+def test_mobile_app_fields_are_public_and_filterable(client, ac_category):
+    mobile_service = create_service(
+        ac_category,
+        name="Mobile AC Service",
+        slug="mobile-ac-service",
+        show_in_app=True,
+        app_category="ac",
+    )
+    create_service(ac_category, name="Website Only Service", slug="website-only-service")
+
+    listing = client.get("/api/v1/services/")
+    mobile_listing = client.get("/api/v1/services/?show_in_app=true")
+    website_listing = client.get("/api/v1/services/?show_in_app=false")
+    detail = client.get(f"/api/v1/services/{mobile_service.slug}/")
+
+    assert listing.status_code == mobile_listing.status_code == website_listing.status_code == detail.status_code == 200
+    assert all("show_in_app" in item and "app_category" in item for item in listing.json()["results"])
+    assert [item["slug"] for item in mobile_listing.json()["results"]] == [mobile_service.slug]
+    assert [item["slug"] for item in website_listing.json()["results"]] == ["website-only-service"]
+    assert mobile_listing.json()["results"][0]["app_category"] == "ac"
+    assert detail.json()["show_in_app"] is True
+    assert detail.json()["app_category"] == "ac"
+    assert client.get("/api/v1/services/?show_in_app=maybe").status_code == 400
+
+
+@pytest.mark.django_db
+def test_app_category_rejects_values_outside_configured_choices(ac_category):
+    with pytest.raises(ValidationError):
+        create_service(ac_category, app_category="not-a-mobile-category")
+
+
+def test_app_category_serializer_documents_the_complete_ordered_enum():
+    serializer_choices = list(ServiceListSerializer().fields["app_category"].choices.items())
+    assert serializer_choices == list(APP_CATEGORY_CHOICES)
+
+
+@pytest.mark.django_db
 def test_service_filtering(client, ac_category, repair_category):
-    create_service(ac_category, name="AC General Service", slug="ac-general-service", is_featured=True)
+    create_service(ac_category, name="AC General Service", slug="ac-general-service", is_featured=True, is_popular=True)
     create_service(
         repair_category,
         name="AC Noise Repair",
@@ -121,10 +159,12 @@ def test_service_filtering(client, ac_category, repair_category):
 
     by_category = client.get("/api/v1/services/?category=ac-repair")
     by_featured = client.get("/api/v1/services/?featured=true")
+    by_popular = client.get("/api/v1/services/?is_popular=true")
     by_search = client.get("/api/v1/services/?search=noise")
 
     assert [item["slug"] for item in by_category.json()["results"]] == ["ac-noise-repair"]
     assert [item["slug"] for item in by_featured.json()["results"]] == ["ac-general-service"]
+    assert [item["slug"] for item in by_popular.json()["results"]] == ["ac-general-service"]
     assert [item["slug"] for item in by_search.json()["results"]] == ["ac-noise-repair"]
 
 

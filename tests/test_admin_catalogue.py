@@ -328,6 +328,8 @@ def test_customer_endpoint_reflects_admin_updates(admin_client, client, service)
             "short_description": "Freshly updated.",
             "selling_price": "999.00",
             "is_popular": True,
+            "show_in_app": True,
+            "app_category": "ac",
         },
         format="json",
     )
@@ -340,6 +342,29 @@ def test_customer_endpoint_reflects_admin_updates(admin_client, client, service)
     assert payload["selling_price"] == "999.00"
     assert payload["effective_price"] == 999.0 or payload["effective_price"] == "999.00"
     assert payload["is_popular"] is True
+    assert payload["show_in_app"] is True
+    assert payload["app_category"] == "ac"
+
+
+@pytest.mark.django_db
+def test_admin_service_actions_bulk_toggle_app_visibility(monkeypatch, admin_user, service):
+    from django.contrib.admin.sites import AdminSite
+    from django.test import RequestFactory
+
+    from apps.catalogue.admin import ServiceAdmin
+
+    model_admin = ServiceAdmin(Service, AdminSite())
+    monkeypatch.setattr(model_admin, "message_user", lambda *args, **kwargs: None)
+    request = RequestFactory().post("/admin/apps/catalogue/service/")
+    queryset = Service.objects.filter(pk=service.pk)
+
+    model_admin.show_selected_in_app(request, queryset)
+    service.refresh_from_db()
+    assert service.show_in_app is True
+
+    model_admin.hide_selected_from_app(request, queryset)
+    service.refresh_from_db()
+    assert service.show_in_app is False
 
 
 @pytest.mark.django_db

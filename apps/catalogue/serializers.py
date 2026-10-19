@@ -138,6 +138,8 @@ class ServiceListSerializer(serializers.ModelSerializer):
             "list_image",
             "is_featured",
             "is_popular",
+            "show_in_app",
+            "app_category",
             "display_order",
         )
 
@@ -395,6 +397,8 @@ class AdminServiceSerializer(serializers.ModelSerializer):
             "images",
             "is_featured",
             "is_popular",
+            "show_in_app",
+            "app_category",
             "is_active",
             "display_order",
             "created_at",

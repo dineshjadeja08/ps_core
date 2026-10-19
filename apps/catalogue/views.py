@@ -3,6 +3,7 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import generics, status, viewsets
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -121,6 +122,17 @@ class ServiceListView(generics.ListAPIView):
         if featured is not None:
             queryset = queryset.filter(is_featured=featured.lower() in {"1", "true", "yes"})
 
+        popular = self.request.query_params.get("is_popular")
+        if popular is not None:
+            queryset = queryset.filter(is_popular=popular.lower() in {"1", "true", "yes"})
+
+        show_in_app = self.request.query_params.get("show_in_app")
+        if show_in_app is not None:
+            normalized_show_in_app = show_in_app.strip().lower()
+            if normalized_show_in_app not in {"true", "false"}:
+                raise ValidationError({"show_in_app": "Use either 'true' or 'false'."})
+            queryset = queryset.filter(show_in_app=normalized_show_in_app == "true")
+
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(name__icontains=search.strip())
@@ -144,10 +156,12 @@ class ServiceListView(generics.ListAPIView):
 
     @extend_schema(
         summary="List services",
-        description="Returns active public services with optional category, featured, name search, city, and postal-code availability filters.",
+        description="Returns active public services with optional category, featured, popular, mobile-app visibility, name search, city, and postal-code availability filters.",
         parameters=[
             OpenApiParameter("category", str, description="Filter by category slug."),
             OpenApiParameter("featured", bool, description="Filter featured services."),
+            OpenApiParameter("is_popular", bool, description="Filter popular services."),
+            OpenApiParameter("show_in_app", bool, description="Filter by whether the service is enabled in the mobile app."),
             OpenApiParameter("search", str, description="Search by service name."),
             OpenApiParameter("postal_code", str, description="Only return services available at this postal code."),
             OpenApiParameter("city", str, description="Only return services available in active areas for this city."),
