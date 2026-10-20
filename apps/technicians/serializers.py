@@ -1,3 +1,4 @@
+from django.utils import timezone
 from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
@@ -156,3 +157,56 @@ class TechnicianLeaveSerializer(serializers.ModelSerializer):
         if not obj.is_active:
             return "REJECTED"
         return "APPROVED" if obj.approved_by_id else "PENDING"
+
+
+class TechnicianLeaveRequestSerializer(serializers.Serializer):
+    start_at = serializers.DateTimeField()
+    end_at = serializers.DateTimeField()
+    reason = serializers.CharField(max_length=160)
+
+    def validate(self, attrs):
+        if attrs["start_at"] >= attrs["end_at"]:
+            raise serializers.ValidationError({"end_at": "End time must be after start time."})
+        if attrs["end_at"] <= timezone.now():
+            raise serializers.ValidationError({"start_at": "Leave must be in the future."})
+        return attrs
+
+
+class TechnicianReviewSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    booking_number = serializers.CharField(source="booking.booking_number", read_only=True)
+    customer_name = serializers.SerializerMethodField()
+    service_name = serializers.CharField(source="booking.service.name", read_only=True)
+    rating = serializers.IntegerField(read_only=True)
+    comment = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_customer_name(self, obj):
+        # First name only: technicians don't need the customer's full identity after the job.
+        profile = getattr(obj.customer, "customer_profile", None)
+        name = (profile.display_name if profile else "") or obj.customer.first_name
+        return name.split(" ")[0] if name else "Customer"
+
+
+class TechnicianTrendPointSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    jobs = serializers.IntegerField()
+    earnings = serializers.FloatField()
+    rating = serializers.FloatField(allow_null=True)
+
+
+class TechnicianPerformanceSerializer(serializers.Serializer):
+    period = serializers.CharField()
+    completion_rate = serializers.IntegerField()
+    completed = serializers.IntegerField()
+    total = serializers.IntegerField()
+    cancelled = serializers.IntegerField()
+    open = serializers.IntegerField()
+    gross_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+    average_rating = serializers.FloatField(allow_null=True)
+    review_count = serializers.IntegerField()
+    penalties = serializers.IntegerField(allow_null=True)
+    penalty_amount = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    needs_attention = serializers.BooleanField()
+    trend = TechnicianTrendPointSerializer(many=True)

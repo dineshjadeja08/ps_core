@@ -3,6 +3,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -13,15 +14,24 @@ from apps.audit.services import audit_event
 from apps.bookings.models import Booking
 from apps.bookings.serializers import AdminBookingSerializer, BookingOperationSerializer, BookingSerializer
 from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
+from apps.reviews.models import Review
 from apps.technicians.models import TechnicianLeave, TechnicianProfile
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
+    TechnicianLeaveRequestSerializer,
     TechnicianLeaveReviewSerializer,
     TechnicianLeaveSerializer,
+    TechnicianPerformanceSerializer,
     TechnicianProfileSerializer,
+    TechnicianReviewSerializer,
 )
-from apps.technicians.services import assign_technician, get_eligible_technicians, remove_technician_assignment
+from apps.technicians.services import (
+    assign_technician,
+    get_eligible_technicians,
+    get_technician_performance,
+    remove_technician_assignment,
+)
 
 
 class TechnicianJobViewSet(
@@ -66,6 +76,94 @@ class TechnicianJobViewSet(
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, *args, **kwargs):
         return self._operate(request, "complete")
+
+
+
+def _own_technician_profile(user):
+    profile = TechnicianProfile.objects.filter(user=user).prefetch_related("skills", "service_areas", "supported_services__category").first()
+    if profile is None:
+        raise NotFound("No technician profile is linked to this account.")
+    return profile
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfProfileView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(summary="Get my technician profile", responses={status.HTTP_200_OK: TechnicianProfileSerializer})
+    def get(self, request):
+        return Response(TechnicianProfileSerializer(_own_technician_profile(request.user), context={"request": request}).data)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfReviewListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = TechnicianReviewSerializer
+
+    def get_queryset(self):
+        return (
+            Review.objects.filter(technician=self.request.user, is_visible=True)
+            .select_related("booking__service", "customer__customer_profile")
+            .order_by("-created_at")
+        )
+
+    @extend_schema(summary="List reviews customers left for me")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfLeaveViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = TechnicianLeaveSerializer
+
+    def get_queryset(self):
+        return TechnicianLeave.objects.filter(technician__user=self.request.user).select_related("technician", "approved_by").order_by("-start_at")
+
+    @extend_schema(summary="List my leave requests")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Request leave",
+        description="Creates a pending leave request. An admin approves or rejects it.",
+        request=TechnicianLeaveRequestSerializer,
+        responses={status.HTTP_201_CREATED: TechnicianLeaveSerializer},
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = TechnicianLeaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = _own_technician_profile(request.user)
+        data = serializer.validated_data
+        overlapping = TechnicianLeave.objects.filter(
+            technician=profile, is_active=True, start_at__lt=data["end_at"], end_at__gt=data["start_at"]
+        ).exists()
+        if overlapping:
+            raise ValidationError({"start_at": "You already have a leave request for these dates."})
+        leave = TechnicianLeave.objects.create(technician=profile, **data)
+        audit_event(
+            action=AuditAction.TECHNICIAN_LEAVE_CREATED,
+            actor=request.user,
+            request=request,
+            resource_type="technician_leave",
+            resource_id=leave.id,
+            metadata={"technician_id": str(profile.id), "self_service": True},
+        )
+        return Response(TechnicianLeaveSerializer(leave, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfPerformanceView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(
+        summary="Get my performance report",
+        parameters=[OpenApiParameter("period", str, OpenApiParameter.QUERY, description="'overall' (default) or YYYY-MM")],
+        responses={status.HTTP_200_OK: TechnicianPerformanceSerializer},
+    )
+    def get(self, request):
+        report = get_technician_performance(user=request.user, period=request.query_params.get("period", "overall"))
+        return Response(TechnicianPerformanceSerializer(report).data)
 
 
 class AdminTechnicianListView(generics.ListAPIView):

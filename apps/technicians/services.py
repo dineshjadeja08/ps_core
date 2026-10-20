@@ -1,10 +1,12 @@
 from django.db import transaction
+from django.db.models import Avg, Count, Sum
 from django.utils import timezone
 from rest_framework import serializers
 
 from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory
 from apps.notifications.models import NotificationEvent
 from apps.notifications.services import emit_notification_event
+from apps.reviews.models import Review
 from apps.technicians.models import (
     TechnicianAssignment,
     TechnicianAvailabilityStatus,
@@ -197,3 +199,81 @@ def remove_technician_assignment(*, booking_id, changed_by, notes=""):
         notes=notes or "Technician assignment removed.",
     )
     return booking
+
+
+COMPLETED_STATUSES = {BookingStatus.COMPLETED, BookingStatus.CLOSED}
+CANCELLED_STATUSES = {BookingStatus.CANCELLED, BookingStatus.REFUND_PENDING, BookingStatus.REFUNDED}
+
+
+def _month_start(day, months_back=0):
+    month_index = day.year * 12 + day.month - 1 - months_back
+    return day.replace(year=month_index // 12, month=month_index % 12 + 1, day=1)
+
+
+def get_technician_performance(*, user, period="overall"):
+    """Job completion, revenue and rating figures for one technician, plus a 3-month trend.
+
+    ``period`` is "overall" or a calendar month as "YYYY-MM" (matched on service date).
+    """
+    bookings = Booking.objects.filter(assigned_technician=user)
+    reviews = Review.objects.filter(technician=user, is_visible=True)
+    if period != "overall":
+        try:
+            start = timezone.datetime.strptime(period, "%Y-%m").date()
+        except ValueError as exc:
+            raise serializers.ValidationError({"period": "Use 'overall' or YYYY-MM."}) from exc
+        end = _month_start(start, -1)
+        bookings = bookings.filter(service_date__gte=start, service_date__lt=end)
+        reviews = reviews.filter(booking__service_date__gte=start, booking__service_date__lt=end)
+
+    statuses = list(bookings.values_list("booking_status", flat=True))
+    total = len(statuses)
+    completed = sum(1 for status in statuses if status in COMPLETED_STATUSES)
+    cancelled = sum(1 for status in statuses if status in CANCELLED_STATUSES)
+    gross_revenue = bookings.filter(booking_status__in=COMPLETED_STATUSES).aggregate(total=Sum("total_amount"))["total"]
+    rating = reviews.aggregate(average=Avg("rating"), count=Count("id"))
+    completion_rate = round(completed * 100 / total) if total else 0
+
+    today = timezone.localdate()
+    trend = []
+    for months_back in (2, 1, 0):
+        start = _month_start(today, months_back)
+        end = _month_start(today, months_back - 1)
+        month_jobs = Booking.objects.filter(
+            assigned_technician=user,
+            booking_status__in=COMPLETED_STATUSES,
+            service_date__gte=start,
+            service_date__lt=end,
+        )
+        month_rating = Review.objects.filter(
+            technician=user, is_visible=True, booking__service_date__gte=start, booking__service_date__lt=end
+        ).aggregate(average=Avg("rating"))["average"]
+        trend.append(
+            {
+                "month": start.strftime("%b"),
+                "jobs": month_jobs.count(),
+                "earnings": float(month_jobs.aggregate(total=Sum("total_amount"))["total"] or 0),
+                "rating": round(float(month_rating), 1) if month_rating is not None else None,
+            }
+        )
+
+    return {
+        "period": "Overall" if period == "overall" else start_label(period),
+        "completion_rate": completion_rate,
+        "completed": completed,
+        "total": total,
+        "cancelled": cancelled,
+        "open": total - completed - cancelled,
+        "gross_revenue": f"{gross_revenue or 0:.2f}",
+        "average_rating": round(float(rating["average"]), 1) if rating["average"] is not None else None,
+        "review_count": rating["count"],
+        # The penalty system does not exist yet; null tells the app to hide the tile.
+        "penalties": None,
+        "penalty_amount": None,
+        "needs_attention": total >= 3 and completion_rate < 50,
+        "trend": trend,
+    }
+
+
+def start_label(period):
+    return timezone.datetime.strptime(period, "%Y-%m").strftime("%b %Y")
