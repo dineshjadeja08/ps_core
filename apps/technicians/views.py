@@ -12,7 +12,7 @@ from apps.accounts.permissions import IsAdminRole, IsTechnicianRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
-from apps.bookings.serializers import AdminBookingSerializer, BookingOperationSerializer, BookingSerializer
+from apps.bookings.serializers import AdminBookingSerializer, BalanceCollectionSerializer, BookingOperationSerializer, BookingSerializer
 from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
 from apps.reviews.models import Review
 from apps.technicians.models import TechnicianLeave, TechnicianProfile
@@ -76,6 +76,28 @@ class TechnicianJobViewSet(
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, *args, **kwargs):
         return self._operate(request, "complete")
+
+    @extend_schema(
+        summary="Record balance collected from the customer",
+        description="Records cash/UPI/card the technician collected on site. Required before completing a job with a balance due.",
+        request=BalanceCollectionSerializer,
+        responses={status.HTTP_200_OK: AdminBookingSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="collect-balance")
+    def collect_balance(self, request, *args, **kwargs):
+        booking = self.get_object()
+        serializer = BalanceCollectionSerializer(data=request.data, context={"request": request, "booking_id": booking.id})
+        serializer.is_valid(raise_exception=True)
+        booking = serializer.save()
+        audit_event(
+            action=AuditAction.TECHNICIAN_RECORD_BALANCE,
+            actor=request.user,
+            request=request,
+            resource_type="booking",
+            resource_id=booking.id,
+            metadata=serializer.validated_data,
+        )
+        return Response(AdminBookingSerializer(booking, context={"request": request}).data)
 
 
 

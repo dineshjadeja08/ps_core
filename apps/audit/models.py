@@ -10,6 +10,7 @@ class AuditAction(models.TextChoices):
     ADMIN_BOOKING_CANCEL = "ADMIN_BOOKING_CANCEL", "Admin booking cancel"
     ADMIN_WORK_ORDER_CLOSE = "ADMIN_WORK_ORDER_CLOSE", "Admin work order close"
     ADMIN_RECORD_BALANCE = "ADMIN_RECORD_BALANCE", "Admin record balance"
+    TECHNICIAN_RECORD_BALANCE = "TECHNICIAN_RECORD_BALANCE", "Technician record balance"
     ADMIN_PAYMENT_LINK_CREATED = "ADMIN_PAYMENT_LINK_CREATED", "Admin payment link created"
     ADMIN_REFUND_CREATED = "ADMIN_REFUND_CREATED", "Admin refund created"
     ADMIN_REFUND_RECONCILED = "ADMIN_REFUND_RECONCILED", "Admin refund reconciled"

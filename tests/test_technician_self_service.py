@@ -128,3 +128,34 @@ def test_performance_summarises_my_jobs_and_ratings(technician_client, technicia
 
 def test_performance_rejects_bad_period(technician_client):
     assert technician_client.get("/api/v1/technician/performance/?period=last-week").status_code == 400
+
+
+def test_technician_collects_balance_then_completes_job(technician_client, jobs):
+    job = jobs[3]
+    job.booking_status = BookingStatus.IN_PROGRESS
+    job.save(update_fields=["booking_status"])
+
+    blocked = technician_client.post(f"/api/v1/technician/jobs/{job.id}/complete/", {}, format="json")
+    collected = technician_client.post(f"/api/v1/technician/jobs/{job.id}/collect-balance/", {"amount": "1200.00", "method": "CASH"}, format="json")
+    completed = technician_client.post(f"/api/v1/technician/jobs/{job.id}/complete/", {}, format="json")
+
+    assert blocked.status_code == 400
+    assert collected.status_code == 200
+    assert collected.json()["payment_status"] == "PAID"
+    assert completed.status_code == 200
+    assert completed.json()["booking_status"] == "COMPLETED"
+
+
+def test_collect_balance_rejects_overpayment_and_other_technicians_jobs(technician_client, jobs):
+    job = jobs[3]
+    job.booking_status = BookingStatus.IN_PROGRESS
+    job.save(update_fields=["booking_status"])
+    other = technician_factory(phone_number="+919876543304", code="TECH-OTHER2")
+    other_client = APIClient()
+    other_client.force_authenticate(user=other.user)
+
+    too_much = technician_client.post(f"/api/v1/technician/jobs/{job.id}/collect-balance/", {"amount": "5000.00", "method": "UPI"}, format="json")
+    not_mine = other_client.post(f"/api/v1/technician/jobs/{job.id}/collect-balance/", {"amount": "100.00", "method": "UPI"}, format="json")
+
+    assert too_much.status_code == 400
+    assert not_mine.status_code == 404
