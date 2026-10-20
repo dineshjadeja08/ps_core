@@ -62,7 +62,8 @@ class TechnicianSkill(BaseModel):
 class TechnicianProfile(BaseModel):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="technician_profile")
     employee_code = models.CharField(max_length=40, unique=True)
-    display_name = models.CharField(max_length=150)
+    # Blank only for partners who signed up in the app and haven't finished their KYC form yet.
+    display_name = models.CharField(max_length=150, blank=True)
     profile_photo = models.ImageField(upload_to="technicians/photos/", blank=True)
     phone = models.CharField(max_length=16)
     alternate_phone = models.CharField(max_length=16, blank=True)
@@ -106,6 +107,9 @@ class TechnicianProfile(BaseModel):
     is_active = models.BooleanField(default=True)
     joined_at = models.DateField(null=True, blank=True)
     internal_notes = models.TextField(blank=True)
+    kyc_submitted_at = models.DateTimeField(null=True, blank=True)
+    # Shown to the partner when their KYC is rejected.
+    verification_note = models.TextField(blank=True)
 
     class Meta:
         ordering = ("display_name",)
@@ -290,3 +294,34 @@ class JobPhoto(BaseModel):
 
     def __str__(self):
         return f"{self.booking} {self.kind}"
+
+
+class TechnicianDocumentType(models.TextChoices):
+    AADHAAR_FRONT = "AADHAAR_FRONT", "Aadhaar (front)"
+    AADHAAR_BACK = "AADHAAR_BACK", "Aadhaar (back)"
+    PAN = "PAN", "PAN card"
+    PHOTO = "PHOTO", "Profile photo"
+    CERTIFICATE = "CERTIFICATE", "Experience / training certificate"
+
+
+REQUIRED_KYC_DOCUMENTS = (
+    TechnicianDocumentType.AADHAAR_FRONT,
+    TechnicianDocumentType.AADHAAR_BACK,
+    TechnicianDocumentType.PAN,
+    TechnicianDocumentType.PHOTO,
+)
+
+
+class TechnicianDocument(BaseModel):
+    """A KYC document a partner uploads from the app for admin review."""
+
+    technician = models.ForeignKey(TechnicianProfile, on_delete=models.CASCADE, related_name="documents")
+    doc_type = models.CharField(max_length=24, choices=TechnicianDocumentType.choices)
+    file = models.FileField(upload_to="technicians/kyc/%Y/%m/", validators=[UPLOAD_EXTENSIONS, validate_upload_size])
+
+    class Meta:
+        ordering = ("created_at",)
+        indexes = [models.Index(fields=["technician", "doc_type"])]
+
+    def __str__(self):
+        return f"{self.technician} {self.doc_type}"

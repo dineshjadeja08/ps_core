@@ -3,7 +3,7 @@ from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.technicians.models import JobPhoto, JobPhotoKind, TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import JobPhoto, JobPhotoKind, TechnicianDocument, TechnicianDocumentType, TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
 
 
 class TechnicianSkillSerializer(serializers.ModelSerializer):
@@ -49,6 +49,8 @@ class TechnicianProfileSerializer(serializers.ModelSerializer):
             "joined_at",
             "id_document_available",
             "address_document_available",
+            "kyc_submitted_at",
+            "verification_note",
         )
 
     @extend_schema_field(OpenApiTypes.OBJECT)
@@ -256,3 +258,54 @@ class TechnicianEarningsSerializer(serializers.Serializer):
     collected_by_you_total = serializers.DecimalField(max_digits=12, decimal_places=2)
     paid_online_total = serializers.DecimalField(max_digits=12, decimal_places=2)
     jobs = TechnicianEarningJobSerializer(many=True)
+
+
+class TechnicianProfileUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(max_length=150, required=False)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    alternate_phone = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False)
+    pincode = serializers.RegexField(r"^\d{6}$", required=False, error_messages={"invalid": "Enter a 6-digit pincode."})
+    experience_years = serializers.DecimalField(max_digits=4, decimal_places=1, min_value=0, max_value=60, required=False)
+    languages = serializers.ListField(child=serializers.CharField(max_length=40), required=False, max_length=10)
+    skill_ids = serializers.ListField(child=serializers.UUIDField(), required=False, max_length=30)
+
+    def validate_skill_ids(self, value):
+        skills = list(TechnicianSkill.objects.filter(id__in=value, is_active=True))
+        if len(skills) != len(set(value)):
+            raise serializers.ValidationError("One or more services were not found.")
+        return skills
+
+    def update(self, profile, validated_data):
+        skills = validated_data.pop("skill_ids", None)
+        for field, value in validated_data.items():
+            setattr(profile, field, value)
+        profile.save()
+        if skills is not None:
+            profile.skills.set(skills)
+        return profile
+
+
+class TechnicianDocumentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TechnicianDocument
+        fields = ("id", "doc_type", "url", "created_at")
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_url(self, obj):
+        request = self.context.get("request")
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class TechnicianDocumentUploadSerializer(serializers.Serializer):
+    doc_type = serializers.ChoiceField(choices=TechnicianDocumentType.choices)
+    file = serializers.FileField()
+
+
+class KycDecisionSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=(("APPROVE", "Approve"), ("REJECT", "Reject")))
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)

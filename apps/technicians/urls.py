@@ -4,6 +4,11 @@ from rest_framework.routers import DefaultRouter
 from apps.technicians.views import (
     AdminTechnicianLeaveViewSet,
     AdminJobPhotoListView,
+    AdminTechnicianKycView,
+    TechnicianDocumentDetailView,
+    TechnicianDocumentListView,
+    TechnicianKycSubmitView,
+    TechnicianSkillListView,
     AdminTechnicianListView,
     AssignTechnicianView,
     RemoveTechnicianAssignmentView,
@@ -22,6 +27,11 @@ router.register("admin/technician-leaves", AdminTechnicianLeaveViewSet, basename
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("technician/skills/", TechnicianSkillListView.as_view(), name="technician-skills"),
+    path("technician/documents/", TechnicianDocumentListView.as_view(), name="technician-documents"),
+    path("technician/documents/<uuid:document_id>/", TechnicianDocumentDetailView.as_view(), name="technician-document-detail"),
+    path("technician/kyc/submit/", TechnicianKycSubmitView.as_view(), name="technician-kyc-submit"),
+    path("admin/technicians/<uuid:technician_id>/kyc/", AdminTechnicianKycView.as_view(), name="admin-technician-kyc"),
     path("technician/profile/", TechnicianSelfProfileView.as_view(), name="technician-profile"),
     path("technician/reviews/", TechnicianSelfReviewListView.as_view(), name="technician-reviews"),
     path("technician/earnings/", TechnicianSelfEarningsView.as_view(), name="technician-earnings"),

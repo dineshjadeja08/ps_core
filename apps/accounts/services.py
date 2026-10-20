@@ -21,10 +21,33 @@ def get_otp_auth_provider():
 
 
 @transaction.atomic
-def authenticate_with_firebase(id_token: str):
+def authenticate_with_firebase(id_token: str, *, app="customer"):
     verified_token = get_firebase_auth_provider().verify_id_token(id_token)
     phone_number = normalize_phone_number(verified_token.phone_number)
+    if app == "partner":
+        return authenticate_partner_phone(phone_number)
     return authenticate_verified_phone(phone_number)
+
+
+@transaction.atomic
+def authenticate_partner_phone(phone_number: str):
+    """Partner app login: existing technicians sign in; new numbers become pending technicians awaiting KYC."""
+    from apps.technicians.services import create_partner_signup
+
+    phone_number = normalize_phone_number(phone_number)
+    user = User.objects.filter(phone_number=phone_number).first()
+    created = False
+    if user is None:
+        user = User.objects.create_user(phone_number, role=UserRole.TECHNICIAN, is_verified=True, is_active=True)
+        create_partner_signup(user)
+        created = True
+    if not user.is_active:
+        raise serializers.ValidationError("This account is disabled.")
+    if user.role != UserRole.TECHNICIAN:
+        raise serializers.ValidationError("This number is registered as a Purple Squad customer. Use a different number to join as a partner.")
+    if not hasattr(user, "technician_profile"):
+        create_partner_signup(user)
+    return _login_result(user=user, created=created)
 
 
 def send_login_otp(phone_number: str, channel: str, *, allow_admin=False):

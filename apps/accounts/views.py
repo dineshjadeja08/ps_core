@@ -116,7 +116,7 @@ class FirebaseLoginView(APIView):
     def post(self, request):
         serializer = FirebaseLoginRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        result = authenticate_with_firebase(serializer.validated_data["id_token"])
+        result = authenticate_with_firebase(serializer.validated_data["id_token"], app=serializer.validated_data.get("app", "customer"))
         return Response(
             {
                 "user": UserSerializer(result["user"]).data,

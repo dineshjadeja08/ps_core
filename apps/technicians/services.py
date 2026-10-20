@@ -1,6 +1,7 @@
-from django.db import transaction
+import secrets
 from decimal import Decimal
 
+from django.db import transaction
 from django.db.models import Avg, Count, Prefetch, Sum
 from django.utils import timezone
 from rest_framework import serializers
@@ -10,7 +11,10 @@ from apps.notifications.models import NotificationChannel, NotificationEvent
 from apps.notifications.services import emit_notification_event
 from apps.reviews.models import Review
 from apps.technicians.models import (
+    REQUIRED_KYC_DOCUMENTS,
     TechnicianAssignment,
+    TechnicianDocumentType,
+    TechnicianType,
     TechnicianAvailabilityStatus,
     TechnicianProfile,
     TechnicianVerificationStatus,
@@ -341,3 +345,72 @@ def get_technician_earnings(*, user, period="overall"):
         "paid_online_total": sum((row["paid_online"] for row in rows), Decimal("0.00")),
         "jobs": rows,
     }
+
+
+def create_partner_signup(user):
+    """Pending technician profile for a partner who signed up in the app; an admin verifies their KYC."""
+    while True:
+        code = f"PSP-{secrets.randbelow(10**6):06d}"
+        if not TechnicianProfile.objects.filter(employee_code=code).exists():
+            break
+    return TechnicianProfile.objects.create(
+        user=user,
+        employee_code=code,
+        display_name="",
+        phone=user.phone_number,
+        technician_type=TechnicianType.PARTNER,
+        background_verification_status=TechnicianVerificationStatus.PENDING,
+        availability_status=TechnicianAvailabilityStatus.OFFLINE,
+        is_available=False,
+        is_active=True,
+    )
+
+
+KYC_EDITABLE_STATUSES = {TechnicianVerificationStatus.PENDING, TechnicianVerificationStatus.REJECTED}
+
+
+def ensure_kyc_editable(profile):
+    if profile.background_verification_status not in KYC_EDITABLE_STATUSES:
+        raise serializers.ValidationError("Your KYC is under review or already verified. Contact Purple Squad to change it.")
+
+
+@transaction.atomic
+def submit_kyc(profile):
+    ensure_kyc_editable(profile)
+    missing = []
+    if not profile.display_name.strip():
+        missing.append("your full name")
+    if not profile.city or not profile.pincode:
+        missing.append("city and pincode")
+    if not profile.skills.exists():
+        missing.append("at least one service you offer")
+    uploaded = set(profile.documents.values_list("doc_type", flat=True))
+    missing += [TechnicianDocumentType(doc).label for doc in REQUIRED_KYC_DOCUMENTS if doc not in uploaded]
+    if missing:
+        raise serializers.ValidationError({"missing": missing})
+    profile.background_verification_status = TechnicianVerificationStatus.UNDER_REVIEW
+    profile.kyc_submitted_at = timezone.now()
+    profile.verification_note = ""
+    profile.save(update_fields=["background_verification_status", "kyc_submitted_at", "verification_note", "updated_at"])
+    return profile
+
+
+@transaction.atomic
+def decide_kyc(*, profile, approve, note=""):
+    if profile.background_verification_status != TechnicianVerificationStatus.UNDER_REVIEW:
+        raise serializers.ValidationError("Only submitted KYC can be approved or rejected.")
+    if approve:
+        profile.background_verification_status = TechnicianVerificationStatus.VERIFIED
+        profile.availability_status = TechnicianAvailabilityStatus.AVAILABLE
+        profile.is_available = True
+        profile.joined_at = profile.joined_at or timezone.localdate()
+        photo = profile.documents.filter(doc_type=TechnicianDocumentType.PHOTO).order_by("-created_at").first()
+        if photo and not profile.profile_photo:
+            profile.profile_photo.name = photo.file.name
+    else:
+        if not note.strip():
+            raise serializers.ValidationError({"note": "Tell the partner what to fix."})
+        profile.background_verification_status = TechnicianVerificationStatus.REJECTED
+    profile.verification_note = note
+    profile.save()
+    return profile

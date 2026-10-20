@@ -17,7 +17,7 @@ from apps.bookings.serializers import AdminBookingSerializer, BalanceCollectionS
 from apps.bookings.models import BookingStatus
 from apps.bookings.services import accept_job, complete_booking, mark_technician_arrived, mark_technician_en_route, start_job_with_otp
 from apps.reviews.models import Review
-from apps.technicians.models import JobPhoto, TechnicianLeave, TechnicianProfile
+from apps.technicians.models import JobPhoto, TechnicianDocument, TechnicianDocumentType, TechnicianLeave, TechnicianProfile, TechnicianSkill
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
@@ -31,13 +31,21 @@ from apps.technicians.serializers import (
     JobPhotoSerializer,
     JobPhotoUploadSerializer,
     TechnicianEarningsSerializer,
+    KycDecisionSerializer,
+    TechnicianDocumentSerializer,
+    TechnicianDocumentUploadSerializer,
+    TechnicianProfileUpdateSerializer,
+    TechnicianSkillSerializer,
 )
 from apps.technicians.services import (
     assign_technician,
+    decide_kyc,
+    ensure_kyc_editable,
     get_eligible_technicians,
     get_technician_earnings,
     get_technician_performance,
     remove_technician_assignment,
+    submit_kyc,
 )
 
 
@@ -181,6 +189,126 @@ class TechnicianSelfProfileView(APIView):
     def get(self, request):
         return Response(TechnicianProfileSerializer(_own_technician_profile(request.user), context={"request": request}).data)
 
+    @extend_schema(
+        summary="Update my KYC details",
+        description="Partners fill these in during sign-up. Allowed only while KYC is pending or rejected.",
+        request=TechnicianProfileUpdateSerializer,
+        responses={status.HTTP_200_OK: TechnicianProfileSerializer},
+    )
+    def patch(self, request):
+        profile = _own_technician_profile(request.user)
+        ensure_kyc_editable(profile)
+        serializer = TechnicianProfileUpdateSerializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            profile = serializer.save()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        return Response(TechnicianProfileSerializer(_own_technician_profile(request.user), context={"request": request}).data)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSkillListView(generics.ListAPIView):
+    """Services a partner can choose to offer during sign-up."""
+
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = TechnicianSkillSerializer
+    pagination_class = None
+    queryset = TechnicianSkill.objects.filter(is_active=True).order_by("name")
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianDocumentListView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(summary="List my KYC documents", responses={status.HTTP_200_OK: TechnicianDocumentSerializer(many=True)})
+    def get(self, request):
+        profile = _own_technician_profile(request.user)
+        return Response(TechnicianDocumentSerializer(profile.documents.all(), many=True, context={"request": request}).data)
+
+    @extend_schema(
+        summary="Upload a KYC document",
+        description="multipart/form-data with doc_type and file (jpg, png, webp, heic or pdf, up to 8 MB). Uploading Aadhaar, PAN or photo again replaces the previous one.",
+        request={"multipart/form-data": TechnicianDocumentUploadSerializer},
+        responses={status.HTTP_201_CREATED: TechnicianDocumentSerializer},
+    )
+    def post(self, request):
+        profile = _own_technician_profile(request.user)
+        ensure_kyc_editable(profile)
+        serializer = TechnicianDocumentUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document = TechnicianDocument(technician=profile, **serializer.validated_data)
+        try:
+            document.full_clean()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        with transaction.atomic():
+            if document.doc_type != TechnicianDocumentType.CERTIFICATE:
+                profile.documents.filter(doc_type=document.doc_type).delete()
+            document.save()
+        return Response(TechnicianDocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianDocumentDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(summary="Remove a KYC document", responses={status.HTTP_204_NO_CONTENT: None})
+    def delete(self, request, document_id):
+        profile = _own_technician_profile(request.user)
+        ensure_kyc_editable(profile)
+        deleted, _ = profile.documents.filter(id=document_id).delete()
+        if not deleted:
+            raise NotFound("Document not found.")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianKycSubmitView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(
+        summary="Submit my KYC for review",
+        description="Requires name, city, pincode, at least one service, and Aadhaar front/back, PAN and photo. Lists what is missing otherwise.",
+        request=None,
+        responses={status.HTTP_200_OK: TechnicianProfileSerializer},
+    )
+    def post(self, request):
+        profile = submit_kyc(_own_technician_profile(request.user))
+        return Response(TechnicianProfileSerializer(profile, context={"request": request}).data)
+
+
+@extend_schema(tags=["Admin - Technicians"])
+class AdminTechnicianKycView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def _profile(self, technician_id):
+        return generics.get_object_or_404(TechnicianProfile.objects.prefetch_related("skills", "service_areas", "supported_services__category"), id=technician_id)
+
+    @extend_schema(summary="Get a technician's KYC details and documents", responses={status.HTTP_200_OK: OpenApiTypes.OBJECT})
+    def get(self, request, technician_id):
+        profile = self._profile(technician_id)
+        return Response({
+            "profile": TechnicianProfileSerializer(profile, context={"request": request}).data,
+            "documents": TechnicianDocumentSerializer(profile.documents.all(), many=True, context={"request": request}).data,
+        })
+
+    @extend_schema(summary="Approve or reject a technician's KYC", request=KycDecisionSerializer, responses={status.HTTP_200_OK: TechnicianProfileSerializer})
+    def post(self, request, technician_id):
+        serializer = KycDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        approve = serializer.validated_data["decision"] == "APPROVE"
+        profile = decide_kyc(profile=self._profile(technician_id), approve=approve, note=serializer.validated_data.get("note", ""))
+        audit_event(
+            action=AuditAction.TECHNICIAN_KYC_APPROVED if approve else AuditAction.TECHNICIAN_KYC_REJECTED,
+            actor=request.user,
+            request=request,
+            resource_type="technician",
+            resource_id=profile.id,
+            metadata={"note": profile.verification_note},
+        )
+        return Response(TechnicianProfileSerializer(profile, context={"request": request}).data)
+
 
 @extend_schema(tags=["Technician"])
 class TechnicianSelfReviewListView(generics.ListAPIView):
@@ -290,6 +418,9 @@ class AdminTechnicianListView(generics.ListAPIView):
             .filter(is_active=True)
             .order_by("display_name")
         )
+        verification = self.request.query_params.get("verification", "").upper()
+        if verification:
+            queryset = queryset.filter(background_verification_status=verification)
         booking_id = self.request.query_params.get("booking_id")
         if not booking_id:
             return queryset
@@ -303,7 +434,10 @@ class AdminTechnicianListView(generics.ListAPIView):
     @extend_schema(
         summary="List active technicians for admin",
         description="Returns active technician profiles for booking assignment. Pass booking_id to list only eligible technicians.",
-        parameters=[OpenApiParameter("booking_id", OpenApiTypes.UUID, OpenApiParameter.QUERY)],
+        parameters=[
+            OpenApiParameter("booking_id", OpenApiTypes.UUID, OpenApiParameter.QUERY),
+            OpenApiParameter("verification", str, OpenApiParameter.QUERY, enum=["PENDING", "UNDER_REVIEW", "VERIFIED", "REJECTED", "SUSPENDED"]),
+        ],
         responses={status.HTTP_200_OK: TechnicianProfileSerializer(many=True)},
     )
     def get(self, request, *args, **kwargs):
