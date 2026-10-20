@@ -286,3 +286,34 @@ def test_earnings_list_completed_jobs_with_collection_method(technician_client, 
     assert finished["collection_method"] == "UPI"
     assert Decimal(finished["collected_by_you"]) == Decimal("1200.00")
     assert Decimal(report["job_value_total"]) == Decimal("1499.00") * 3
+
+
+def test_device_registration_and_job_assigned_push(technician_client, technician, jobs, settings, django_capture_on_commit_callbacks):
+    from unittest import mock
+
+    from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, PushDevice
+    from apps.technicians.services import assign_technician
+
+    settings.PUSH_NOTIFICATION_PROVIDER = "apps.notifications.providers.ExpoPushProvider"
+    token = "ExponentPushToken[abc123]"
+    registered = technician_client.post("/api/v1/notifications/devices/", {"token": token, "platform": "ANDROID"}, format="json")
+    rejected = technician_client.post("/api/v1/notifications/devices/", {"token": "not-a-token", "platform": "ANDROID"}, format="json")
+    assert registered.status_code == 204 and rejected.status_code == 400
+    assert PushDevice.objects.get(token=token).user == technician.user
+
+    job = jobs[3]
+    job.booking_status = BookingStatus.CONFIRMED
+    job.assigned_technician = None
+    job.save(update_fields=["booking_status", "assigned_technician"])
+    technician.service_areas.add(job.time_slot.service_area)
+    admin = user_factory("+919876543306", role=UserRole.ADMIN, is_staff=True)
+    response = mock.Mock(status_code=200, **{"json.return_value": {"data": [{"status": "ok", "id": "ticket-1"}]}})
+    with mock.patch("apps.notifications.providers.requests.post", return_value=response) as post, django_capture_on_commit_callbacks(execute=True):
+        assign_technician(booking_id=job.id, technician_id=technician.id, assigned_by=admin)
+
+    push = Notification.objects.get(event=NotificationEvent.JOB_ASSIGNED)
+    assert push.channel == NotificationChannel.PUSH and push.recipient == technician.user
+    assert push.status == "SENT" and push.provider_message_id == "ticket-1"
+    sent = post.call_args.kwargs["json"][0]
+    assert sent["to"] == token and sent["data"]["booking_id"] == str(job.id)
+    assert "Open PurplePartner to accept" in sent["body"]

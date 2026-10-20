@@ -47,7 +47,7 @@ def emit_notification_event(*, event, recipient, booking=None, channels=None, pa
 
 
 def send_notification(notification, *, raise_on_failure=False):
-    provider = get_notification_provider()
+    provider = get_push_provider() if notification.channel == NotificationChannel.PUSH else get_notification_provider()
     notification.send_attempts += 1
     try:
         result = provider.send(notification)
@@ -81,6 +81,10 @@ def get_notification_provider():
     return import_string(provider_path)()
 
 
+def get_push_provider():
+    return import_string(getattr(settings, "PUSH_NOTIFICATION_PROVIDER", "apps.notifications.providers.LocalNotificationProvider"))()
+
+
 def _title_for_event(event):
     titles = {
         NotificationEvent.BOOKING_RECEIVED: "Booking received",
@@ -101,11 +105,14 @@ def _title_for_event(event):
         NotificationEvent.REFUND_INITIATED: "Refund initiated",
         NotificationEvent.REFUND_COMPLETED: "Refund completed",
         NotificationEvent.REVIEW_REQUEST: "Review request",
+        NotificationEvent.JOB_ASSIGNED: "New job assigned",
     }
     return titles.get(event, "Purple Squad update")
 
 
 def _message_for_event(event, booking):
+    if event == NotificationEvent.JOB_ASSIGNED:
+        return _job_assigned_message(booking)
     booking_number = booking.booking_number if booking else "your booking"
     messages = {
         NotificationEvent.BOOKING_RECEIVED: "Your booking has been received. Our Purple Squad team will contact you within 10 minutes to confirm the service and technician details.",
@@ -128,3 +135,10 @@ def _message_for_event(event, booking):
         NotificationEvent.REVIEW_REQUEST: f"Thank you for choosing Purple Squad. Please share your service experience for {booking_number}.",
     }
     return messages.get(event, f"Update for {booking_number}.")
+
+
+def _job_assigned_message(booking):
+    if not booking:
+        return "A new job has been assigned to you."
+    when = f"{booking.service_date.strftime('%d %b')}, {booking.time_slot.start_time.strftime('%I:%M %p').lstrip('0')}"
+    return f"{booking.service.name} on {when} ({booking.booking_number}). Open PurplePartner to accept."

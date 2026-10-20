@@ -280,6 +280,12 @@ NOTIFICATION_PROVIDER = env(
     "NOTIFICATION_PROVIDER",
     default="apps.notifications.providers.LocalNotificationProvider",
 )
+PUSH_NOTIFICATION_PROVIDER = env(
+    "PUSH_NOTIFICATION_PROVIDER",
+    default="apps.notifications.providers.ExpoPushProvider",
+)
+EXPO_PUSH_URL = env("EXPO_PUSH_URL", default="https://exp.host/--/api/v2/push/send")
+EXPO_PUSH_ACCESS_TOKEN = env("EXPO_PUSH_ACCESS_TOKEN", default="")
 SHOW_API_DOCS = env.bool("SHOW_API_DOCS", default=DEBUG)
 ENABLE_DJANGO_ADMIN = env.bool("ENABLE_DJANGO_ADMIN", default=DEBUG)
 

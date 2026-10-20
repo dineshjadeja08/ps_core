@@ -37,3 +37,5 @@ REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"].update(  # noqa: F405
 # Schema tests must not depend on a developer's production-like .env.
 SHOW_API_DOCS = True
 ENABLE_DJANGO_ADMIN = True
+
+PUSH_NOTIFICATION_PROVIDER = "apps.notifications.providers.LocalNotificationProvider"

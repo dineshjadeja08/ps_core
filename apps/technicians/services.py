@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory
-from apps.notifications.models import NotificationEvent
+from apps.notifications.models import NotificationChannel, NotificationEvent
 from apps.notifications.services import emit_notification_event
 from apps.reviews.models import Review
 from apps.technicians.models import (
@@ -168,6 +168,12 @@ def assign_technician(*, booking_id, technician_id, assigned_by, notes="", reaso
         recipient=booking.customer,
         booking=booking,
         payload={"technician_id": str(technician.id)},
+    )
+    emit_notification_event(
+        event=NotificationEvent.JOB_ASSIGNED,
+        recipient=technician.user,
+        booking=booking,
+        channels=(NotificationChannel.PUSH,),
     )
     return assignment
 

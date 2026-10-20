@@ -101,3 +101,37 @@ class Msg91WhatsAppNotificationProvider(BaseNotificationProvider):
         if status in {"error", "failed", "failure"} or not (message_id or status in {"success", "sent", "accepted"}):
             raise ValueError("MSG91 rejected the WhatsApp notification.")
         return NotificationDeliveryResult(provider=self.provider_name, provider_message_id=str(message_id or notification.id))
+
+
+class ExpoPushProvider(BaseNotificationProvider):
+    """Sends PUSH notifications to every active Expo push token of the recipient."""
+
+    provider_name = "expo-push"
+    timeout_seconds = 10
+
+    def send(self, notification):
+        from apps.notifications.models import PushDevice
+
+        devices = list(PushDevice.objects.filter(user=notification.recipient, is_active=True)) if notification.recipient else []
+        if not devices:
+            return NotificationDeliveryResult(provider=self.provider_name, provider_message_id="no-devices")
+        data = {"event": notification.event, **(notification.payload or {})}
+        if notification.booking_id:
+            data["booking_id"] = str(notification.booking_id)
+        messages = [
+            {"to": device.token, "title": notification.title, "body": notification.message, "data": data, "sound": "default", "priority": "high", "channelId": "jobs"}
+            for device in devices
+        ]
+        headers = {"accept": "application/json", "content-type": "application/json"}
+        if getattr(settings, "EXPO_PUSH_ACCESS_TOKEN", ""):
+            headers["authorization"] = f"Bearer {settings.EXPO_PUSH_ACCESS_TOKEN}"
+        response = requests.post(settings.EXPO_PUSH_URL, json=messages, headers=headers, timeout=self.timeout_seconds)
+        response.raise_for_status()
+        tickets = response.json().get("data", [])
+        stale = [device.id for device, ticket in zip(devices, tickets) if (ticket.get("details") or {}).get("error") == "DeviceNotRegistered"]
+        if stale:
+            PushDevice.objects.filter(id__in=stale).update(is_active=False)
+        ids = [ticket.get("id", "") for ticket in tickets if ticket.get("status") == "ok"]
+        if not ids:
+            raise ValueError(f"Expo rejected every push message: {tickets}")
+        return NotificationDeliveryResult(provider=self.provider_name, provider_message_id=",".join(ids)[:128])

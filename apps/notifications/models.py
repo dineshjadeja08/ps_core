@@ -32,6 +32,7 @@ class NotificationEvent(models.TextChoices):
     REFUND_INITIATED = "REFUND_INITIATED", "Refund initiated"
     REFUND_COMPLETED = "REFUND_COMPLETED", "Refund completed"
     REVIEW_REQUEST = "REVIEW_REQUEST", "Review request"
+    JOB_ASSIGNED = "JOB_ASSIGNED", "Job assigned to technician"
 
 
 class NotificationStatus(models.TextChoices):
@@ -75,3 +76,25 @@ class Notification(BaseModel):
 
     def __str__(self):
         return f"{self.event} {self.channel} {self.status}"
+
+
+class PushPlatform(models.TextChoices):
+    ANDROID = "ANDROID", "Android"
+    IOS = "IOS", "iOS"
+
+
+class PushDevice(BaseModel):
+    """An Expo push token for one installed app, so the backend can notify that user."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="push_devices")
+    token = models.CharField(max_length=255, unique=True)
+    platform = models.CharField(max_length=16, choices=PushPlatform.choices)
+    app = models.CharField(max_length=32, default="partner")
+    is_active = models.BooleanField(default=True)
+    last_seen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "is_active"])]
+
+    def __str__(self):
+        return f"{self.user} {self.platform}"

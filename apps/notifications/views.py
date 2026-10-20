@@ -11,10 +11,11 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.accounts.permissions import IsAdminRole
-from apps.notifications.models import Notification, NotificationStatus
-from apps.notifications.serializers import NotificationActionSerializer, NotificationSerializer
+from apps.notifications.models import Notification, NotificationStatus, PushDevice
+from apps.notifications.serializers import NotificationActionSerializer, NotificationSerializer, PushDeviceSerializer
 from apps.notifications.services import send_notification
 
 
@@ -163,3 +164,23 @@ class AdminNotificationViewSet(
         notification.updated_at = timezone.now()
         notification = send_notification(notification)
         return Response(NotificationSerializer(notification).data)
+
+
+@extend_schema(tags=["Notifications"])
+class PushDeviceView(APIView):
+    """Register or remove this device's Expo push token for the signed-in user."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(summary="Register a push token", request=PushDeviceSerializer, responses={status.HTTP_204_NO_CONTENT: None})
+    def post(self, request):
+        serializer = PushDeviceSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        # A token belongs to one installed app; if someone else signed in on this phone before, it moves to this user.
+        PushDevice.objects.update_or_create(token=serializer.validated_data["token"], defaults={**serializer.validated_data, "user": request.user, "is_active": True})
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(summary="Remove a push token (on logout)", request=PushDeviceSerializer, responses={status.HTTP_204_NO_CONTENT: None})
+    def delete(self, request):
+        PushDevice.objects.filter(user=request.user, token=request.data.get("token", "")).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

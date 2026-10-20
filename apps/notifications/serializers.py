@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.notifications.models import Notification
+from apps.notifications.models import Notification, PushPlatform
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -45,3 +45,9 @@ class NotificationSerializer(serializers.ModelSerializer):
 
 class NotificationActionSerializer(serializers.Serializer):
     reason = serializers.CharField(required=False, allow_blank=True)
+
+
+class PushDeviceSerializer(serializers.Serializer):
+    token = serializers.RegexField(r"^Expo(nent)?PushToken\[[^\]]+\]$", max_length=255, error_messages={"invalid": "Not an Expo push token."})
+    platform = serializers.ChoiceField(choices=PushPlatform.choices)
+    app = serializers.ChoiceField(choices=(("partner", "Partner app"), ("customer", "Customer app")), default="partner")
