@@ -1,5 +1,7 @@
 from django.db import transaction
-from django.db.models import Avg, Count, Sum
+from decimal import Decimal
+
+from django.db.models import Avg, Count, Prefetch, Sum
 from django.utils import timezone
 from rest_framework import serializers
 
@@ -146,9 +148,13 @@ def assign_technician(*, booking_id, technician_id, assigned_by, notes="", reaso
             notes=notes,
         )
 
+    if booking.assigned_technician_id != technician.user_id:
+        # A new technician has to accept the job themselves.
+        booking.accepted_at = None
+        booking.arrived_at = None
     booking.assigned_technician = technician.user
     booking.booking_status = BookingStatus.TECHNICIAN_ASSIGNED
-    booking.save(update_fields=["assigned_technician", "booking_status", "updated_at"])
+    booking.save(update_fields=["assigned_technician", "booking_status", "accepted_at", "arrived_at", "updated_at"])
 
     BookingStatusHistory.objects.create(
         booking=booking,
@@ -277,3 +283,55 @@ def get_technician_performance(*, user, period="overall"):
 
 def start_label(period):
     return timezone.datetime.strptime(period, "%Y-%m").strftime("%b %Y")
+
+
+def get_technician_earnings(*, user, period="overall"):
+    """Completed jobs with what the customer paid online and what the technician collected on site.
+
+    Commission and payouts are not modelled yet, so amounts are job values, not take-home pay.
+    """
+    from apps.payments.models import Payment, PaymentProvider, PaymentType
+
+    jobs = (
+        Booking.objects.filter(assigned_technician=user, booking_status__in=COMPLETED_STATUSES)
+        .select_related("service")
+        .prefetch_related(
+            Prefetch(
+                "payments",
+                queryset=Payment.objects.filter(provider=PaymentProvider.OFFLINE, payment_type=PaymentType.BALANCE).order_by("-created_at"),
+                to_attr="offline_balance_payments",
+            )
+        )
+        .order_by("-completed_at", "-service_date")
+    )
+    if period != "overall":
+        try:
+            start = timezone.datetime.strptime(period, "%Y-%m").date()
+        except ValueError as exc:
+            raise serializers.ValidationError({"period": "Use 'overall' or YYYY-MM."}) from exc
+        jobs = jobs.filter(service_date__gte=start, service_date__lt=_month_start(start, -1))
+
+    rows = []
+    for job in jobs:
+        payment = job.offline_balance_payments[0] if job.offline_balance_payments else None
+        rows.append(
+            {
+                "id": str(job.id),
+                "booking_number": job.booking_number,
+                "service_name": job.service.name,
+                "service_date": job.service_date,
+                "completed_at": job.completed_at,
+                "total_amount": job.total_amount,
+                "paid_online": job.advance_paid,
+                "collected_by_you": job.balance_collected,
+                "collection_method": (payment.provider_payload or {}).get("method", "") if payment else "",
+            }
+        )
+    return {
+        "period": "Overall" if period == "overall" else start_label(period),
+        "job_count": len(rows),
+        "job_value_total": sum((row["total_amount"] for row in rows), Decimal("0.00")),
+        "collected_by_you_total": sum((row["collected_by_you"] for row in rows), Decimal("0.00")),
+        "paid_online_total": sum((row["paid_online"] for row in rows), Decimal("0.00")),
+        "jobs": rows,
+    }

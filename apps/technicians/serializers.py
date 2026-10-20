@@ -3,7 +3,7 @@ from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.technicians.models import TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import JobPhoto, JobPhotoKind, TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
 
 
 class TechnicianSkillSerializer(serializers.ModelSerializer):
@@ -210,3 +210,49 @@ class TechnicianPerformanceSerializer(serializers.Serializer):
     penalty_amount = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
     needs_attention = serializers.BooleanField()
     trend = TechnicianTrendPointSerializer(many=True)
+
+
+class StartJobSerializer(serializers.Serializer):
+    otp = serializers.RegexField(r"^\d{4}$", error_messages={"invalid": "Enter the 4-digit OTP from the customer."})
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class JobPhotoSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobPhoto
+        fields = ("id", "kind", "url", "created_at")
+        read_only_fields = ("id", "url", "created_at")
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_url(self, obj):
+        request = self.context.get("request")
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class JobPhotoUploadSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=JobPhotoKind.choices)
+    file = serializers.FileField()
+
+
+class TechnicianEarningJobSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    booking_number = serializers.CharField()
+    service_name = serializers.CharField()
+    service_date = serializers.DateField()
+    completed_at = serializers.DateTimeField(allow_null=True)
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    paid_online = serializers.DecimalField(max_digits=10, decimal_places=2)
+    collected_by_you = serializers.DecimalField(max_digits=10, decimal_places=2)
+    collection_method = serializers.CharField(allow_blank=True)
+
+
+class TechnicianEarningsSerializer(serializers.Serializer):
+    period = serializers.CharField()
+    job_count = serializers.IntegerField()
+    job_value_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    collected_by_you_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_online_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    jobs = TechnicianEarningJobSerializer(many=True)

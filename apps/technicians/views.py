@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
@@ -13,9 +14,10 @@ from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking
 from apps.bookings.serializers import AdminBookingSerializer, BalanceCollectionSerializer, BookingOperationSerializer, BookingSerializer
-from apps.bookings.services import complete_booking, mark_technician_en_route, start_booking
+from apps.bookings.models import BookingStatus
+from apps.bookings.services import accept_job, complete_booking, mark_technician_arrived, mark_technician_en_route, start_job_with_otp
 from apps.reviews.models import Review
-from apps.technicians.models import TechnicianLeave, TechnicianProfile
+from apps.technicians.models import JobPhoto, TechnicianLeave, TechnicianProfile
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
@@ -25,10 +27,15 @@ from apps.technicians.serializers import (
     TechnicianPerformanceSerializer,
     TechnicianProfileSerializer,
     TechnicianReviewSerializer,
+    StartJobSerializer,
+    JobPhotoSerializer,
+    JobPhotoUploadSerializer,
+    TechnicianEarningsSerializer,
 )
 from apps.technicians.services import (
     assign_technician,
     get_eligible_technicians,
+    get_technician_earnings,
     get_technician_performance,
     remove_technician_assignment,
 )
@@ -47,7 +54,7 @@ class TechnicianJobViewSet(
     def get_queryset(self):
         return (
             Booking.objects.filter(assigned_technician=self.request.user)
-            .select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician")
+            .select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician__technician_profile")
             .prefetch_related("status_history")
             .order_by("service_date", "time_slot__start_time")
         )
@@ -57,18 +64,38 @@ class TechnicianJobViewSet(
         serializer.is_valid(raise_exception=True)
         notes = serializer.validated_data.get("notes", "")
         booking = self.get_object()
-        if operation == "en-route":
+        # Partner flow: Accept → On the way → Arrived → Start (customer OTP) → Complete.
+        if operation == "accept":
+            booking = accept_job(booking_id=booking.id, changed_by=request.user)
+        elif operation == "en-route":
+            if booking.accepted_at is None:
+                raise ValidationError("Accept the job before you start travelling.")
             booking = mark_technician_en_route(booking_id=booking.id, changed_by=request.user, notes=notes)
+        elif operation == "arrived":
+            booking = mark_technician_arrived(booking_id=booking.id, changed_by=request.user)
         elif operation == "start":
-            booking = start_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
+            if booking.booking_status != BookingStatus.TECHNICIAN_EN_ROUTE or booking.arrived_at is None:
+                raise ValidationError("Mark that you have arrived before starting the job.")
+            otp = StartJobSerializer(data=request.data)
+            otp.is_valid(raise_exception=True)
+            booking = start_job_with_otp(booking_id=booking.id, changed_by=request.user, otp=otp.validated_data["otp"], notes=notes)
         elif operation == "complete":
             booking = complete_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
         return Response(AdminBookingSerializer(booking, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="accept")
+    def accept(self, request, *args, **kwargs):
+        return self._operate(request, "accept")
 
     @action(detail=True, methods=["post"], url_path="en-route")
     def en_route(self, request, *args, **kwargs):
         return self._operate(request, "en-route")
 
+    @action(detail=True, methods=["post"], url_path="arrived")
+    def arrived(self, request, *args, **kwargs):
+        return self._operate(request, "arrived")
+
+    @extend_schema(summary="Start job with the customer's service OTP", request=StartJobSerializer, responses={status.HTTP_200_OK: AdminBookingSerializer})
     @action(detail=True, methods=["post"], url_path="start")
     def start(self, request, *args, **kwargs):
         return self._operate(request, "start")
@@ -76,6 +103,44 @@ class TechnicianJobViewSet(
     @action(detail=True, methods=["post"], url_path="complete")
     def complete(self, request, *args, **kwargs):
         return self._operate(request, "complete")
+
+    @extend_schema(summary="List completion photos for my job", responses={status.HTTP_200_OK: JobPhotoSerializer(many=True)})
+    @action(detail=True, methods=["get"], url_path="photos")
+    def photos(self, request, *args, **kwargs):
+        booking = self.get_object()
+        return Response(JobPhotoSerializer(booking.job_photos.all(), many=True, context={"request": request}).data)
+
+    @extend_schema(
+        summary="Upload a completion photo or receipt",
+        description="multipart/form-data with kind (BEFORE, AFTER, RECEIPT) and file (jpg, png, webp, heic or pdf, up to 8 MB). Only while the job is in progress.",
+        request={"multipart/form-data": JobPhotoUploadSerializer},
+        responses={status.HTTP_201_CREATED: JobPhotoSerializer},
+    )
+    @photos.mapping.post
+    def upload_photo(self, request, *args, **kwargs):
+        booking = self.get_object()
+        if booking.booking_status != BookingStatus.IN_PROGRESS:
+            raise ValidationError("Photos can only be added while the job is in progress.")
+        serializer = JobPhotoUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        photo = JobPhoto(booking=booking, uploaded_by=request.user, **serializer.validated_data)
+        try:
+            photo.full_clean()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        photo.save()
+        return Response(JobPhotoSerializer(photo, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(summary="Remove a completion photo", responses={status.HTTP_204_NO_CONTENT: None})
+    @action(detail=True, methods=["delete"], url_path=r"photos/(?P<photo_id>[0-9a-f-]{36})")
+    def delete_photo(self, request, photo_id, *args, **kwargs):
+        booking = self.get_object()
+        if booking.booking_status != BookingStatus.IN_PROGRESS:
+            raise ValidationError("Photos can only be removed while the job is in progress.")
+        deleted, _ = booking.job_photos.filter(id=photo_id).delete()
+        if not deleted:
+            raise NotFound("Photo not found.")
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
         summary="Record balance collected from the customer",
@@ -186,6 +251,31 @@ class TechnicianSelfPerformanceView(APIView):
     def get(self, request):
         report = get_technician_performance(user=request.user, period=request.query_params.get("period", "overall"))
         return Response(TechnicianPerformanceSerializer(report).data)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfEarningsView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(
+        summary="Get my completed-job earnings",
+        description="Job values of completed jobs and how they were paid. Commission and payouts are not included yet.",
+        parameters=[OpenApiParameter("period", str, OpenApiParameter.QUERY, description="'overall' (default) or YYYY-MM")],
+        responses={status.HTTP_200_OK: TechnicianEarningsSerializer},
+    )
+    def get(self, request):
+        report = get_technician_earnings(user=request.user, period=request.query_params.get("period", "overall"))
+        return Response(TechnicianEarningsSerializer(report).data)
+
+
+@extend_schema(tags=["Admin - Bookings"])
+class AdminJobPhotoListView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="List completion photos for a booking", responses={status.HTTP_200_OK: JobPhotoSerializer(many=True)})
+    def get(self, request, booking_id):
+        photos = JobPhoto.objects.filter(booking_id=booking_id)
+        return Response(JobPhotoSerializer(photos, many=True, context={"request": request}).data)
 
 
 class AdminTechnicianListView(generics.ListAPIView):

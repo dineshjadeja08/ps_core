@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import FileExtensionValidator
 from django.db import models
 
 from apps.bookings.models import Booking
@@ -259,3 +260,33 @@ class TechnicianAssignment(BaseModel):
         if self.unassigned_at is None:
             self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class JobPhotoKind(models.TextChoices):
+    BEFORE = "BEFORE", "Before work"
+    AFTER = "AFTER", "After work"
+    RECEIPT = "RECEIPT", "Invoice / receipt"
+
+
+def validate_upload_size(file):
+    if file.size > 8 * 1024 * 1024:
+        raise ValidationError("File must be 8 MB or smaller.")
+
+
+UPLOAD_EXTENSIONS = FileExtensionValidator(["jpg", "jpeg", "png", "webp", "heic", "pdf"])
+
+
+class JobPhoto(BaseModel):
+    """Completion proof a technician uploads for a job: before/after photos and receipts."""
+
+    booking = models.ForeignKey(Booking, on_delete=models.CASCADE, related_name="job_photos")
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+")
+    kind = models.CharField(max_length=16, choices=JobPhotoKind.choices)
+    file = models.FileField(upload_to="jobs/photos/%Y/%m/", validators=[UPLOAD_EXTENSIONS, validate_upload_size])
+
+    class Meta:
+        ordering = ("created_at",)
+        indexes = [models.Index(fields=["booking", "kind"])]
+
+    def __str__(self):
+        return f"{self.booking} {self.kind}"

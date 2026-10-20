@@ -1,3 +1,4 @@
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
@@ -191,19 +192,85 @@ def generate_booking_number(*, for_date=None):
     return f"PS{period}{sequence.current_serial:04d}"
 
 
+START_OTP_MAX_ATTEMPTS = 5
+
+
 @transaction.atomic
-def start_booking(*, booking_id, changed_by, notes=""):
+def start_booking(*, booking_id, changed_by, notes="", otp_verified=False):
     booking = _lock_booking(booking_id)
     if booking.booking_status not in STARTABLE_STATUSES:
         raise serializers.ValidationError("Booking cannot be started from its current status.")
     if booking.assigned_technician_id is None:
         raise serializers.ValidationError("A technician must be assigned before starting the booking.")
+    if otp_verified:
+        booking.start_otp_verified_at = timezone.now()
+        booking.save(update_fields=["start_otp_verified_at", "updated_at"])
     return _transition_booking(
         booking=booking,
         to_status=BookingStatus.IN_PROGRESS,
         changed_by=changed_by,
         notes=notes or "Booking started.",
     )
+
+
+def start_job_with_otp(*, booking_id, changed_by, otp, notes=""):
+    """Technician start: the customer's 4-digit code must match. Wrong attempts are saved even though the start fails."""
+    if not _check_start_otp(booking_id, otp):
+        booking = Booking.objects.only("start_otp_attempts").get(id=booking_id)
+        remaining = max(0, START_OTP_MAX_ATTEMPTS - booking.start_otp_attempts)
+        if remaining == 0:
+            raise serializers.ValidationError({"otp": "Too many wrong OTPs. Ask Purple Squad support to start this job."})
+        raise serializers.ValidationError({"otp": f"Wrong service OTP. {remaining} attempt{'s' if remaining != 1 else ''} left."})
+    return start_booking(booking_id=booking_id, changed_by=changed_by, notes=notes, otp_verified=True)
+
+
+@transaction.atomic
+def _check_start_otp(booking_id, otp):
+    booking = _lock_booking(booking_id)
+    if booking.start_otp_attempts >= START_OTP_MAX_ATTEMPTS:
+        return False
+    if otp and secrets.compare_digest(str(otp), booking.start_otp):
+        return True
+    booking.start_otp_attempts += 1
+    booking.save(update_fields=["start_otp_attempts", "updated_at"])
+    return False
+
+
+@transaction.atomic
+def accept_job(*, booking_id, changed_by):
+    booking = _lock_booking(booking_id)
+    if booking.booking_status != BookingStatus.TECHNICIAN_ASSIGNED:
+        raise serializers.ValidationError("Only newly assigned jobs can be accepted.")
+    if booking.accepted_at is None:
+        booking.accepted_at = timezone.now()
+        booking.save(update_fields=["accepted_at", "updated_at"])
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=booking.booking_status,
+            to_status=booking.booking_status,
+            changed_by=changed_by,
+            notes="Technician accepted the job.",
+        )
+    return booking
+
+
+@transaction.atomic
+def mark_technician_arrived(*, booking_id, changed_by):
+    booking = _lock_booking(booking_id)
+    if booking.booking_status != BookingStatus.TECHNICIAN_EN_ROUTE:
+        raise serializers.ValidationError("Start travelling before marking arrival.")
+    if booking.arrived_at is None:
+        booking.arrived_at = timezone.now()
+        booking.save(update_fields=["arrived_at", "updated_at"])
+        BookingStatusHistory.objects.create(
+            booking=booking,
+            from_status=booking.booking_status,
+            to_status=booking.booking_status,
+            changed_by=changed_by,
+            notes="Technician arrived at the customer location.",
+        )
+        emit_notification_event(event=NotificationEvent.TECHNICIAN_ARRIVED, recipient=booking.customer, booking=booking)
+    return booking
 
 
 @transaction.atomic

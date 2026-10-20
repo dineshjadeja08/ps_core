@@ -154,13 +154,23 @@ def test_technician_portal_lists_only_assigned_jobs_and_updates_progress(booking
     assert listed.json()["count"] == 1
     assert listed.json()["results"][0]["customer_phone"] == booking.customer.phone_number
 
+    accepted = client.post(f"/api/v1/technician/jobs/{booking.id}/accept/", {}, format="json")
+    assert accepted.status_code == 200
+    assert accepted.json()["accepted_at"]
+
     en_route = client.post(f"/api/v1/technician/jobs/{booking.id}/en-route/", {}, format="json")
     assert en_route.status_code == 200
     assert en_route.json()["booking_status"] == BookingStatus.TECHNICIAN_EN_ROUTE
 
-    started = client.post(f"/api/v1/technician/jobs/{booking.id}/start/", {}, format="json")
+    arrived = client.post(f"/api/v1/technician/jobs/{booking.id}/arrived/", {}, format="json")
+    assert arrived.status_code == 200
+    assert arrived.json()["arrived_at"]
+
+    booking.refresh_from_db()
+    started = client.post(f"/api/v1/technician/jobs/{booking.id}/start/", {"otp": booking.start_otp}, format="json")
     assert started.status_code == 200
     assert started.json()["booking_status"] == BookingStatus.IN_PROGRESS
+    assert started.json()["start_otp_verified"] is True
 
 
 @pytest.mark.django_db

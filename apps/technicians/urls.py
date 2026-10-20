@@ -3,10 +3,12 @@ from rest_framework.routers import DefaultRouter
 
 from apps.technicians.views import (
     AdminTechnicianLeaveViewSet,
+    AdminJobPhotoListView,
     AdminTechnicianListView,
     AssignTechnicianView,
     RemoveTechnicianAssignmentView,
     TechnicianJobViewSet,
+    TechnicianSelfEarningsView,
     TechnicianSelfLeaveViewSet,
     TechnicianSelfPerformanceView,
     TechnicianSelfProfileView,
@@ -22,7 +24,9 @@ urlpatterns = [
     path("", include(router.urls)),
     path("technician/profile/", TechnicianSelfProfileView.as_view(), name="technician-profile"),
     path("technician/reviews/", TechnicianSelfReviewListView.as_view(), name="technician-reviews"),
+    path("technician/earnings/", TechnicianSelfEarningsView.as_view(), name="technician-earnings"),
     path("technician/performance/", TechnicianSelfPerformanceView.as_view(), name="technician-performance"),
+    path("admin/bookings/<uuid:booking_id>/photos/", AdminJobPhotoListView.as_view(), name="admin-booking-photos"),
     path("admin/technicians/", AdminTechnicianListView.as_view(), name="admin-technician-list"),
     path(
         "admin/bookings/<uuid:booking_id>/assign-technician/",
