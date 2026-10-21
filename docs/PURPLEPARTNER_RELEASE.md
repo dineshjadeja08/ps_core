@@ -33,4 +33,4 @@ Adds what the PurplePartner app (technician app), the customer app's service OTP
 2. Optional environment variable: `PUSH_NOTIFICATION_PROVIDER`. It defaults to `apps.notifications.fcm.FirebaseCloudMessagingProvider`, using the existing Firebase Admin credentials.
 3. KYC documents and job photos use the default media storage (Cloudinary in production).
 4. Release the customer app and website that show the service OTP **together with** this backend, otherwise technicians cannot start jobs. Until then, admins can start jobs from the admin panel.
-5. Create Technician Skills in Django admin so new partners can pick the services they offer.
+5. The migration job now also runs `sync_technician_skills`, which creates one technician skill per active service category, so new partners have services to pick during KYC. It never edits or removes skills.

@@ -114,3 +114,21 @@ def test_admin_rejection_needs_note_and_lets_partner_fix(firebase_phone, setting
     assert rejected.json()["verification_note"] == "PAN photo is blurry."
     assert partner.get("/api/v1/technician/profile/").json()["background_verification_status"] == "REJECTED"
     assert partner.post("/api/v1/technician/documents/", {"doc_type": "PAN", "file": _file()}, format="multipart").status_code == 201
+
+
+def test_sync_technician_skills_adds_missing_categories_only():
+    from django.core.management import call_command
+
+    from apps.catalogue.models import ServiceCategory
+
+    ServiceCategory.objects.create(name="AC Service", slug="ac-service")
+    ServiceCategory.objects.create(name="Plumbing", slug="plumbing")
+    ServiceCategory.objects.create(name="Retired", slug="retired", is_active=False)
+    existing = TechnicianSkill.objects.create(name="ac service", description="kept as is")
+
+    call_command("sync_technician_skills")
+    call_command("sync_technician_skills")
+
+    assert sorted(TechnicianSkill.objects.values_list("name", flat=True)) == ["Plumbing", "ac service"]
+    existing.refresh_from_db()
+    assert existing.description == "kept as is"
