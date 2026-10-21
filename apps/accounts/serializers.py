@@ -9,6 +9,8 @@ from apps.accounts.validators import normalize_phone_number
 
 class FirebaseLoginRequestSerializer(serializers.Serializer):
     id_token = serializers.CharField()
+    # "partner" signs up unknown numbers as pending technicians instead of customers.
+    app = serializers.ChoiceField(choices=(("customer", "Customer app"), ("partner", "Partner app")), default="customer", required=False)
 
 
 class DevPhoneLoginRequestSerializer(serializers.Serializer):

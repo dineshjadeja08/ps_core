@@ -1,10 +1,11 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.technicians.models import TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import JobPhoto, JobPhotoKind, TechnicianDocument, TechnicianDocumentType, TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
 from apps.accounts.models import User, UserRole
 from apps.accounts.validators import normalize_phone_number
 from apps.catalogue.models import Service
@@ -55,6 +56,8 @@ class TechnicianProfileSerializer(serializers.ModelSerializer):
             "joined_at",
             "id_document_available",
             "address_document_available",
+            "kyc_submitted_at",
+            "verification_note",
         )
 
     @extend_schema_field(OpenApiTypes.OBJECT)
@@ -270,3 +273,153 @@ class TechnicianLeaveSerializer(serializers.ModelSerializer):
         if not obj.is_active:
             return "REJECTED"
         return "APPROVED" if obj.approved_by_id else "PENDING"
+
+
+class TechnicianLeaveRequestSerializer(serializers.Serializer):
+    start_at = serializers.DateTimeField()
+    end_at = serializers.DateTimeField()
+    reason = serializers.CharField(max_length=160)
+
+    def validate(self, attrs):
+        if attrs["start_at"] >= attrs["end_at"]:
+            raise serializers.ValidationError({"end_at": "End time must be after start time."})
+        if attrs["end_at"] <= timezone.now():
+            raise serializers.ValidationError({"start_at": "Leave must be in the future."})
+        return attrs
+
+
+class TechnicianReviewSerializer(serializers.Serializer):
+    id = serializers.UUIDField(read_only=True)
+    booking_number = serializers.CharField(source="booking.booking_number", read_only=True)
+    customer_name = serializers.SerializerMethodField()
+    service_name = serializers.CharField(source="booking.service.name", read_only=True)
+    rating = serializers.IntegerField(read_only=True)
+    comment = serializers.CharField(read_only=True)
+    created_at = serializers.DateTimeField(read_only=True)
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_customer_name(self, obj):
+        # First name only: technicians don't need the customer's full identity after the job.
+        profile = getattr(obj.customer, "customer_profile", None)
+        name = (profile.display_name if profile else "") or obj.customer.first_name
+        return name.split(" ")[0] if name else "Customer"
+
+
+class TechnicianTrendPointSerializer(serializers.Serializer):
+    month = serializers.CharField()
+    jobs = serializers.IntegerField()
+    earnings = serializers.FloatField()
+    rating = serializers.FloatField(allow_null=True)
+
+
+class TechnicianPerformanceSerializer(serializers.Serializer):
+    period = serializers.CharField()
+    completion_rate = serializers.IntegerField()
+    completed = serializers.IntegerField()
+    total = serializers.IntegerField()
+    cancelled = serializers.IntegerField()
+    open = serializers.IntegerField()
+    gross_revenue = serializers.DecimalField(max_digits=12, decimal_places=2)
+    average_rating = serializers.FloatField(allow_null=True)
+    review_count = serializers.IntegerField()
+    penalties = serializers.IntegerField(allow_null=True)
+    penalty_amount = serializers.DecimalField(max_digits=12, decimal_places=2, allow_null=True)
+    needs_attention = serializers.BooleanField()
+    trend = TechnicianTrendPointSerializer(many=True)
+
+
+class StartJobSerializer(serializers.Serializer):
+    otp = serializers.RegexField(r"^\d{4}$", error_messages={"invalid": "Enter the 4-digit OTP from the customer."})
+    notes = serializers.CharField(required=False, allow_blank=True)
+
+
+class JobPhotoSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = JobPhoto
+        fields = ("id", "kind", "url", "created_at")
+        read_only_fields = ("id", "url", "created_at")
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_url(self, obj):
+        request = self.context.get("request")
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class JobPhotoUploadSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=JobPhotoKind.choices)
+    file = serializers.FileField()
+
+
+class TechnicianEarningJobSerializer(serializers.Serializer):
+    id = serializers.UUIDField()
+    booking_number = serializers.CharField()
+    service_name = serializers.CharField()
+    service_date = serializers.DateField()
+    completed_at = serializers.DateTimeField(allow_null=True)
+    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    paid_online = serializers.DecimalField(max_digits=10, decimal_places=2)
+    collected_by_you = serializers.DecimalField(max_digits=10, decimal_places=2)
+    collection_method = serializers.CharField(allow_blank=True)
+
+
+class TechnicianEarningsSerializer(serializers.Serializer):
+    period = serializers.CharField()
+    job_count = serializers.IntegerField()
+    job_value_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    collected_by_you_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    paid_online_total = serializers.DecimalField(max_digits=12, decimal_places=2)
+    jobs = TechnicianEarningJobSerializer(many=True)
+
+
+class TechnicianProfileUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(max_length=150, required=False)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    alternate_phone = serializers.CharField(max_length=16, required=False, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False)
+    pincode = serializers.RegexField(r"^\d{6}$", required=False, error_messages={"invalid": "Enter a 6-digit pincode."})
+    experience_years = serializers.DecimalField(max_digits=4, decimal_places=1, min_value=0, max_value=60, required=False)
+    languages = serializers.ListField(child=serializers.CharField(max_length=40), required=False, max_length=10)
+    skill_ids = serializers.ListField(child=serializers.UUIDField(), required=False, max_length=30)
+
+    def validate_skill_ids(self, value):
+        skills = list(TechnicianSkill.objects.filter(id__in=value, is_active=True))
+        if len(skills) != len(set(value)):
+            raise serializers.ValidationError("One or more services were not found.")
+        return skills
+
+    def update(self, profile, validated_data):
+        skills = validated_data.pop("skill_ids", None)
+        for field, value in validated_data.items():
+            setattr(profile, field, value)
+        profile.save()
+        if skills is not None:
+            profile.skills.set(skills)
+        return profile
+
+
+class TechnicianDocumentSerializer(serializers.ModelSerializer):
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TechnicianDocument
+        fields = ("id", "doc_type", "url", "created_at")
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_url(self, obj):
+        request = self.context.get("request")
+        url = obj.file.url
+        return request.build_absolute_uri(url) if request else url
+
+
+class TechnicianDocumentUploadSerializer(serializers.Serializer):
+    doc_type = serializers.ChoiceField(choices=TechnicianDocumentType.choices)
+    file = serializers.FileField()
+
+
+class KycDecisionSerializer(serializers.Serializer):
+    decision = serializers.ChoiceField(choices=(("APPROVE", "Approve"), ("REJECT", "Reject")))
+    note = serializers.CharField(required=False, allow_blank=True, max_length=1000)

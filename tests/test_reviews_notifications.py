@@ -256,7 +256,7 @@ def test_notification_provider_failure_is_recorded(settings, customer, service, 
         recipient=customer,
         booking=booking,
         event=NotificationEvent.SERVICE_COMPLETED,
-        channel=NotificationChannel.PUSH,
+        channel=NotificationChannel.SMS,
         title="Service completed",
         message="Done.",
     )
@@ -268,6 +268,27 @@ def test_notification_provider_failure_is_recorded(settings, customer, service, 
     assert notification.status == NotificationStatus.FAILED
     assert notification.provider == "failing-test"
     assert "provider unavailable" in notification.error_message
+
+
+@pytest.mark.django_db
+def test_push_provider_failure_is_recorded(settings, customer, service, address, slot):
+    settings.PUSH_NOTIFICATION_PROVIDER = "tests.test_reviews_notifications.FailingNotificationProvider"
+    booking = create_booking(customer, service, address, slot)
+    notification = Notification.objects.create(
+        recipient=customer,
+        booking=booking,
+        event=NotificationEvent.SERVICE_COMPLETED,
+        channel=NotificationChannel.PUSH,
+        title="Service completed",
+        message="Done.",
+    )
+    from apps.notifications.services import send_notification
+
+    send_notification(notification)
+
+    notification.refresh_from_db()
+    assert notification.status == NotificationStatus.FAILED
+    assert notification.provider == "failing-test"
 
 
 @pytest.mark.django_db

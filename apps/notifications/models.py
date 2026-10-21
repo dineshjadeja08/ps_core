@@ -30,6 +30,7 @@ class NotificationEvent(models.TextChoices):
     REFUND_INITIATED = "REFUND_INITIATED", "Refund initiated"
     REFUND_COMPLETED = "REFUND_COMPLETED", "Refund completed"
     REVIEW_REQUEST = "REVIEW_REQUEST", "Review request"
+    JOB_ASSIGNED = "JOB_ASSIGNED", "Job assigned to technician"
 
 
 class NotificationStatus(models.TextChoices):

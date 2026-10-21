@@ -6,6 +6,7 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,21 +15,43 @@ from apps.accounts.permissions import IsAdminRole, IsTechnicianRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking, BookingStatus
-from apps.bookings.serializers import AdminBookingSerializer, BookingActivitySerializer, BookingOperationSerializer, BookingSerializer
+from apps.bookings.serializers import AdminBookingSerializer, BalanceCollectionSerializer, BookingActivitySerializer, BookingOperationSerializer, BookingSerializer
 from apps.catalogue.models import Service
 from apps.locations.models import ServiceArea
-from apps.bookings.services import complete_booking, mark_technician_arrived, mark_technician_en_route, start_booking
-from apps.technicians.models import TechnicianLeave, TechnicianProfile, TechnicianSkill
+from apps.bookings.services import accept_job, complete_booking, mark_technician_arrived, mark_technician_en_route, start_booking, start_job_with_otp
+from apps.reviews.models import Review
+from apps.technicians.models import JobPhoto, TechnicianDocument, TechnicianDocumentType, TechnicianLeave, TechnicianProfile, TechnicianSkill
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
+    TechnicianLeaveRequestSerializer,
     TechnicianLeaveReviewSerializer,
     TechnicianLeaveSerializer,
     AdminTechnicianProfileSerializer,
     AdminTechnicianWriteSerializer,
+    TechnicianPerformanceSerializer,
+    TechnicianProfileSerializer,
+    TechnicianReviewSerializer,
+    StartJobSerializer,
+    JobPhotoSerializer,
+    JobPhotoUploadSerializer,
+    TechnicianEarningsSerializer,
+    KycDecisionSerializer,
+    TechnicianDocumentSerializer,
+    TechnicianDocumentUploadSerializer,
+    TechnicianProfileUpdateSerializer,
+    TechnicianSkillSerializer,
 )
 from apps.technicians.services import (
-    TECHNICIAN_BUSY_STATUSES, assign_technician, get_technician_eligibility_errors, remove_technician_assignment,
+    TECHNICIAN_BUSY_STATUSES,
+    assign_technician,
+    decide_kyc,
+    ensure_kyc_editable,
+    get_technician_earnings,
+    get_technician_eligibility_errors,
+    get_technician_performance,
+    remove_technician_assignment,
+    submit_kyc,
 )
 
 
@@ -50,7 +73,7 @@ class TechnicianJobViewSet(
                 assigned_technician__technician_profile__employment_status="ACTIVE",
                 assigned_technician__technician_profile__background_verification_status="VERIFIED",
             ).exclude(assigned_technician__technician_profile__availability_status="SUSPENDED")
-            .select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician")
+            .select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician__technician_profile")
             .prefetch_related("status_history")
             .order_by("service_date", "time_slot__start_time")
         )
@@ -66,20 +89,38 @@ class TechnicianJobViewSet(
         serializer.is_valid(raise_exception=True)
         notes = serializer.validated_data.get("notes", "")
         booking = self.get_object()
-        if operation == "en-route":
+        # Partner flow: Accept → On the way → Arrived → Start (customer OTP) → Complete.
+        if operation == "accept":
+            booking = accept_job(booking_id=booking.id, changed_by=request.user)
+        elif operation == "en-route":
             booking = mark_technician_en_route(booking_id=booking.id, changed_by=request.user, notes=notes)
         elif operation == "arrived":
             booking = mark_technician_arrived(booking_id=booking.id, changed_by=request.user, notes=notes)
         elif operation == "start":
-            booking = start_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
+            if booking.booking_status == BookingStatus.IN_PROGRESS:
+                return Response(AdminBookingSerializer(booking, context={"request": request}).data)
+            if booking.booking_status != BookingStatus.TECHNICIAN_ARRIVED:
+                raise ValidationError("Mark that you have arrived before starting the job.")
+            otp = StartJobSerializer(data=request.data)
+            otp.is_valid(raise_exception=True)
+            booking = start_job_with_otp(booking_id=booking.id, changed_by=request.user, otp=otp.validated_data["otp"], notes=notes)
         elif operation == "complete":
             booking = complete_booking(booking_id=booking.id, changed_by=request.user, notes=notes)
         return Response(AdminBookingSerializer(booking, context={"request": request}).data)
+
+    @action(detail=True, methods=["post"], url_path="accept")
+    def accept(self, request, *args, **kwargs):
+        return self._operate(request, "accept")
 
     @action(detail=True, methods=["post"], url_path="en-route")
     def en_route(self, request, *args, **kwargs):
         return self._operate(request, "en-route")
 
+    @action(detail=True, methods=["post"], url_path="arrived")
+    def arrived(self, request, *args, **kwargs):
+        return self._operate(request, "arrived")
+
+    @extend_schema(summary="Start job with the customer's service OTP", request=StartJobSerializer, responses={status.HTTP_200_OK: AdminBookingSerializer})
     @action(detail=True, methods=["post"], url_path="start")
     def start(self, request, *args, **kwargs):
         return self._operate(request, "start")
@@ -88,9 +129,299 @@ class TechnicianJobViewSet(
     def complete(self, request, *args, **kwargs):
         return self._operate(request, "complete")
 
-    @action(detail=True, methods=["post"], url_path="arrived")
-    def arrived(self, request, *args, **kwargs):
-        return self._operate(request, "arrived")
+    @extend_schema(summary="List completion photos for my job", responses={status.HTTP_200_OK: JobPhotoSerializer(many=True)})
+    @action(detail=True, methods=["get"], url_path="photos")
+    def photos(self, request, *args, **kwargs):
+        booking = self.get_object()
+        return Response(JobPhotoSerializer(booking.job_photos.all(), many=True, context={"request": request}).data)
+
+    @extend_schema(
+        summary="Upload a completion photo or receipt",
+        description="multipart/form-data with kind (BEFORE, AFTER, RECEIPT) and file (jpg, png, webp, heic or pdf, up to 8 MB). Only while the job is in progress.",
+        request={"multipart/form-data": JobPhotoUploadSerializer},
+        responses={status.HTTP_201_CREATED: JobPhotoSerializer},
+    )
+    @photos.mapping.post
+    def upload_photo(self, request, *args, **kwargs):
+        booking = self.get_object()
+        if booking.booking_status != BookingStatus.IN_PROGRESS:
+            raise ValidationError("Photos can only be added while the job is in progress.")
+        serializer = JobPhotoUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        photo = JobPhoto(booking=booking, uploaded_by=request.user, **serializer.validated_data)
+        try:
+            photo.full_clean()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        photo.save()
+        return Response(JobPhotoSerializer(photo, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(summary="Remove a completion photo", responses={status.HTTP_204_NO_CONTENT: None})
+    @action(detail=True, methods=["delete"], url_path=r"photos/(?P<photo_id>[0-9a-f-]{36})")
+    def delete_photo(self, request, photo_id, *args, **kwargs):
+        booking = self.get_object()
+        if booking.booking_status != BookingStatus.IN_PROGRESS:
+            raise ValidationError("Photos can only be removed while the job is in progress.")
+        deleted, _ = booking.job_photos.filter(id=photo_id).delete()
+        if not deleted:
+            raise NotFound("Photo not found.")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        summary="Record balance collected from the customer",
+        description="Records cash/UPI/card the technician collected on site. Required before completing a job with a balance due.",
+        request=BalanceCollectionSerializer,
+        responses={status.HTTP_200_OK: AdminBookingSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="collect-balance")
+    def collect_balance(self, request, *args, **kwargs):
+        booking = self.get_object()
+        serializer = BalanceCollectionSerializer(data=request.data, context={"request": request, "booking_id": booking.id})
+        serializer.is_valid(raise_exception=True)
+        booking = serializer.save()
+        audit_event(
+            action=AuditAction.TECHNICIAN_RECORD_BALANCE,
+            actor=request.user,
+            request=request,
+            resource_type="booking",
+            resource_id=booking.id,
+            metadata=serializer.validated_data,
+        )
+        return Response(AdminBookingSerializer(booking, context={"request": request}).data)
+
+
+
+def _own_technician_profile(user):
+    profile = TechnicianProfile.objects.filter(user=user).prefetch_related("skills", "service_areas", "supported_services__category").first()
+    if profile is None:
+        raise NotFound("No technician profile is linked to this account.")
+    return profile
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfProfileView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(summary="Get my technician profile", responses={status.HTTP_200_OK: TechnicianProfileSerializer})
+    def get(self, request):
+        return Response(TechnicianProfileSerializer(_own_technician_profile(request.user), context={"request": request}).data)
+
+    @extend_schema(
+        summary="Update my KYC details",
+        description="Partners fill these in during sign-up. Allowed only while KYC is pending or rejected.",
+        request=TechnicianProfileUpdateSerializer,
+        responses={status.HTTP_200_OK: TechnicianProfileSerializer},
+    )
+    def patch(self, request):
+        profile = _own_technician_profile(request.user)
+        ensure_kyc_editable(profile)
+        serializer = TechnicianProfileUpdateSerializer(profile, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        try:
+            profile = serializer.save()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        return Response(TechnicianProfileSerializer(_own_technician_profile(request.user), context={"request": request}).data)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSkillListView(generics.ListAPIView):
+    """Services a partner can choose to offer during sign-up."""
+
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = TechnicianSkillSerializer
+    pagination_class = None
+    queryset = TechnicianSkill.objects.filter(is_active=True).order_by("name")
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianDocumentListView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(summary="List my KYC documents", responses={status.HTTP_200_OK: TechnicianDocumentSerializer(many=True)})
+    def get(self, request):
+        profile = _own_technician_profile(request.user)
+        return Response(TechnicianDocumentSerializer(profile.documents.all(), many=True, context={"request": request}).data)
+
+    @extend_schema(
+        summary="Upload a KYC document",
+        description="multipart/form-data with doc_type and file (jpg, png, webp, heic or pdf, up to 8 MB). Uploading Aadhaar, PAN or photo again replaces the previous one.",
+        request={"multipart/form-data": TechnicianDocumentUploadSerializer},
+        responses={status.HTTP_201_CREATED: TechnicianDocumentSerializer},
+    )
+    def post(self, request):
+        profile = _own_technician_profile(request.user)
+        ensure_kyc_editable(profile)
+        serializer = TechnicianDocumentUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document = TechnicianDocument(technician=profile, **serializer.validated_data)
+        try:
+            document.full_clean()
+        except DjangoValidationError as exc:
+            raise ValidationError(exc.message_dict) from exc
+        with transaction.atomic():
+            if document.doc_type != TechnicianDocumentType.CERTIFICATE:
+                profile.documents.filter(doc_type=document.doc_type).delete()
+            document.save()
+        return Response(TechnicianDocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianDocumentDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(summary="Remove a KYC document", responses={status.HTTP_204_NO_CONTENT: None})
+    def delete(self, request, document_id):
+        profile = _own_technician_profile(request.user)
+        ensure_kyc_editable(profile)
+        deleted, _ = profile.documents.filter(id=document_id).delete()
+        if not deleted:
+            raise NotFound("Document not found.")
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianKycSubmitView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(
+        summary="Submit my KYC for review",
+        description="Requires name, city, pincode, at least one service, and Aadhaar front/back, PAN and photo. Lists what is missing otherwise.",
+        request=None,
+        responses={status.HTTP_200_OK: TechnicianProfileSerializer},
+    )
+    def post(self, request):
+        profile = submit_kyc(_own_technician_profile(request.user))
+        return Response(TechnicianProfileSerializer(profile, context={"request": request}).data)
+
+
+@extend_schema(tags=["Admin - Technicians"])
+class AdminTechnicianKycView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def _profile(self, technician_id):
+        return generics.get_object_or_404(TechnicianProfile.objects.prefetch_related("skills", "service_areas", "supported_services__category"), id=technician_id)
+
+    @extend_schema(summary="Get a technician's KYC details and documents", responses={status.HTTP_200_OK: OpenApiTypes.OBJECT})
+    def get(self, request, technician_id):
+        profile = self._profile(technician_id)
+        return Response({
+            "profile": TechnicianProfileSerializer(profile, context={"request": request}).data,
+            "documents": TechnicianDocumentSerializer(profile.documents.all(), many=True, context={"request": request}).data,
+        })
+
+    @extend_schema(summary="Approve or reject a technician's KYC", request=KycDecisionSerializer, responses={status.HTTP_200_OK: TechnicianProfileSerializer})
+    def post(self, request, technician_id):
+        serializer = KycDecisionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        approve = serializer.validated_data["decision"] == "APPROVE"
+        profile = decide_kyc(profile=self._profile(technician_id), approve=approve, note=serializer.validated_data.get("note", ""))
+        audit_event(
+            action=AuditAction.TECHNICIAN_KYC_APPROVED if approve else AuditAction.TECHNICIAN_KYC_REJECTED,
+            actor=request.user,
+            request=request,
+            resource_type="technician",
+            resource_id=profile.id,
+            metadata={"note": profile.verification_note},
+        )
+        return Response(TechnicianProfileSerializer(profile, context={"request": request}).data)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfReviewListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = TechnicianReviewSerializer
+
+    def get_queryset(self):
+        return (
+            Review.objects.filter(technician=self.request.user, is_visible=True)
+            .select_related("booking__service", "customer__customer_profile")
+            .order_by("-created_at")
+        )
+
+    @extend_schema(summary="List reviews customers left for me")
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfLeaveViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+    serializer_class = TechnicianLeaveSerializer
+
+    def get_queryset(self):
+        return TechnicianLeave.objects.filter(technician__user=self.request.user).select_related("technician", "approved_by").order_by("-start_at")
+
+    @extend_schema(summary="List my leave requests")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Request leave",
+        description="Creates a pending leave request. An admin approves or rejects it.",
+        request=TechnicianLeaveRequestSerializer,
+        responses={status.HTTP_201_CREATED: TechnicianLeaveSerializer},
+    )
+    def create(self, request, *args, **kwargs):
+        serializer = TechnicianLeaveRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        profile = _own_technician_profile(request.user)
+        data = serializer.validated_data
+        overlapping = TechnicianLeave.objects.filter(
+            technician=profile, is_active=True, start_at__lt=data["end_at"], end_at__gt=data["start_at"]
+        ).exists()
+        if overlapping:
+            raise ValidationError({"start_at": "You already have a leave request for these dates."})
+        leave = TechnicianLeave.objects.create(technician=profile, **data)
+        audit_event(
+            action=AuditAction.TECHNICIAN_LEAVE_CREATED,
+            actor=request.user,
+            request=request,
+            resource_type="technician_leave",
+            resource_id=leave.id,
+            metadata={"technician_id": str(profile.id), "self_service": True},
+        )
+        return Response(TechnicianLeaveSerializer(leave, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfPerformanceView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(
+        summary="Get my performance report",
+        parameters=[OpenApiParameter("period", str, OpenApiParameter.QUERY, description="'overall' (default) or YYYY-MM")],
+        responses={status.HTTP_200_OK: TechnicianPerformanceSerializer},
+    )
+    def get(self, request):
+        report = get_technician_performance(user=request.user, period=request.query_params.get("period", "overall"))
+        return Response(TechnicianPerformanceSerializer(report).data)
+
+
+@extend_schema(tags=["Technician"])
+class TechnicianSelfEarningsView(APIView):
+    permission_classes = [IsAuthenticated, IsTechnicianRole]
+
+    @extend_schema(
+        summary="Get my completed-job earnings",
+        description="Job values of completed jobs and how they were paid. Commission and payouts are not included yet.",
+        parameters=[OpenApiParameter("period", str, OpenApiParameter.QUERY, description="'overall' (default) or YYYY-MM")],
+        responses={status.HTTP_200_OK: TechnicianEarningsSerializer},
+    )
+    def get(self, request):
+        report = get_technician_earnings(user=request.user, period=request.query_params.get("period", "overall"))
+        return Response(TechnicianEarningsSerializer(report).data)
+
+
+@extend_schema(tags=["Admin - Bookings"])
+class AdminJobPhotoListView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="List completion photos for a booking", responses={status.HTTP_200_OK: JobPhotoSerializer(many=True)})
+    def get(self, request, booking_id):
+        photos = JobPhoto.objects.filter(booking_id=booking_id)
+        return Response(JobPhotoSerializer(photos, many=True, context={"request": request}).data)
+
 
 
 class AdminTechnicianQueryMixin:
@@ -131,6 +462,9 @@ class AdminTechnicianQueryMixin:
         active = self.request.query_params.get("is_active")
         if active in {"true", "false"}:
             queryset = queryset.filter(is_active=active == "true")
+        verification = self.request.query_params.get("verification", "").upper()
+        if verification:
+            queryset = queryset.filter(background_verification_status=verification)
         booking_id = self.request.query_params.get("booking_id")
         if not booking_id:
             return queryset
@@ -176,7 +510,10 @@ class AdminTechnicianListView(AdminTechnicianQueryMixin, generics.ListCreateAPIV
     @extend_schema(
         summary="List technicians for admin",
         description="Active technicians by default. include_inactive=true includes inactive profiles. Pass booking_id for eligibility and include_ineligible=true for reasons.",
-        parameters=[OpenApiParameter("booking_id", OpenApiTypes.UUID, OpenApiParameter.QUERY)],
+        parameters=[
+            OpenApiParameter("booking_id", OpenApiTypes.UUID, OpenApiParameter.QUERY),
+            OpenApiParameter("verification", str, OpenApiParameter.QUERY, enum=["PENDING", "UNDER_REVIEW", "VERIFIED", "REJECTED", "SUSPENDED"]),
+        ],
         responses={status.HTTP_200_OK: AdminTechnicianProfileSerializer(many=True)},
     )
     def get(self, request, *args, **kwargs):
