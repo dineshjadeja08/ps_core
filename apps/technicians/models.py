@@ -110,7 +110,7 @@ class TechnicianProfile(BaseModel):
     internal_notes = models.TextField(blank=True)
     kyc_submitted_at = models.DateTimeField(null=True, blank=True)
     # Shown to the partner when their KYC is rejected.
-    verification_note = models.TextField(blank=True)
+    verification_note = models.TextField(blank=True, default="", db_default="")
 
     class Meta:
         ordering = ("display_name",)

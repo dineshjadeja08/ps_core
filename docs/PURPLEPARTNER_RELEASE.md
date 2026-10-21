@@ -29,6 +29,7 @@ Adds what the PurplePartner app (technician app), the customer app's service OTP
    - `bookings/0008_booking_start_otp_and_job_steps` (includes the OTP backfill)
    - `notifications/0009_job_assigned_event`
    - `technicians/0005_job_photos_and_partner_kyc`
+   - `bookings/0009_rollback_safe_defaults` and `technicians/0006_rollback_safe_defaults`, which add database defaults so the previous revision can still create bookings and technicians while traffic moves, and after a rollback
 2. Optional environment variable: `PUSH_NOTIFICATION_PROVIDER`. It defaults to `apps.notifications.fcm.FirebaseCloudMessagingProvider`, using the existing Firebase Admin credentials.
 3. KYC documents and job photos use the default media storage (Cloudinary in production).
 4. Release the customer app and website that show the service OTP **together with** this backend, otherwise technicians cannot start jobs. Until then, admins can start jobs from the admin panel.

@@ -72,9 +72,10 @@ class Booking(BaseModel):
     cancelled_at = models.DateTimeField(null=True, blank=True)
     is_manual_work_order = models.BooleanField(default=False)
     # The customer reads this code to the technician, who must enter it to start the job.
-    start_otp = models.CharField(max_length=4, blank=True)
+    # Database defaults keep inserts from the previous release working during deploys and rollbacks.
+    start_otp = models.CharField(max_length=4, blank=True, default="", db_default="")
     start_otp_verified_at = models.DateTimeField(null=True, blank=True)
-    start_otp_attempts = models.PositiveSmallIntegerField(default=0)
+    start_otp_attempts = models.PositiveSmallIntegerField(default=0, db_default=0)
     accepted_at = models.DateTimeField(null=True, blank=True)
     arrived_at = models.DateTimeField(null=True, blank=True)
 
