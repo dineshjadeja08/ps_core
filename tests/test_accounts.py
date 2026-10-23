@@ -132,6 +132,40 @@ def test_admin_password_login_issues_tokens_when_mfa_is_temporarily_disabled():
 
 
 @pytest.mark.django_db
+@override_settings(ADMIN_MFA_ENABLED=False)
+def test_password_login_accepts_legacy_local_indian_superuser_phone():
+    user = User.objects.create(
+        phone_number="9629025814",
+        password="",
+        role=UserRole.SUPER_ADMIN,
+        is_staff=True,
+        is_superuser=True,
+        is_verified=True,
+    )
+    user.set_password("StrongPass123")
+    user.save(update_fields=["password"])
+
+    response = APIClient().post(
+        "/api/v1/auth/password/login/",
+        {"phone_number": "+919629025814", "password": "StrongPass123"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user"]["id"] == str(user.id)
+    user.refresh_from_db()
+    assert user.phone_number == "+919629025814"
+
+
+@pytest.mark.django_db
+def test_superuser_creation_normalizes_ten_digit_indian_phone():
+    user = User.objects.create_superuser(phone_number="96290 25814", password="StrongPass123")
+
+    assert user.phone_number == "+919629025814"
+    assert user.is_superuser is True
+
+
+@pytest.mark.django_db
 def test_refresh_token_rotates_and_old_token_is_blacklisted():
     client = APIClient()
     login = auth_response(client)

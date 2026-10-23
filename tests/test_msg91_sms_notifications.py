@@ -3,7 +3,7 @@ from unittest.mock import Mock
 import pytest
 
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent
-from apps.notifications.providers import Msg91SmsNotificationProvider
+from apps.notifications.providers import Msg91SmsNotificationProvider, Msg91WhatsAppNotificationProvider
 from tests.factories import user_factory
 
 
@@ -82,3 +82,43 @@ def test_msg91_sms_provider_rejects_missing_configuration(settings):
 
     with pytest.raises(ValueError, match="not fully configured"):
         Msg91SmsNotificationProvider().send(notification)
+
+
+@pytest.mark.django_db
+def test_msg91_whatsapp_provider_sends_lead_payment_link_template(settings, monkeypatch):
+    settings.MSG91_WHATSAPP_ENABLED = True
+    settings.MSG91_WHATSAPP_AUTH_KEY = "whatsapp-auth-key"
+    settings.MSG91_WHATSAPP_INTEGRATED_NUMBER = "917676076361"
+    settings.MSG91_WHATSAPP_PAYMENT_TEMPLATE = "approved_payment_link"
+    settings.MSG91_WHATSAPP_TEMPLATE_NAMESPACE = "sample-namespace"
+    notification = Notification.objects.create(
+        event=NotificationEvent.PAYMENT_PENDING,
+        channel=NotificationChannel.WHATSAPP,
+        title="Payment link",
+        message="Pay for your Purple Squad service.",
+        payload={
+            "lead_payment_link": True,
+            "mobile": "9876543210",
+            "template_values": ["Ravi", "₹299", "https://purplesquad.in/book/pay/example"],
+        },
+    )
+    response = Mock(status_code=200)
+    response.json.return_value = {"type": "success", "request_id": "wa-request-1"}
+    post = Mock(return_value=response)
+    monkeypatch.setattr("apps.notifications.providers.requests.post", post)
+
+    result = Msg91WhatsAppNotificationProvider().send(notification)
+
+    assert result.provider == "msg91-whatsapp"
+    assert result.provider_message_id == "wa-request-1"
+    request = post.call_args.kwargs
+    assert request["headers"]["authkey"] == "whatsapp-auth-key"
+    payload = request["json"]["payload"]["template"]
+    assert payload["name"] == "approved_payment_link"
+    assert payload["namespace"] == "sample-namespace"
+    assert payload["to_and_components"][0]["to"] == ["919876543210"]
+    assert payload["to_and_components"][0]["components"] == {
+        "body_1": {"type": "text", "value": "Ravi"},
+        "body_2": {"type": "text", "value": "₹299"},
+        "body_3": {"type": "text", "value": "https://purplesquad.in/book/pay/example"},
+    }

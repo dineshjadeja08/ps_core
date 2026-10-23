@@ -97,32 +97,46 @@ class Msg91WhatsAppNotificationProvider(BaseNotificationProvider):
     timeout_seconds = 10
 
     def send(self, notification):
-        if notification.channel != "WHATSAPP" or notification.event != "TECHNICIAN_ASSIGNED":
-            raise ValueError("This WhatsApp provider only supports technician assignment alerts.")
-        if not settings.MSG91_WHATSAPP_ENABLED:
-            raise ValueError("Technician WhatsApp notifications are disabled.")
-        from apps.technicians.models import TechnicianAssignment
-
         data = notification.payload or {}
-        assignment = TechnicianAssignment.objects.select_related("technician", "booking").filter(
-            id=data.get("assignment_id"), technician__user_id=notification.recipient_id,
-            booking_id=notification.booking_id, unassigned_at__isnull=True,
-        ).first()
-        if not assignment or assignment.booking.assigned_technician_id != notification.recipient_id:
-            raise ValueError("This technician assignment is no longer active.")
-        if not assignment.technician.whatsapp_notifications_enabled:
-            raise ValueError("The technician has not opted in to WhatsApp assignment notifications.")
+        is_lead_payment = notification.event == "PAYMENT_PENDING" and data.get("lead_payment_link") is True
+        if notification.channel != "WHATSAPP" or (notification.event != "TECHNICIAN_ASSIGNED" and not is_lead_payment):
+            raise ValueError("This WhatsApp provider only supports technician assignment and lead payment-link alerts.")
+        if not settings.MSG91_WHATSAPP_ENABLED:
+            raise ValueError("WhatsApp notifications are disabled.")
+        if is_lead_payment:
+            template_name = settings.MSG91_WHATSAPP_PAYMENT_TEMPLATE
+            phone_number = data.get("mobile")
+            values = data.get("template_values")
+            if not template_name:
+                raise ValueError("The approved MSG91 lead-payment WhatsApp template is not configured.")
+            if not isinstance(values, list) or len(values) != 3 or any(not str(value).strip() for value in values):
+                raise ValueError("The lead-payment WhatsApp template requires customer name, amount, and payment-link variables.")
+        else:
+            from apps.technicians.models import TechnicianAssignment
+
+            assignment = TechnicianAssignment.objects.select_related("technician", "booking").filter(
+                id=data.get("assignment_id"), technician__user_id=notification.recipient_id,
+                booking_id=notification.booking_id, unassigned_at__isnull=True,
+            ).first()
+            if not assignment or assignment.booking.assigned_technician_id != notification.recipient_id:
+                raise ValueError("This technician assignment is no longer active.")
+            if not assignment.technician.whatsapp_notifications_enabled:
+                raise ValueError("The technician has not opted in to WhatsApp assignment notifications.")
+            template_name = settings.MSG91_WHATSAPP_TECHNICIAN_TEMPLATE
+            phone_number = assignment.technician.phone
+            values = data.get("template_values")
+            if not template_name:
+                raise ValueError("MSG91 WhatsApp notifications are not fully configured.")
+            if not isinstance(values, list) or len(values) != 8 or any(not str(value).strip() for value in values):
+                raise ValueError("Technician assignment template requires eight non-empty body variables.")
         auth_key = settings.MSG91_WHATSAPP_AUTH_KEY or settings.MSG91_AUTH_KEY
-        if not auth_key or not settings.MSG91_WHATSAPP_INTEGRATED_NUMBER or not settings.MSG91_WHATSAPP_TECHNICIAN_TEMPLATE:
+        if not auth_key or not settings.MSG91_WHATSAPP_INTEGRATED_NUMBER:
             raise ValueError("MSG91 WhatsApp notifications are not fully configured.")
-        values = data.get("template_values")
-        if not isinstance(values, list) or len(values) != 8 or any(not str(value).strip() for value in values):
-            raise ValueError("Technician assignment template requires eight non-empty body variables.")
         template = {
-            "name": settings.MSG91_WHATSAPP_TECHNICIAN_TEMPLATE,
+            "name": template_name,
             "language": {"code": settings.MSG91_WHATSAPP_TEMPLATE_LANGUAGE, "policy": "deterministic"},
             "to_and_components": [{
-                "to": [_normalise_mobile(assignment.technician.phone)],
+                "to": [_normalise_mobile(phone_number)],
                 "components": {f"body_{index}": {"type": "text", "value": " ".join(str(value).split())[:1024]}
                                for index, value in enumerate(values, 1)},
             }],

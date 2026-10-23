@@ -1,15 +1,23 @@
+from copy import copy
+from pathlib import Path
+
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import HttpResponse
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, F, Q
+from django.utils import timezone
+from django.utils.text import get_valid_filename
 from rest_framework.exceptions import ValidationError
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.accounts.models import User, UserRole
 from apps.accounts.permissions import IsAdminRole, IsTechnicianRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
@@ -19,13 +27,21 @@ from apps.catalogue.models import Service
 from apps.locations.models import ServiceArea
 from apps.bookings.services import complete_booking, mark_technician_arrived, mark_technician_en_route, start_booking
 from apps.technicians.models import TechnicianLeave, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import TechnicianCompanyUser, TechnicianDocument, TechnicianDocumentStatus
+from apps.technicians.private_documents import delete_private_document, read_private_document, store_private_document
 from apps.technicians.serializers import (
     AssignTechnicianRequestSerializer,
     RemoveTechnicianAssignmentRequestSerializer,
     TechnicianLeaveReviewSerializer,
     TechnicianLeaveSerializer,
     AdminTechnicianProfileSerializer,
+    AdminTechnicianDetailSerializer,
     AdminTechnicianWriteSerializer,
+    TechnicianCompanyUserCreateSerializer,
+    TechnicianCompanyUserSerializer,
+    TechnicianDocumentSerializer,
+    TechnicianDocumentUploadSerializer,
+    TechnicianDocumentVerificationSerializer,
 )
 from apps.technicians.services import (
     TECHNICIAN_BUSY_STATUSES, assign_technician, get_technician_eligibility_errors, remove_technician_assignment,
@@ -101,12 +117,33 @@ class AdminTechnicianQueryMixin:
         return AdminTechnicianProfileSerializer if self.request.method in {"GET", "HEAD"} else AdminTechnicianWriteSerializer
 
     def get_queryset(self):
+        today = timezone.localdate()
+        month_start = today.replace(day=1)
+        year_start = today.replace(month=1, day=1)
         queryset = (
-            TechnicianProfile.objects.select_related("user")
+            TechnicianProfile.objects.select_related("user", "sales_person_assigned")
             .prefetch_related("skills", "service_areas", "supported_services", "working_hours", "leaves")
             .annotate(
                 active_job_count=Count("user__assigned_bookings", distinct=True, filter=Q(user__assigned_bookings__booking_status__in=TECHNICIAN_BUSY_STATUSES)),
                 completed_jobs=Count("user__assigned_bookings", distinct=True, filter=Q(user__assigned_bookings__booking_status__in=[BookingStatus.COMPLETED, BookingStatus.CLOSED])),
+                monthly_job_count=Count(
+                    "user__assigned_bookings",
+                    distinct=True,
+                    filter=Q(
+                        user__assigned_bookings__booking_status__in=[BookingStatus.COMPLETED, BookingStatus.CLOSED],
+                        user__assigned_bookings__completed_at__date__gte=month_start,
+                        user__assigned_bookings__completed_at__date__lte=today,
+                    ),
+                ),
+                yearly_job_count=Count(
+                    "user__assigned_bookings",
+                    distinct=True,
+                    filter=Q(
+                        user__assigned_bookings__booking_status__in=[BookingStatus.COMPLETED, BookingStatus.CLOSED],
+                        user__assigned_bookings__completed_at__date__gte=year_start,
+                        user__assigned_bookings__completed_at__date__lte=today,
+                    ),
+                ),
                 cancelled_jobs=Count("user__assigned_bookings", distinct=True, filter=Q(user__assigned_bookings__booking_status=BookingStatus.CANCELLED)),
                 approved_rating=Avg("user__technician_reviews__rating", filter=Q(user__technician_reviews__is_visible=True)),
                 approved_review_count=Count("user__technician_reviews", distinct=True, filter=Q(user__technician_reviews__is_visible=True)),
@@ -186,8 +223,215 @@ class AdminTechnicianListView(AdminTechnicianQueryMixin, generics.ListCreateAPIV
 class AdminTechnicianDetailView(AdminTechnicianQueryMixin, generics.RetrieveUpdateAPIView):
     include_inactive = True
 
+    def get_serializer_class(self):
+        if self.request.method in {"GET", "HEAD"}:
+            return AdminTechnicianDetailSerializer
+        return AdminTechnicianWriteSerializer
+
     def perform_update(self, serializer):
         self.record_change(serializer)
+
+
+class AdminTechnicianDocumentsView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get_technician(self, pk):
+        return generics.get_object_or_404(TechnicianProfile, pk=pk)
+
+    @extend_schema(summary="List private technician documents", responses=TechnicianDocumentSerializer(many=True))
+    def get(self, request, pk):
+        technician = self.get_technician(pk)
+        documents = technician.documents.select_related("uploaded_by", "verified_by").all()
+        return Response(TechnicianDocumentSerializer(documents, many=True, context={"request": request}).data)
+
+    @extend_schema(summary="Upload or replace a private technician document", request=TechnicianDocumentUploadSerializer, responses=TechnicianDocumentSerializer)
+    def post(self, request, pk):
+        technician = self.get_technician(pk)
+        serializer = TechnicianDocumentUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded = serializer.validated_data["file"]
+        try:
+            backend, storage_id, resource_type = store_private_document(uploaded)
+        except Exception as exc:
+            from rest_framework.exceptions import APIException
+
+            raise APIException("Private document storage is unavailable. Check server storage configuration.") from exc
+        existing = TechnicianDocument.objects.filter(
+            technician=technician, document_type=serializer.validated_data["document_type"],
+        ).first()
+        try:
+            with transaction.atomic():
+                if existing:
+                    old_document = copy(existing)
+                    existing.storage_public_id = storage_id
+                    existing.storage_backend = backend
+                    existing.storage_resource_type = resource_type
+                    existing.original_name = get_valid_filename(Path(uploaded.name).name)[:255]
+                    existing.content_type = uploaded.content_type
+                    existing.file_size = uploaded.size
+                    existing.verification_status = TechnicianDocumentStatus.PENDING
+                    existing.verification_note = ""
+                    existing.uploaded_by = request.user
+                    existing.verified_by = None
+                    existing.verified_at = None
+                    existing.save()
+                    document = existing
+                else:
+                    old_document = None
+                    document = TechnicianDocument.objects.create(
+                        technician=technician,
+                        document_type=serializer.validated_data["document_type"],
+                        storage_public_id=storage_id,
+                        storage_backend=backend,
+                        storage_resource_type=resource_type,
+                        original_name=get_valid_filename(Path(uploaded.name).name)[:255],
+                        content_type=uploaded.content_type,
+                        file_size=uploaded.size,
+                        uploaded_by=request.user,
+                    )
+        except Exception:
+            from apps.technicians.private_documents import delete_private_document
+            from apps.technicians.models import TechnicianDocument as DocumentModel
+
+            orphan = DocumentModel(storage_public_id=storage_id, storage_backend=backend, storage_resource_type=resource_type)
+            try:
+                delete_private_document(orphan)
+            except Exception:
+                pass
+            raise
+        if old_document:
+            try:
+                delete_private_document(old_document)
+            except Exception:
+                pass
+        audit_event(
+            action=AuditAction.TECHNICIAN_DOCUMENT_UPLOADED, actor=request.user, request=request,
+            resource_type="technician_document", resource_id=document.id,
+            metadata={"technician_id": str(technician.id), "document_type": document.document_type, "replaced": bool(old_document)},
+        )
+        return Response(TechnicianDocumentSerializer(document, context={"request": request}).data, status=status.HTTP_201_CREATED)
+
+
+class AdminTechnicianDocumentContentView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    @extend_schema(summary="Preview/download a private technician document", responses={200: OpenApiTypes.BINARY})
+    def get(self, request, pk, document_id):
+        document = generics.get_object_or_404(
+            TechnicianDocument.objects.select_related("technician"), pk=document_id, technician_id=pk,
+        )
+        try:
+            content = read_private_document(document)
+        except Exception as exc:
+            from rest_framework.exceptions import APIException
+
+            raise APIException("Private document could not be retrieved from storage.") from exc
+        disposition = "inline" if request.query_params.get("download") != "true" else "attachment"
+        response = HttpResponse(content, content_type=document.content_type)
+        response["Content-Disposition"] = f'{disposition}; filename="{document.original_name.replace(chr(34), "")}"'
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+        return response
+
+
+class AdminTechnicianDocumentDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = TechnicianDocumentSerializer
+
+    @extend_schema(summary="Verify or reject a technician document", request=TechnicianDocumentVerificationSerializer, responses=TechnicianDocumentSerializer)
+    def patch(self, request, pk, document_id):
+        document = generics.get_object_or_404(TechnicianDocument, pk=document_id, technician_id=pk)
+        serializer = TechnicianDocumentVerificationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        document.verification_status = serializer.validated_data["verification_status"]
+        document.verification_note = serializer.validated_data.get("verification_note", "").strip()
+        document.verified_by = request.user
+        document.verified_at = timezone.now()
+        document.save(update_fields=["verification_status", "verification_note", "verified_by", "verified_at", "updated_at"])
+        audit_event(
+            action=AuditAction.TECHNICIAN_DOCUMENT_VERIFIED, actor=request.user, request=request,
+            resource_type="technician_document", resource_id=document.id,
+            metadata={"technician_id": str(pk), "document_type": document.document_type, "status": document.verification_status},
+        )
+        return Response(TechnicianDocumentSerializer(document, context={"request": request}).data)
+
+    @extend_schema(summary="Remove a technician document", responses={204: None})
+    def post(self, request, pk, document_id):
+        document = generics.get_object_or_404(TechnicianDocument, pk=document_id, technician_id=pk)
+        delete_private_document(document)
+        document.delete()
+        audit_event(
+            action=AuditAction.TECHNICIAN_DOCUMENT_DELETED, actor=request.user, request=request,
+            resource_type="technician_document", resource_id=document_id,
+            metadata={"technician_id": str(pk), "deleted": True},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminTechnicianCompanyUsersView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+
+    def get_technician(self, pk):
+        return generics.get_object_or_404(TechnicianProfile, pk=pk)
+
+    @extend_schema(summary="List company users for one technician", responses=TechnicianCompanyUserSerializer(many=True))
+    def get(self, request, pk):
+        technician = self.get_technician(pk)
+        memberships = technician.company_users.select_related("user").all()
+        return Response(TechnicianCompanyUserSerializer(memberships, many=True).data)
+
+    @extend_schema(summary="Add a company user by existing account phone number", request=TechnicianCompanyUserCreateSerializer, responses=TechnicianCompanyUserSerializer)
+    def post(self, request, pk):
+        technician = self.get_technician(pk)
+        serializer = TechnicianCompanyUserCreateSerializer(data=request.data, context={"technician": technician})
+        serializer.is_valid(raise_exception=True)
+        membership = serializer.save()
+        audit_event(
+            action=AuditAction.TECHNICIAN_COMPANY_USER_CHANGED, actor=request.user, request=request,
+            resource_type="technician_company_user", resource_id=membership.id,
+            metadata={"technician_id": str(pk), "role": membership.role, "added": True},
+        )
+        return Response(TechnicianCompanyUserSerializer(membership).data, status=status.HTTP_201_CREATED)
+
+
+class AdminTechnicianCompanyUserDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsAdminRole]
+    serializer_class = TechnicianCompanyUserSerializer
+
+    def get_membership(self, pk, user_id):
+        return generics.get_object_or_404(
+            TechnicianCompanyUser.objects.select_related("user"), pk=user_id, technician_id=pk,
+        )
+
+    @extend_schema(summary="Update a company user's role or active status", request=OpenApiTypes.OBJECT, responses=TechnicianCompanyUserSerializer)
+    def patch(self, request, pk, user_id):
+        membership = self.get_membership(pk, user_id)
+        role = request.data.get("role", membership.role)
+        active = request.data.get("is_active", membership.is_active)
+        if role not in {"OWNER", "MANAGER", "STAFF"} or not isinstance(active, bool):
+            raise ValidationError({"detail": "Provide a valid role and boolean is_active value."})
+        membership.role = role
+        membership.is_active = active
+        membership.save(update_fields=["role", "is_active", "updated_at"])
+        audit_event(
+            action=AuditAction.TECHNICIAN_COMPANY_USER_CHANGED, actor=request.user, request=request,
+            resource_type="technician_company_user", resource_id=membership.id,
+            metadata={"technician_id": str(pk), "role": role, "is_active": active},
+        )
+        return Response(TechnicianCompanyUserSerializer(membership).data)
+
+    @extend_schema(summary="Remove a company user from this technician", responses={204: None})
+    def post(self, request, pk, user_id):
+        membership = self.get_membership(pk, user_id)
+        membership.delete()
+        audit_event(
+            action=AuditAction.TECHNICIAN_COMPANY_USER_CHANGED, actor=request.user, request=request,
+            resource_type="technician_company_user", resource_id=user_id,
+            metadata={"technician_id": str(pk), "removed": True},
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class AdminTechnicianOptionsView(APIView):
@@ -197,8 +441,18 @@ class AdminTechnicianOptionsView(APIView):
     def get(self, request):
         return Response({
             "skills": list(TechnicianSkill.objects.values("id", "name", "is_active")),
-            "services": list(Service.objects.values("id", "name", "is_active")),
+            "services": list(Service.objects.values("id", "name", "is_active", category_name=F("category__name"))),
             "areas": list(ServiceArea.objects.values("id", "name", "city", "postal_code", "is_active")),
+            "sales_people": [
+                {
+                    "id": str(user.id),
+                    "name": " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.phone_number,
+                    "phone_number": user.phone_number,
+                }
+                for user in User.objects.filter(
+                    is_staff=True, is_active=True, role__in=[UserRole.ADMIN, UserRole.SUPER_ADMIN],
+                ).order_by("first_name", "last_name", "phone_number")
+            ],
         })
 
 

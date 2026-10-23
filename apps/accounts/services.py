@@ -5,7 +5,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from apps.accounts.models import CustomerProfile, User, UserRole
-from apps.accounts.validators import normalize_phone_number
+from apps.accounts.validators import normalize_account_phone_number, normalize_phone_number
 
 
 def get_firebase_auth_provider():
@@ -69,18 +69,35 @@ def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = ""):
 
 @transaction.atomic
 def authenticate_with_password(phone_number: str, password: str):
-    phone_number = normalize_phone_number(phone_number)
+    phone_number = normalize_account_phone_number(phone_number)
 
-    try:
-        user = User.objects.get(phone_number=phone_number)
-    except User.DoesNotExist as exc:
-        raise serializers.ValidationError("Invalid phone number or password.") from exc
+    user = User.objects.filter(phone_number=phone_number).first()
+    legacy_phone_format = False
+    if user is None and phone_number.startswith("+91"):
+        # Older local superusers may have been created with a 10-digit phone
+        # before the account manager enforced E.164 formatting.
+        legacy_numbers = (phone_number[3:], phone_number[1:])
+        legacy_users = list(
+            User.objects.filter(
+                phone_number__in=legacy_numbers,
+                role__in=(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+            )
+        )
+        if len(legacy_users) == 1:
+            user = legacy_users[0]
+            legacy_phone_format = True
+    if user is None:
+        raise serializers.ValidationError("Invalid phone number or password.")
 
     if not user.is_active:
         raise serializers.ValidationError("This account is disabled.")
 
     if not user.has_usable_password() or not user.check_password(password):
         raise serializers.ValidationError("Invalid phone number or password.")
+
+    if legacy_phone_format:
+        user.phone_number = phone_number
+        user.save(update_fields=["phone_number", "updated_at"])
 
     if user.role not in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
         raise serializers.ValidationError("Customers must sign in with Firebase phone verification.")

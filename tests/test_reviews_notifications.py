@@ -230,6 +230,32 @@ def test_service_reviews_list_only_visible(customer_client, customer, service, a
 
 
 @pytest.mark.django_db
+def test_admin_can_filter_reviews_by_technician(admin_user, technician_user, service):
+    technician = TechnicianProfile.objects.create(
+        user=technician_user,
+        employee_code="REV-TECH-001",
+        display_name="Review Technician",
+        phone=technician_user.phone_number,
+    )
+    other_user = User.objects.create_user("+919876543322", role=UserRole.TECHNICIAN, is_verified=True)
+    TechnicianProfile.objects.create(
+        user=other_user,
+        employee_code="REV-TECH-002",
+        display_name="Other Technician",
+        phone=other_user.phone_number,
+    )
+    Review.objects.create(service=service, technician=technician_user, reviewer_name="Customer A", rating=5, comment="Assigned technician review")
+    Review.objects.create(service=service, technician=other_user, reviewer_name="Customer B", rating=4, comment="Different technician review")
+
+    admin_client = APIClient()
+    admin_client.force_authenticate(user=admin_user)
+    response = admin_client.get("/api/v1/admin/reviews/", {"technician": str(technician.id)})
+
+    assert response.status_code == 200
+    assert [item["comment"] for item in response.json()["results"]] == ["Assigned technician review"]
+
+
+@pytest.mark.django_db
 def test_emit_notification_event_sends_after_commit(django_capture_on_commit_callbacks, customer, service, address, slot):
     booking = create_booking(customer, service, address, slot)
 

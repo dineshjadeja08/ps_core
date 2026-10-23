@@ -64,6 +64,7 @@ class TechnicianProfile(BaseModel):
     display_name = models.CharField(max_length=150)
     profile_photo = models.ImageField(upload_to="technicians/photos/", blank=True)
     phone = models.CharField(max_length=16)
+    virtual_mobile_number = models.CharField(max_length=16, blank=True, default="")
     alternate_phone = models.CharField(max_length=16, blank=True)
     email = models.EmailField(blank=True)
     technician_type = models.CharField(
@@ -79,6 +80,19 @@ class TechnicianProfile(BaseModel):
     address = models.TextField(blank=True)
     city = models.CharField(max_length=100, blank=True)
     pincode = models.CharField(max_length=20, blank=True)
+    service_group = models.CharField(max_length=100, blank=True, default="")
+    profile_type = models.CharField(max_length=50, blank=True, default="")
+    lead_per_day = models.PositiveSmallIntegerField(default=0)
+    job_per_day = models.PositiveSmallIntegerField(default=0)
+    no_of_teams = models.PositiveSmallIntegerField(default=1)
+    sales_person_assigned = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        related_name="assigned_technician_profiles",
+        blank=True,
+        null=True,
+    )
+    crm_owner_id = models.CharField(max_length=100, blank=True, default="")
     skills = models.ManyToManyField(TechnicianSkill, blank=True, related_name="technicians")
     service_areas = models.ManyToManyField(ServiceArea, blank=True, related_name="technicians")
     supported_services = models.ManyToManyField(Service, blank=True, related_name="technicians")
@@ -142,6 +156,72 @@ class TechnicianProfile(BaseModel):
             self.is_available = False
         self.full_clean()
         return super().save(*args, **kwargs)
+
+
+class TechnicianDocumentType(models.TextChoices):
+    IDENTITY = "IDENTITY", "Identity Proof"
+    ADDRESS = "ADDRESS", "Address Proof"
+    CERTIFICATE = "CERTIFICATE", "Certificate"
+    OTHER = "OTHER", "Other"
+
+
+class TechnicianDocumentStatus(models.TextChoices):
+    PENDING = "PENDING", "Pending review"
+    VERIFIED = "VERIFIED", "Verified"
+    REJECTED = "REJECTED", "Rejected"
+
+
+class TechnicianDocument(BaseModel):
+    technician = models.ForeignKey(TechnicianProfile, on_delete=models.CASCADE, related_name="documents")
+    document_type = models.CharField(max_length=24, choices=TechnicianDocumentType.choices)
+    # Cloudinary authenticated asset identifier. Never return this or a delivery URL to clients.
+    storage_public_id = models.CharField(max_length=255, unique=True)
+    storage_backend = models.CharField(max_length=16, default="cloudinary")
+    storage_resource_type = models.CharField(max_length=16, default="raw")
+    original_name = models.CharField(max_length=255)
+    content_type = models.CharField(max_length=100)
+    file_size = models.PositiveIntegerField()
+    verification_status = models.CharField(
+        max_length=16, choices=TechnicianDocumentStatus.choices, default=TechnicianDocumentStatus.PENDING,
+    )
+    verification_note = models.TextField(blank=True)
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="uploaded_technician_documents",
+    )
+    verified_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="verified_technician_documents",
+    )
+    verified_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        # Keep the legacy technicians_techniciandocument table intact. It stores
+        # the old public-file document records and has an incompatible schema.
+        db_table = "technicians_private_document"
+        ordering = ("document_type", "-created_at")
+        constraints = [models.UniqueConstraint(fields=("technician", "document_type"), name="unique_technician_document_type")]
+        indexes = [models.Index(fields=("technician", "verification_status"), name="technicians_technic_f80322_idx")]
+
+
+class TechnicianCompanyUserRole(models.TextChoices):
+    OWNER = "OWNER", "Owner"
+    MANAGER = "MANAGER", "Manager"
+    STAFF = "STAFF", "Staff"
+
+
+class TechnicianCompanyUser(BaseModel):
+    """Admin-managed company membership; the technician FK scopes every operation."""
+
+    technician = models.ForeignKey(TechnicianProfile, on_delete=models.CASCADE, related_name="company_users")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="technician_company_memberships")
+    role = models.CharField(max_length=16, choices=TechnicianCompanyUserRole.choices, default=TechnicianCompanyUserRole.STAFF)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ("role", "user__first_name", "user__phone_number")
+        constraints = [models.UniqueConstraint(fields=("technician", "user"), name="unique_technician_company_user")]
+        indexes = [models.Index(fields=("technician", "is_active"))]
 
 
 class TechnicianWorkingHours(BaseModel):

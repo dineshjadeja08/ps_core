@@ -159,6 +159,7 @@ class BookingSerializer(serializers.ModelSerializer):
             "user_id": str(user.id),
             "name": profile.display_name if profile else user.phone_number,
             "phone": profile.phone if profile else user.phone_number,
+            "city": profile.city if profile else "",
         }
 
 

@@ -1,8 +1,11 @@
 from datetime import time, timedelta
 from decimal import Decimal
+from io import BytesIO
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
+from PIL import Image
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
@@ -153,6 +156,95 @@ def test_admin_can_create_and_edit_technician_with_coverage(admin_client, bookin
 
 
 @pytest.mark.django_db
+def test_admin_can_manage_company_profile_fields_and_assign_a_sales_person(admin_client):
+    technician = create_technician()
+    sales_person = User.objects.create_user(
+        "+919876540088",
+        role=UserRole.ADMIN,
+        is_staff=True,
+        is_verified=True,
+        first_name="Sharath",
+        last_name="AR",
+    )
+
+    response = admin_client.patch(
+        f"/api/v1/admin/technicians/{technician.id}/",
+        {
+            "virtual_mobile_number": "+918888000111",
+            "service_group": "Home services",
+            "profile_type": "HOME TRIANGLE",
+            "lead_per_day": 2,
+            "job_per_day": 3,
+            "no_of_teams": 1,
+            "sales_person_assigned": str(sales_person.id),
+            "crm_owner_id": "CRM-101",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200, response.data
+    assert response.data["virtual_mobile_number"] == "+918888000111"
+    assert response.data["service_group"] == "Home services"
+    assert response.data["profile_type"] == "HOME TRIANGLE"
+    assert response.data["lead_per_day"] == 2
+    assert response.data["job_per_day"] == 3
+    assert response.data["no_of_teams"] == 1
+    assert str(response.data["sales_person_assigned"]) == str(sales_person.id)
+    assert response.data["sales_person_assigned_name"] == "Sharath AR"
+    assert response.data["crm_owner_id"] == "CRM-101"
+
+    options = admin_client.get("/api/v1/admin/technicians/options/")
+    assert options.status_code == 200
+    assert {person["id"] for person in options.data["sales_people"]} >= {str(sales_person.id)}
+
+
+@pytest.mark.django_db
+def test_admin_can_upload_technician_logo_or_profile_photo(admin_client, tmp_path, settings):
+    settings.MEDIA_ROOT = tmp_path
+    technician = create_technician()
+    image_bytes = BytesIO()
+    Image.new("RGB", (8, 8), color=(91, 33, 182)).save(image_bytes, format="PNG")
+
+    response = admin_client.patch(
+        f"/api/v1/admin/technicians/{technician.id}/",
+        {"profile_photo": SimpleUploadedFile("vendor-logo.png", image_bytes.getvalue(), content_type="image/png")},
+        format="multipart",
+    )
+
+    assert response.status_code == 200, response.data
+    technician.refresh_from_db()
+    assert technician.profile_photo.name.startswith("technicians/photos/")
+    assert response.data["profile_photo_url"].endswith(technician.profile_photo.url)
+
+
+@pytest.mark.django_db
+def test_admin_can_create_basic_technician_with_generated_code_and_aadhaar(admin_client, django_capture_on_commit_callbacks):
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.post("/api/v1/admin/technicians/", {
+            "display_name": "Basic technician", "phone": "+919876540777", "id_proof_number": "123456789012",
+        }, format="json")
+    assert response.status_code == 201, response.data
+    technician = TechnicianProfile.objects.get(pk=response.data["id"])
+    assert technician.employee_code.startswith("PS-T-")
+    assert len(technician.employee_code) == 13
+    assert technician.id_proof_type == "AADHAAR"
+    assert technician.id_proof_number == "123456789012"
+
+    detail = admin_client.get(f"/api/v1/admin/technicians/{technician.id}/")
+    assert detail.data["id_proof_number"] == "123456789012"
+    assert "id_proof_number" not in admin_client.get("/api/v1/admin/technicians/").data[0]
+
+
+@pytest.mark.django_db
+def test_admin_technician_aadhaar_must_be_twelve_digits(admin_client):
+    response = admin_client.post("/api/v1/admin/technicians/", {
+        "display_name": "Invalid Aadhaar technician", "phone": "+919876540778", "id_proof_number": "12345",
+    }, format="json")
+    assert response.status_code == 400
+    assert "id_proof_number" in response.data["error"]["details"]
+
+
+@pytest.mark.django_db
 def test_create_never_converts_customer_account_to_technician(admin_client, customer):
     response = admin_client.post("/api/v1/admin/technicians/", {
         "employee_code": "BAD-001", "display_name": "Not allowed", "phone": customer.phone_number,
@@ -260,6 +352,7 @@ def test_technician_filters_and_assignment_reasons(admin_client, booking, servic
 @pytest.mark.django_db
 def test_technician_jobs_counts_and_approved_ratings_are_scoped(admin_client, booking, customer):
     from apps.reviews.models import Review
+    from django.utils import timezone
     technician = create_technician()
     other = create_technician(code="OTHER-001", phone="+919876540003")
     booking.assigned_technician = technician.user
@@ -273,12 +366,15 @@ def test_technician_jobs_counts_and_approved_ratings_are_scoped(admin_client, bo
     response = admin_client.get(f"/api/v1/admin/technicians/{technician.id}/")
     assert response.data["active_job_count"] == 1
     booking.booking_status = BookingStatus.COMPLETED
+    booking.completed_at = timezone.now()
     booking.save()
     Review.objects.create(booking=booking, customer=customer, technician=technician.user, rating=4, comment="Good", is_visible=True)
     Review.objects.create(service=booking.service, reviewer_name="Hidden", technician=technician.user, rating=1, comment="Hidden", is_visible=False)
     response = admin_client.get(f"/api/v1/admin/technicians/{technician.id}/")
     assert response.data["active_job_count"] == 0
     assert response.data["completed_jobs"] == 1
+    assert response.data["monthly_job_count"] == 1
+    assert response.data["yearly_job_count"] == 1
     assert response.data["approved_review_count"] == 1
     assert response.data["approved_rating"] == "4.00"
     assert admin_client.get(f"/api/v1/admin/technicians/{technician.id}/jobs/?active=true").data["count"] == 0
@@ -395,6 +491,8 @@ def test_job_progress_updates_customer_tracking_and_completion_once(assigned_job
     from apps.notifications.models import Notification, NotificationEvent
 
     booking, technician, client = assigned_job
+    technician.city = "Chennai"
+    technician.save(update_fields=["city", "updated_at"])
     booking.balance_collected = booking.balance_due
     booking.save(update_fields=["balance_collected"])
     steps = [("en-route", BookingStatus.TECHNICIAN_EN_ROUTE), ("arrived", BookingStatus.TECHNICIAN_ARRIVED),
@@ -409,6 +507,7 @@ def test_job_progress_updates_customer_tracking_and_completion_once(assigned_job
         assert tracked.data["booking_status"] == expected
         assert tracked.data["assigned_technician"]["name"] == technician.display_name
         assert tracked.data["assigned_technician"]["phone"] == technician.phone
+        assert tracked.data["assigned_technician"]["city"] == "Chennai"
         assert tracked.data["status_history"][-1]["to_status"] == expected
         assert booking.status_history.filter(to_status=expected, changed_by=technician.user).count() == 1
         count = booking.status_history.count()
@@ -754,3 +853,76 @@ def test_remove_assignment_preserves_assignment_history(admin_client, booking, s
     assert booking.booking_status == BookingStatus.CONFIRMED
     assert assignment.unassigned_at is not None
     assert "called in sick" in assignment.notes
+
+
+@pytest.mark.django_db
+def test_admin_can_upload_preview_verify_replace_and_remove_private_documents(admin_client, customer_client):
+    technician = create_technician(code="DOC-001", phone="+919876540051")
+    other = create_technician(code="DOC-002", phone="+919876540052")
+    pdf = SimpleUploadedFile("identity.pdf", b"%PDF-1.4\nprivate test document", content_type="application/pdf")
+    response = admin_client.post(
+        f"/api/v1/admin/technicians/{technician.id}/documents/",
+        {"document_type": "IDENTITY", "file": pdf},
+        format="multipart",
+    )
+    assert response.status_code == 201, response.data
+    document_id = response.data["id"]
+    assert "storage_public_id" not in response.data
+    assert "cloudinary" not in response.data["content_url"]
+
+    preview = admin_client.get(response.data["content_url"])
+    assert preview.status_code == 200
+    assert preview["Content-Type"] == "application/pdf"
+    assert preview["Cache-Control"] == "private, no-store"
+    assert preview.content.startswith(b"%PDF-")
+    assert customer_client.get(response.data["content_url"]).status_code == 403
+    assert admin_client.get(f"/api/v1/admin/technicians/{other.id}/documents/{document_id}/content/").status_code == 404
+
+    verify = admin_client.patch(
+        f"/api/v1/admin/technicians/{technician.id}/documents/{document_id}/",
+        {"verification_status": "VERIFIED"},
+        format="json",
+    )
+    assert verify.status_code == 200, verify.data
+    assert verify.data["verification_status"] == "VERIFIED"
+
+    replacement = SimpleUploadedFile("replacement.pdf", b"%PDF-1.7\nreplacement", content_type="application/pdf")
+    replaced = admin_client.post(
+        f"/api/v1/admin/technicians/{technician.id}/documents/",
+        {"document_type": "IDENTITY", "file": replacement},
+        format="multipart",
+    )
+    assert replaced.status_code == 201, replaced.data
+    assert replaced.data["id"] == document_id
+    assert replaced.data["verification_status"] == "PENDING"
+    assert admin_client.post(f"/api/v1/admin/technicians/{technician.id}/documents/{document_id}/").status_code == 204
+    assert admin_client.get(f"/api/v1/admin/technicians/{technician.id}/documents/").data == []
+
+
+@pytest.mark.django_db
+def test_company_user_membership_is_scoped_to_technician(admin_client):
+    technician = create_technician(code="USER-001", phone="+919876540061")
+    other = create_technician(code="USER-002", phone="+919876540062")
+    account = User.objects.create_user("+919876540063", role=UserRole.CUSTOMER, first_name="Company", last_name="Owner")
+    url = f"/api/v1/admin/technicians/{technician.id}/company-users/"
+
+    added = admin_client.post(url, {"phone_number": account.phone_number, "role": "OWNER"}, format="json")
+    assert added.status_code == 201, added.data
+    membership_id = added.data["id"]
+    assert added.data["name"] == "Company Owner"
+    assert admin_client.get(url).data[0]["phone_number"] == account.phone_number
+
+    cross_company = admin_client.patch(
+        f"/api/v1/admin/technicians/{other.id}/company-users/{membership_id}/",
+        {"is_active": False},
+        format="json",
+    )
+    assert cross_company.status_code == 404
+    updated = admin_client.patch(
+        f"/api/v1/admin/technicians/{technician.id}/company-users/{membership_id}/",
+        {"role": "MANAGER", "is_active": False},
+        format="json",
+    )
+    assert updated.status_code == 200, updated.data
+    assert updated.data["role"] == "MANAGER"
+    assert not updated.data["is_active"]

@@ -13,6 +13,7 @@ from apps.bookings.models import Booking, PaymentStatus as BookingPaymentStatus
 from apps.bookings.models import BookingStatus, BookingStatusHistory
 from apps.bookings.services import create_booking
 from apps.accounts.models import CustomerProfile, User, UserRole
+from apps.catalogue.models import Service
 from apps.locations.models import Address, ServiceArea
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent
 from apps.notifications.services import notification_event_enabled, send_notification
@@ -29,6 +30,7 @@ from apps.operations.models import (
 )
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
 from apps.scheduling.models import TimeSlot
+from apps.scheduling.services import get_available_capacity, is_slot_expired
 
 OPEN_FUNNEL_STATUSES = {
     LeadFunnelStatus.VISITED,
@@ -146,6 +148,9 @@ def mark_booking_payment_paid(*, booking, payment=None, performed_by=None):
     lead = Lead.objects.filter(Q(pending_booking=booking) | Q(converted_booking=booking)).order_by("-updated_at").first()
     if not lead:
         lead = link_booking_to_lead(booking=booking)
+    if lead.source in {LeadSource.ONCALL, LeadSource.ADMIN, LeadSource.PHONE_CALL, LeadSource.PHONE, LeadSource.MANUAL} and not booking.is_manual_work_order:
+        booking.is_manual_work_order = True
+        booking.save(update_fields=["is_manual_work_order", "updated_at"])
     previous = {
         "status": lead.status,
         "payment_status": lead.payment_status,
@@ -261,9 +266,21 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
     if lead.payment_status == LeadPaymentStatus.PAID:
         raise serializers.ValidationError("Lead is already paid.")
     amount = _lead_full_payment_amount(lead) if payment_scope == "FULL" else lead.advance_amount
+    if amount is None and payment_scope == "ADVANCE" and lead.required_service_id:
+        amount = lead.required_service.advance_amount
     if not amount or amount <= Decimal("0.00"):
         raise serializers.ValidationError(f"Lead does not have a valid {payment_scope.lower()} amount.")
-    provider_id = f"lead-link-{lead.id}-{payment_scope.lower()}"
+    if lead.pending_booking_id is None and lead.converted_booking_id is None:
+        if not lead.preferred_time_slot_id:
+            raise serializers.ValidationError("Choose an available date and time before sending a payment link.")
+        booking = _create_pending_lead_booking(lead)
+        lead.refresh_from_db()
+        lead.pending_booking = booking
+    if lead.pending_booking_id:
+        lead.pending_booking.advance_required = min(amount, lead.pending_booking.total_amount)
+        lead.pending_booking.balance_due = max(lead.pending_booking.total_amount - lead.pending_booking.advance_paid, Decimal("0.00"))
+        lead.pending_booking.save(update_fields=["advance_required", "balance_due", "updated_at"])
+    provider_id = f"lead-link-{lead.id}-{payment_scope.lower()}-{channel.lower()}"
     if lead.payment_link_expires_at and lead.payment_link_expires_at > timezone.now() and lead.payment_link_url and lead.payment_link_provider_id == provider_id:
         return lead, False
 
@@ -293,10 +310,10 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
         request=request,
         note=f"{payment_scope.title()} payment link created for unpaid lead.",
     )
-    if notification_event_enabled(NotificationEvent.PAYMENT_PENDING):
+    if channel == NotificationChannel.WHATSAPP or notification_event_enabled(NotificationEvent.PAYMENT_PENDING):
         notification = Notification.objects.create(
             recipient=lead.customer,
-            booking=lead.converted_booking,
+            booking=lead.converted_booking or lead.pending_booking,
             event=NotificationEvent.PAYMENT_PENDING,
             channel=channel,
             title="Payment link",
@@ -307,6 +324,8 @@ def send_lead_payment_link(*, lead, performed_by, request=None, channel=Notifica
                 "payment_scope": payment_scope,
                 "amount": str(amount),
                 "mobile": lead.primary_mobile,
+                "lead_payment_link": True,
+                "template_values": [lead.customer_name, str(amount), lead.payment_link_url],
             },
         )
         send_notification(notification)
@@ -380,20 +399,9 @@ def convert_lead_to_work_order(*, lead, performed_by, booking=None, notes=""):
                 "is_default": not customer.addresses.exists(),
             },
         )
-        try:
-            start_time = datetime.strptime(lead.preferred_slot.split("-", 1)[0].strip(), "%H:%M").time()
-        except (TypeError, ValueError) as exc:
-            raise serializers.ValidationError(
-                {"preferred_slot": ["The scheduled time is invalid. Update the lead schedule before creating a work order."]}
-            ) from exc
-        end_time = (datetime.combine(lead.preferred_date, start_time) + timedelta(hours=1)).time()
-        slot, _ = TimeSlot.objects.get_or_create(
-            service_area=service_area,
-            date=lead.preferred_date,
-            start_time=start_time,
-            end_time=end_time,
-            defaults={"capacity": 5, "is_active": True},
-        )
+        slot = lead.preferred_time_slot
+        if not slot or slot.service_area_id != service_area.id or slot.date != lead.preferred_date:
+            raise serializers.ValidationError({"preferred_slot": ["The scheduled time is invalid or unavailable. Select an available site time slot before creating a work order."]})
         booking = create_booking(
             customer=customer,
             service_id=lead.required_service_id,
@@ -447,6 +455,113 @@ def convert_lead_to_work_order(*, lead, performed_by, booking=None, notes=""):
             notes=notes or f"Work order {booking.booking_number} created.",
         )
     return lead
+
+
+@transaction.atomic
+def update_lead_quote(lead):
+    """Keep the lead's persisted quote and advance in sync with selected service quantities."""
+    items = lead.service_items or ([{"service_id": str(lead.required_service_id), "quantity": 1}] if lead.required_service_id else [])
+    services = {str(key): service for key, service in Service.objects.filter(
+        id__in=[item.get("service_id") for item in items]
+    ).in_bulk().items()}
+    subtotal = Decimal("0.00")
+    training = Decimal("0.00")
+    advance = Decimal("0.00")
+    for item in items:
+        service = services.get(str(item.get("service_id")))
+        quantity = int(item.get("quantity", 1))
+        if not service:
+            continue
+        subtotal += service.effective_price * quantity
+        training += service.training_fee * (quantity if service.training_fee_per_unit else 1)
+        advance += service.advance_amount * quantity
+    total = subtotal + training
+    lead.quoted_amount = subtotal
+    lead.advance_amount = min(advance, total) if total else Decimal("0.00")
+    lead.balance_amount = max(total - lead.advance_amount, Decimal("0.00"))
+    lead.save(update_fields=["quoted_amount", "advance_amount", "balance_amount", "updated_at"])
+    return lead
+
+
+def _create_pending_lead_booking(lead):
+    if not lead.required_service_id:
+        raise serializers.ValidationError("Select a service before creating a payment link.")
+    if not lead.address or not lead.city or not lead.pincode:
+        raise serializers.ValidationError("Select a complete address from the address suggestions before creating a payment link.")
+    customer = lead.customer
+    if customer is None:
+        customer, created = User.objects.get_or_create(
+            phone_number=lead.primary_mobile,
+            defaults={"role": UserRole.CUSTOMER, "is_active": True, "is_verified": True},
+        )
+        if created:
+            customer.set_unusable_password()
+            customer.save(update_fields=["password", "updated_at"])
+        lead.customer = customer
+        lead.save(update_fields=["customer", "updated_at"])
+    CustomerProfile.objects.get_or_create(user=customer, defaults={"display_name": lead.customer_name})
+    area = ServiceArea.objects.filter(postal_code=lead.pincode, is_active=True).first()
+    slot = lead.preferred_time_slot
+    if not area or not slot or slot.service_area_id != area.id or slot.date != lead.preferred_date:
+        raise serializers.ValidationError("The scheduled slot is no longer valid for this address.")
+    if not slot.is_active or is_slot_expired(slot) or get_available_capacity(slot) < 1:
+        raise serializers.ValidationError("The selected slot is no longer available. Choose another time.")
+    items = lead.service_items or [{"service_id": str(lead.required_service_id), "quantity": 1}]
+    selected_services = Service.objects.filter(id__in=[item.get("service_id") for item in items], is_active=True, category__is_active=True)
+    if len(selected_services) != len(items) or any(not area.supports_service(service) for service in selected_services):
+        raise serializers.ValidationError("One or more selected services are not available in this area.")
+    address, _ = Address.objects.get_or_create(
+        customer=customer,
+        phone=lead.primary_mobile,
+        address_line_1=lead.address,
+        postal_code=lead.pincode,
+        defaults={
+            "label": "Lead address",
+            "recipient_name": lead.customer_name,
+            "city": lead.city,
+            "state": area.state,
+            "country": area.country,
+            "is_default": not customer.addresses.exists(),
+        },
+    )
+    booking = create_booking(
+        customer=customer,
+        service_id=lead.required_service_id,
+        address_id=address.id,
+        slot_id=slot.id,
+        problem_description="Additional requested services: " + ", ".join(
+            f"{service.name} × {next(int(item.get('quantity', 1)) for item in items if str(item.get('service_id')) == str(service.id))}"
+            for service in selected_services if service.id != lead.required_service_id
+        ),
+        contact_phone=lead.primary_mobile,
+    )
+    # One booking/work order can carry multiple requested service lines while preserving
+    # the primary service association required by existing assignment and scheduling APIs.
+    subtotal, training, total = _lead_booking_totals(lead, selected_services)
+    advance = lead.advance_amount or booking.advance_required
+    booking.subtotal = subtotal
+    booking.discount_amount = Decimal("0.00")
+    booking.training_fee = training
+    booking.tax_amount = Decimal("0.00")
+    booking.total_amount = total
+    booking.advance_required = min(advance, total)
+    booking.balance_due = total
+    booking.save(update_fields=["subtotal", "discount_amount", "training_fee", "tax_amount", "total_amount", "advance_required", "balance_due", "updated_at"])
+    lead.refresh_from_db()
+    update_lead_quote(lead)
+    return booking
+
+
+def _lead_booking_totals(lead, selected_services):
+    items = lead.service_items or [{"service_id": str(lead.required_service_id), "quantity": 1}]
+    services = {str(service.id): service for service in selected_services}
+    subtotal = training = Decimal("0.00")
+    for item in items:
+        service = services[str(item["service_id"])]
+        quantity = int(item.get("quantity", 1))
+        subtotal += service.effective_price * quantity
+        training += service.training_fee * (quantity if service.training_fee_per_unit else 1)
+    return subtotal, training, subtotal + training
 
 
 @transaction.atomic
@@ -561,6 +676,20 @@ def _lead_payment_url(lead):
 
 
 def _lead_full_payment_amount(lead):
+    if lead.service_items:
+        items = lead.service_items
+        services = {str(key): service for key, service in Service.objects.filter(
+            id__in=[item.get("service_id") for item in items]
+        ).in_bulk().items()}
+        subtotal = training_fee = Decimal("0.00")
+        for item in items:
+            service = services.get(str(item.get("service_id")))
+            if not service:
+                continue
+            quantity = int(item.get("quantity", 1))
+            subtotal += service.effective_price * quantity
+            training_fee += service.training_fee * (quantity if service.training_fee_per_unit else 1)
+        return subtotal + training_fee
     subtotal = lead.quoted_amount
     if subtotal is None and lead.required_service_id:
         subtotal = lead.required_service.effective_price

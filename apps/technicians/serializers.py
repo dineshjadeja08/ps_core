@@ -4,7 +4,10 @@ from rest_framework import serializers
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 
-from apps.technicians.models import TechnicianAssignment, TechnicianLeave, TechnicianProfile, TechnicianSkill
+from apps.technicians.models import (
+    TechnicianAssignment, TechnicianCompanyUser, TechnicianDocument, TechnicianDocumentStatus,
+    TechnicianDocumentType, TechnicianLeave, TechnicianProfile, TechnicianSkill,
+)
 from apps.accounts.models import User, UserRole
 from apps.accounts.validators import normalize_phone_number
 from apps.catalogue.models import Service
@@ -99,8 +102,11 @@ class TechnicianProfileSerializer(serializers.ModelSerializer):
 
 
 class AdminTechnicianProfileSerializer(TechnicianProfileSerializer):
+    sales_person_assigned_name = serializers.SerializerMethodField()
     active_job_count = serializers.IntegerField(read_only=True, default=0)
     completed_jobs = serializers.IntegerField(read_only=True, default=0)
+    monthly_job_count = serializers.IntegerField(read_only=True, default=0)
+    yearly_job_count = serializers.IntegerField(read_only=True, default=0)
     cancelled_jobs = serializers.IntegerField(read_only=True, default=0)
     approved_rating = serializers.DecimalField(max_digits=3, decimal_places=2, read_only=True, allow_null=True)
     approved_review_count = serializers.IntegerField(read_only=True, default=0)
@@ -108,12 +114,26 @@ class AdminTechnicianProfileSerializer(TechnicianProfileSerializer):
 
     class Meta(TechnicianProfileSerializer.Meta):
         fields = TechnicianProfileSerializer.Meta.fields + (
-            "address", "internal_notes", "active_job_count", "completed_jobs", "cancelled_jobs",
-            "approved_rating", "approved_review_count", "eligibility_errors",
+            "address", "internal_notes", "active_job_count", "completed_jobs", "monthly_job_count", "yearly_job_count", "cancelled_jobs",
+            "approved_rating", "approved_review_count", "eligibility_errors", "virtual_mobile_number", "service_group", "profile_type",
+            "lead_per_day", "job_per_day", "no_of_teams", "sales_person_assigned", "sales_person_assigned_name", "crm_owner_id",
         )
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_sales_person_assigned_name(self, obj):
+        if not obj.sales_person_assigned_id:
+            return ""
+        return " ".join(filter(None, [obj.sales_person_assigned.first_name, obj.sales_person_assigned.last_name])).strip() or obj.sales_person_assigned.phone_number
+
+
+class AdminTechnicianDetailSerializer(AdminTechnicianProfileSerializer):
+    class Meta(AdminTechnicianProfileSerializer.Meta):
+        fields = AdminTechnicianProfileSerializer.Meta.fields + ("id_proof_type", "id_proof_number")
 
 
 class AdminTechnicianWriteSerializer(serializers.ModelSerializer):
+    employee_code = serializers.CharField(max_length=40, required=False, allow_blank=True)
+    id_proof_number = serializers.CharField(max_length=120, required=False, allow_blank=True, trim_whitespace=True)
     skill_names = serializers.ListField(child=serializers.CharField(max_length=120), required=False, write_only=True)
     service_area_ids = serializers.PrimaryKeyRelatedField(
         source="service_areas", queryset=ServiceArea.objects.all(), many=True, required=False, write_only=True,
@@ -122,11 +142,17 @@ class AdminTechnicianWriteSerializer(serializers.ModelSerializer):
         source="supported_services", queryset=Service.objects.all(), many=True, required=False, write_only=True,
     )
     experience_years = serializers.DecimalField(max_digits=4, decimal_places=1, min_value=0, required=False)
+    sales_person_assigned = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.filter(is_staff=True, is_active=True, role__in=[UserRole.ADMIN, UserRole.SUPER_ADMIN]),
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = TechnicianProfile
         fields = (
-            "employee_code", "display_name", "phone", "alternate_phone", "email", "address", "city", "pincode",
+            "employee_code", "display_name", "profile_photo", "phone", "alternate_phone", "email", "address", "city", "pincode", "id_proof_number",
+            "virtual_mobile_number", "service_group", "profile_type", "lead_per_day", "job_per_day", "no_of_teams", "sales_person_assigned", "crm_owner_id",
             "technician_type", "employment_status", "experience_years", "languages", "joined_at",
             "background_verification_status", "availability_status", "is_active", "internal_notes", "whatsapp_notifications_enabled",
             "skill_names", "service_area_ids", "supported_service_ids",
@@ -146,6 +172,11 @@ class AdminTechnicianWriteSerializer(serializers.ModelSerializer):
     def validate_alternate_phone(self, value):
         return normalize_phone_number(value) if value else ""
 
+    def validate_id_proof_number(self, value):
+        if value and (not value.isdigit() or len(value) != 12):
+            raise serializers.ValidationError("Enter a valid 12-digit Aadhaar number.")
+        return value
+
     def validate(self, attrs):
         def current(field, default):
             return attrs.get(field, getattr(self.instance, field, default))
@@ -160,6 +191,8 @@ class AdminTechnicianWriteSerializer(serializers.ModelSerializer):
         ):
             raise serializers.ValidationError({"is_active": "Deactivate a suspended technician before saving."})
         attrs["is_available"] = active and current("availability_status", "AVAILABLE") == "AVAILABLE"
+        if "id_proof_number" in attrs:
+            attrs["id_proof_type"] = "AADHAAR" if attrs["id_proof_number"] else ""
         return attrs
 
     def _save(self, data, instance=None):
@@ -167,6 +200,13 @@ class AdminTechnicianWriteSerializer(serializers.ModelSerializer):
         try:
             with transaction.atomic():
                 if instance is None:
+                    if not data.get("employee_code"):
+                        import uuid
+
+                        code = ""
+                        while not code or TechnicianProfile.objects.filter(employee_code=code).exists():
+                            code = f"PS-T-{uuid.uuid4().hex[:8].upper()}"
+                        data["employee_code"] = code
                     user, _ = User.objects.select_for_update().get_or_create(
                         phone_number=data["phone"], defaults={"role": UserRole.TECHNICIAN, "password": "!"},
                     )
@@ -270,3 +310,110 @@ class TechnicianLeaveSerializer(serializers.ModelSerializer):
         if not obj.is_active:
             return "REJECTED"
         return "APPROVED" if obj.approved_by_id else "PENDING"
+
+
+class TechnicianDocumentSerializer(serializers.ModelSerializer):
+    content_url = serializers.SerializerMethodField()
+    uploaded_by_name = serializers.SerializerMethodField()
+    verified_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TechnicianDocument
+        fields = (
+            "id", "document_type", "original_name", "content_type", "file_size", "verification_status",
+            "verification_note", "uploaded_by_name", "verified_by_name", "verified_at", "created_at", "content_url",
+        )
+        read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.URI)
+    def get_content_url(self, obj):
+        request = self.context.get("request")
+        path = f"/api/v1/admin/technicians/{obj.technician_id}/documents/{obj.id}/content/"
+        return request.build_absolute_uri(path) if request else path
+
+    def get_uploaded_by_name(self, obj):
+        return _user_label(obj.uploaded_by)
+
+    def get_verified_by_name(self, obj):
+        return _user_label(obj.verified_by)
+
+
+class TechnicianDocumentUploadSerializer(serializers.Serializer):
+    document_type = serializers.ChoiceField(choices=TechnicianDocumentType.choices)
+    file = serializers.FileField(allow_empty_file=False)
+
+    def validate_file(self, uploaded):
+        allowed = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
+        if uploaded.size > 10 * 1024 * 1024:
+            raise serializers.ValidationError("File must be 10 MB or smaller.")
+        content_type = getattr(uploaded, "content_type", "")
+        if content_type not in allowed:
+            raise serializers.ValidationError("Upload a PDF, JPG, PNG or WebP document.")
+        header = uploaded.read(16)
+        uploaded.seek(0)
+        signatures = {
+            "application/pdf": lambda value: value.startswith(b"%PDF-"),
+            "image/jpeg": lambda value: value.startswith(b"\xff\xd8\xff"),
+            "image/png": lambda value: value.startswith(b"\x89PNG\r\n\x1a\n"),
+            "image/webp": lambda value: len(value) >= 12 and value[:4] == b"RIFF" and value[8:12] == b"WEBP",
+        }
+        if not signatures[content_type](header):
+            raise serializers.ValidationError("The file contents do not match the selected document type.")
+        return uploaded
+
+
+class TechnicianDocumentVerificationSerializer(serializers.Serializer):
+    verification_status = serializers.ChoiceField(choices=("VERIFIED", "REJECTED"))
+    verification_note = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+    def validate(self, attrs):
+        if attrs["verification_status"] == "REJECTED" and not attrs.get("verification_note", "").strip():
+            raise serializers.ValidationError({"verification_note": "A note is required when rejecting a document."})
+        return attrs
+
+
+class TechnicianCompanyUserSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    email = serializers.CharField(source="user.email", read_only=True)
+
+    class Meta:
+        model = TechnicianCompanyUser
+        fields = ("id", "name", "phone_number", "email", "role", "is_active", "created_at")
+        read_only_fields = fields
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_name(self, obj):
+        return _user_label(obj.user)
+
+
+class TechnicianCompanyUserCreateSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=16)
+    role = serializers.ChoiceField(choices=("OWNER", "MANAGER", "STAFF"))
+
+    def validate_phone_number(self, value):
+        value = normalize_phone_number(value)
+        try:
+            self._user = User.objects.get(phone_number=value)
+        except User.DoesNotExist as exc:
+            raise serializers.ValidationError("No account exists for this phone number. Create the account first.") from exc
+        if self._user.role == UserRole.SUPER_ADMIN:
+            raise serializers.ValidationError("Super-admin accounts cannot be assigned as company users.")
+        return value
+
+    def create(self, validated_data):
+        technician = self.context["technician"]
+        membership, created = TechnicianCompanyUser.objects.get_or_create(
+            technician=technician,
+            user=self._user,
+            defaults={"role": validated_data["role"]},
+        )
+        if not created:
+            raise serializers.ValidationError({"phone_number": "This account is already added to this company."})
+        return membership
+
+
+def _user_label(user):
+    if not user:
+        return ""
+    return " ".join(filter(None, [user.first_name, user.last_name])).strip() or user.phone_number

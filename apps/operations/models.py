@@ -127,6 +127,14 @@ class Lead(BaseModel):
     preferred_callback_at = models.DateTimeField(null=True, blank=True)
     preferred_date = models.DateField(null=True, blank=True)
     preferred_slot = models.CharField(max_length=120, blank=True)
+    preferred_time_slot = models.ForeignKey(
+        "scheduling.TimeSlot",
+        on_delete=models.SET_NULL,
+        related_name="scheduled_leads",
+        null=True,
+        blank=True,
+    )
+    service_items = models.JSONField(default=list, blank=True)
     quoted_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     advance_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     balance_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)

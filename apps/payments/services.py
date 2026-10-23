@@ -395,7 +395,7 @@ def _confirm_booking_after_payment(*, booking, payment, changed_by):
     previous_status = booking.booking_status
     booking.advance_paid = payment.amount
     booking.balance_due = booking.total_amount - booking.advance_paid
-    booking.payment_status = PaymentStatus.PARTIALLY_PAID
+    booking.payment_status = PaymentStatus.PAID if booking.balance_due <= Decimal("0.00") else PaymentStatus.PARTIALLY_PAID
     booking.booking_status = BookingStatus.CONFIRMED
     booking.confirmed_at = timezone.now()
     booking.save(

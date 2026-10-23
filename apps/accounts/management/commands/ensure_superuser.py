@@ -1,8 +1,10 @@
 import os
 
 from django.core.management.base import BaseCommand, CommandError
+from rest_framework.exceptions import ValidationError
 
 from apps.accounts.models import User, UserRole
+from apps.accounts.validators import normalize_account_phone_number
 
 
 class Command(BaseCommand):
@@ -18,17 +20,26 @@ class Command(BaseCommand):
         if not password:
             raise CommandError("DJANGO_SUPERUSER_PASSWORD is required.")
 
-        user, created = User.objects.get_or_create(
-            phone_number=phone_number,
-            defaults={
-                "email": email,
-                "role": UserRole.SUPER_ADMIN,
-                "is_staff": True,
-                "is_superuser": True,
-                "is_verified": True,
-                "is_active": True,
-            },
-        )
+        try:
+            phone_number = normalize_account_phone_number(phone_number)
+        except ValidationError as exc:
+            raise CommandError("DJANGO_SUPERUSER_PHONE_NUMBER must be a valid phone number.") from exc
+
+        user = User.objects.filter(phone_number=phone_number).first()
+        if user is None and phone_number.startswith("+91"):
+            legacy_numbers = (phone_number[3:], phone_number[1:])
+            legacy_users = list(
+                User.objects.filter(
+                    phone_number__in=legacy_numbers,
+                    role__in=(UserRole.ADMIN, UserRole.SUPER_ADMIN),
+                )
+            )
+            if len(legacy_users) == 1:
+                user = legacy_users[0]
+                user.phone_number = phone_number
+        created = user is None
+        if created:
+            user = User(phone_number=phone_number)
 
         user.email = email
         user.role = UserRole.SUPER_ADMIN

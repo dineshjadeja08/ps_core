@@ -3,6 +3,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.http import HttpResponse
 from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
@@ -19,6 +20,7 @@ from apps.accounts.permissions import IsAdminRole
 from apps.audit.models import AuditAction
 from apps.audit.services import audit_event
 from apps.bookings.models import Booking, BookingStatus, PaymentStatus
+from apps.locations.models import ServiceArea
 from apps.notifications.models import Notification, NotificationChannel, NotificationEvent, NotificationStatus
 from apps.notifications.services import notification_event_enabled, send_notification
 from apps.operations.models import ACTIVE_LEAD_STATUSES, FAQ, HomepageBanner, Lead, LeadFunnelStatus, LeadStatus, LeadStatusHistory
@@ -39,10 +41,12 @@ from apps.operations.serializers import (
     LeadSerializer,
     LeadSummarySerializer,
 )
-from apps.operations.services import convert_lead_to_work_order, record_lead_contact, record_manual_lead_payment, send_lead_payment_link
+from apps.operations.services import convert_lead_to_work_order, record_lead_contact, record_manual_lead_payment, send_lead_payment_link, update_lead_quote
 from apps.payments.models import Payment, PaymentRecordStatus, PaymentType
 from apps.reviews.models import Review
 from apps.technicians.models import TechnicianAvailabilityStatus, TechnicianProfile, TechnicianVerificationStatus
+from apps.scheduling.models import TimeSlot
+from apps.scheduling.services import get_available_capacity, is_slot_expired
 
 
 class PublicFAQListView(ListAPIView):
@@ -182,6 +186,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             defaults={"display_name": serializer.validated_data["customer_name"]},
         )
         lead = serializer.save(created_by=self.request.user, customer=customer)
+        update_lead_quote(lead)
         LeadStatusHistory.objects.create(
             lead=lead,
             from_status="",
@@ -201,6 +206,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         previous_status = self.get_object().status
         lead = serializer.save()
+        update_lead_quote(lead)
         action = AuditAction.LEAD_UPDATED
         metadata = {"status": lead.status}
         if previous_status != lead.status:
@@ -285,10 +291,36 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         if serializer.validated_data["preferred_date"] < timezone.localdate():
             return Response({"detail": "Schedule date cannot be in the past."}, status=status.HTTP_400_BAD_REQUEST)
-        lead.preferred_date = serializer.validated_data["preferred_date"]
-        lead.preferred_slot = serializer.validated_data["preferred_slot"]
-        lead.last_activity_at = timezone.now()
-        lead.save(update_fields=["preferred_date", "preferred_slot", "last_activity_at", "updated_at"])
+        service_area = ServiceArea.objects.filter(postal_code=lead.pincode, is_active=True).first()
+        if not service_area:
+            return Response({"detail": "Select a supported map address before scheduling."}, status=status.HTTP_400_BAD_REQUEST)
+        if not lead.required_service_id or not service_area.supports_service(lead.required_service):
+            return Response({"detail": "The selected service is not available at this address."}, status=status.HTTP_400_BAD_REQUEST)
+        slot_id = serializer.validated_data.get("slot_id")
+        slot_query = TimeSlot.objects.filter(
+            service_area=service_area,
+            date=serializer.validated_data["preferred_date"],
+            start_time=serializer.validated_data["preferred_slot"],
+            is_active=True,
+        )
+        if slot_id:
+            slot_query = slot_query.filter(id=slot_id)
+        slot = slot_query.order_by("end_time").first()
+        if not slot or is_slot_expired(slot) or get_available_capacity(slot) < 1:
+            return Response({"detail": "That slot is no longer available. Please choose another time."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            if lead.pending_booking_id:
+                booking = lead.pending_booking
+                if booking.booking_status not in {BookingStatus.PENDING_PAYMENT, BookingStatus.PAYMENT_FAILED}:
+                    return Response({"detail": "This booking has already been confirmed; reschedule it from the booking operations screen."}, status=status.HTTP_400_BAD_REQUEST)
+                booking.time_slot = slot
+                booking.service_date = slot.date
+                booking.save(update_fields=["time_slot", "service_date", "updated_at"])
+            lead.preferred_date = slot.date
+            lead.preferred_slot = slot.start_time.strftime("%H:%M")
+            lead.preferred_time_slot = slot
+            lead.last_activity_at = timezone.now()
+            lead.save(update_fields=["preferred_date", "preferred_slot", "preferred_time_slot", "last_activity_at", "updated_at"])
         return Response(LeadSerializer(lead, context={"request": request}).data)
 
     @extend_schema(summary="Send a customer reminder", request=LeadReminderSerializer, responses={status.HTTP_200_OK: LeadSerializer})
@@ -328,6 +360,12 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         )
         response = LeadSerializer(lead, context={"request": request}).data
         response["payment_link_created"] = created
+        delivery = Notification.objects.filter(
+            event=NotificationEvent.PAYMENT_PENDING,
+            channel=serializer.validated_data["channel"],
+            payload__lead_id=str(lead.id),
+        ).order_by("-created_at").first()
+        response["payment_delivery_status"] = delivery.status if delivery else "NOT_CONFIGURED"
         return Response(response)
 
     @extend_schema(summary="Record lead contact", request=LeadContactSerializer, responses={status.HTTP_200_OK: LeadSerializer})
@@ -623,7 +661,26 @@ class AdminGlobalSearchView(APIView):
                     "url": f"/admin/customers?customer={customer.id}",
                 }
             )
-        return Response(AdminGlobalSearchSerializer({"query": query, "results": results[:20]}).data)
+
+        technicians = (
+            TechnicianProfile.objects.filter(
+                Q(display_name__icontains=query)
+                | Q(phone__icontains=query)
+                | Q(employee_code__icontains=query)
+                | Q(city__icontains=query)
+            )[:8]
+        )
+        for technician in technicians:
+            results.append(
+                {
+                    "type": "TECHNICIAN",
+                    "id": str(technician.id),
+                    "title": technician.display_name or technician.employee_code,
+                    "subtitle": f"{technician.employee_code} · {technician.phone} · {technician.city or 'City not set'}",
+                    "url": f"/admin/technicians/{technician.id}",
+                }
+            )
+        return Response(AdminGlobalSearchSerializer({"query": query, "results": results[:32]}).data)
 
 
 class AdminReportsSummaryView(APIView):

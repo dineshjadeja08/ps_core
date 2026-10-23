@@ -10,7 +10,7 @@ from apps.notifications.models import Notification, NotificationChannel, Notific
 from apps.operations.models import Lead, LeadStatus, LeadStatusHistory
 from apps.operations.services import link_booking_to_lead
 from apps.payments.models import Payment, PaymentProvider, PaymentRecordStatus, PaymentType
-from tests.factories import address_factory, booking_factory, service_area_factory, service_factory, slot_factory, user_factory
+from tests.factories import address_factory, booking_factory, service_area_factory, service_factory, slot_factory, technician_factory, user_factory
 
 
 @pytest.fixture
@@ -80,6 +80,7 @@ def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client)
     service_area.services.add(service)
     service_area.services_configured = True
     service_area.save(update_fields=["services_configured", "updated_at"])
+    slot = slot_factory(service_area, days=2, start_hour=10)
     create_response = admin_client.post(
         "/api/v1/admin/leads/",
         {
@@ -98,11 +99,11 @@ def test_admin_can_schedule_and_create_work_order_from_manual_lead(admin_client)
     )
     assert create_response.status_code == 201
     lead_id = create_response.json()["id"]
-    schedule_date = timezone.localdate() + timezone.timedelta(days=2)
+    schedule_date = slot.date
 
     schedule_response = admin_client.post(
         f"/api/v1/admin/leads/{lead_id}/schedule/",
-        {"preferred_date": str(schedule_date), "preferred_slot": "10:00"},
+        {"preferred_date": str(schedule_date), "preferred_slot": "10:00", "slot_id": str(slot.id)},
         format="json",
     )
     assert schedule_response.status_code == 200
@@ -162,11 +163,21 @@ def test_manual_work_order_missing_optional_service_remains_validation_error(adm
 def test_admin_can_send_full_payment_link_using_service_price(admin_client, customer, settings):
     settings.MSG91_SMS_ENABLED_EVENTS = [NotificationEvent.PAYMENT_PENDING]
     service = service_factory()
+    service_area = service_area_factory(postal_code="600001", name="Chennai Central")
+    service_area.services.add(service)
+    slot = slot_factory(service_area, days=2, start_hour=10)
+    address = address_factory(customer, postal_code="600001")
     lead = Lead.objects.create(
         customer=customer,
         customer_name="Push Customer",
         primary_mobile=customer.phone_number,
         required_service=service,
+        address=address.address_line_1,
+        city=address.city,
+        pincode=address.postal_code,
+        preferred_date=slot.date,
+        preferred_slot="10:00",
+        preferred_time_slot=slot,
         status=LeadStatus.FOLLOW_UP,
     )
 
@@ -315,6 +326,18 @@ def test_admin_booking_list_identifies_customer_and_supports_phone_search(admin_
     assert payload["booking_number"] == booking.booking_number
     assert payload["customer_name"] == "Viknesh B"
     assert payload["customer_phone"] == customer.phone_number
+
+
+@pytest.mark.django_db
+def test_admin_global_search_includes_technicians_by_employee_code(admin_client):
+    technician = technician_factory(code="TECH-GLOBAL-21")
+
+    response = admin_client.get("/api/v1/admin/search/?q=TECH-GLOBAL-21")
+
+    assert response.status_code == 200
+    match = next(result for result in response.json()["results"] if result["type"] == "TECHNICIAN")
+    assert match["id"] == str(technician.id)
+    assert match["url"] == f"/admin/technicians/{technician.id}"
 
 
 @pytest.mark.django_db

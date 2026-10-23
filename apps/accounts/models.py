@@ -1,6 +1,7 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
 
+from apps.accounts.validators import normalize_account_phone_number
 from common.models import BaseModel
 
 
@@ -17,6 +18,7 @@ class UserManager(BaseUserManager):
     def create_user(self, phone_number, password=None, **extra_fields):
         if not phone_number:
             raise ValueError("A phone number is required.")
+        phone_number = normalize_account_phone_number(phone_number)
         user = self.model(phone_number=phone_number, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)

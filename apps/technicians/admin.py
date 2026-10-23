@@ -66,9 +66,7 @@ class TechnicianProfileAdmin(admin.ModelAdmin):
                 "fields": (
                     "id_proof_type",
                     "id_proof_number",
-                    "id_proof_document",
                     "id_document_available",
-                    "address_proof_document",
                     "address_document_available",
                     "background_verification_status",
                 )

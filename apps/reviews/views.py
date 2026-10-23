@@ -1,4 +1,5 @@
-from drf_spectacular.utils import OpenApiExample, extend_schema
+from drf_spectacular.utils import OpenApiExample, OpenApiParameter, extend_schema
+from drf_spectacular.types import OpenApiTypes
 from rest_framework import serializers, status
 from django.db.models import Q
 from rest_framework import viewsets
@@ -66,6 +67,14 @@ class AdminReviewViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Review.objects.select_related("booking", "booking__service", "service", "customer", "technician").order_by("-created_at")
+        technician_id = self.request.query_params.get("technician")
+        if technician_id:
+            technician_id = serializers.UUIDField().run_validation(technician_id)
+            queryset = queryset.filter(technician__technician_profile__id=technician_id)
+        rating = self.request.query_params.get("rating")
+        if rating:
+            rating_value = serializers.IntegerField(min_value=1, max_value=5).run_validation(rating)
+            queryset = queryset.filter(rating=rating_value)
         service_id = self.request.query_params.get("service")
         if service_id:
             field = serializers.UUIDField()
@@ -102,7 +111,14 @@ class AdminReviewViewSet(viewsets.ModelViewSet):
             resource_type="review", resource_id=review_id, metadata={"operation": "deleted"},
         )
 
-    @extend_schema(summary="List reviews for admin", responses={status.HTTP_200_OK: AdminReviewSerializer(many=True)})
+    @extend_schema(
+        summary="List reviews for admin",
+        parameters=[
+            OpenApiParameter("technician", OpenApiTypes.UUID, OpenApiParameter.QUERY, description="Filter by technician profile ID."),
+            OpenApiParameter("rating", OpenApiTypes.INT, OpenApiParameter.QUERY, enum=[1, 2, 3, 4, 5]),
+        ],
+        responses={status.HTTP_200_OK: AdminReviewSerializer(many=True)},
+    )
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
