@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
             },
         ),
         migrations.CreateModel(
-            name='TechnicianDocument',
+            name='PrivateTechnicianDocument',
             fields=[
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 ('verification_status', models.CharField(choices=[('PENDING', 'Pending review'), ('VERIFIED', 'Verified'), ('REJECTED', 'Rejected')], default='PENDING', max_length=16)),
                 ('verification_note', models.TextField(blank=True)),
                 ('verified_at', models.DateTimeField(blank=True, null=True)),
-                ('technician', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='documents', to='technicians.technicianprofile')),
+                ('technician', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='private_documents', to='technicians.technicianprofile')),
                 ('uploaded_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='uploaded_technician_documents', to=settings.AUTH_USER_MODEL)),
                 ('verified_by', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='verified_technician_documents', to=settings.AUTH_USER_MODEL)),
             ],

@@ -1,13 +1,21 @@
-from django.db import transaction
+import secrets
+from decimal import Decimal
+
 from django.conf import settings
+from django.db import transaction
+from django.db.models import Avg, Count, Prefetch, Sum
 from django.utils import timezone
 from rest_framework import serializers
 
 from apps.bookings.models import Booking, BookingStatus, BookingStatusHistory
-from apps.notifications.models import NotificationChannel, NotificationEvent
+from apps.notifications.models import DeviceToken, NotificationChannel, NotificationEvent
 from apps.notifications.services import emit_notification_event
+from apps.reviews.models import Review
 from apps.technicians.models import (
+    REQUIRED_KYC_DOCUMENTS,
     TechnicianAssignment,
+    TechnicianDocumentType,
+    TechnicianType,
     TechnicianAvailabilityStatus,
     TechnicianProfile,
     TechnicianVerificationStatus,
@@ -150,9 +158,13 @@ def assign_technician(*, booking_id, technician_id, assigned_by, notes="", reaso
             notes=notes,
         )
 
+    if booking.assigned_technician_id != technician.user_id:
+        # A new technician has to accept the job themselves.
+        booking.accepted_at = None
+        booking.arrived_at = None
     booking.assigned_technician = technician.user
     booking.booking_status = BookingStatus.TECHNICIAN_ASSIGNED
-    booking.save(update_fields=["assigned_technician", "booking_status", "updated_at"])
+    booking.save(update_fields=["assigned_technician", "booking_status", "accepted_at", "arrived_at", "updated_at"])
 
     BookingStatusHistory.objects.create(
         booking=booking,
@@ -175,6 +187,14 @@ def assign_technician(*, booking_id, technician_id, assigned_by, notes="", reaso
             event=NotificationEvent.TECHNICIAN_ASSIGNED, recipient=technician.user, booking=booking,
             channels=(NotificationChannel.WHATSAPP,),
             payload=technician_assignment_payload(assignment),
+        )
+    # PurplePartner alert, only for technicians who have the app installed and signed in.
+    if changed_assignment and DeviceToken.objects.filter(user=technician.user, is_active=True).exists():
+        emit_notification_event(
+            event=NotificationEvent.JOB_ASSIGNED,
+            recipient=technician.user,
+            booking=booking,
+            channels=(NotificationChannel.PUSH,),
         )
     return assignment
 
@@ -212,3 +232,202 @@ def remove_technician_assignment(*, booking_id, changed_by, notes=""):
         notes=notes or "Technician assignment removed.",
     )
     return booking
+
+
+COMPLETED_STATUSES = {BookingStatus.COMPLETED, BookingStatus.CLOSED}
+CANCELLED_STATUSES = {BookingStatus.CANCELLED, BookingStatus.REFUND_PENDING, BookingStatus.REFUNDED}
+
+
+def _month_start(day, months_back=0):
+    month_index = day.year * 12 + day.month - 1 - months_back
+    return day.replace(year=month_index // 12, month=month_index % 12 + 1, day=1)
+
+
+def get_technician_performance(*, user, period="overall"):
+    """Job completion, revenue and rating figures for one technician, plus a 3-month trend.
+
+    ``period`` is "overall" or a calendar month as "YYYY-MM" (matched on service date).
+    """
+    bookings = Booking.objects.filter(assigned_technician=user)
+    reviews = Review.objects.filter(technician=user, is_visible=True)
+    if period != "overall":
+        try:
+            start = timezone.datetime.strptime(period, "%Y-%m").date()
+        except ValueError as exc:
+            raise serializers.ValidationError({"period": "Use 'overall' or YYYY-MM."}) from exc
+        end = _month_start(start, -1)
+        bookings = bookings.filter(service_date__gte=start, service_date__lt=end)
+        reviews = reviews.filter(booking__service_date__gte=start, booking__service_date__lt=end)
+
+    statuses = list(bookings.values_list("booking_status", flat=True))
+    total = len(statuses)
+    completed = sum(1 for status in statuses if status in COMPLETED_STATUSES)
+    cancelled = sum(1 for status in statuses if status in CANCELLED_STATUSES)
+    gross_revenue = bookings.filter(booking_status__in=COMPLETED_STATUSES).aggregate(total=Sum("total_amount"))["total"]
+    rating = reviews.aggregate(average=Avg("rating"), count=Count("id"))
+    completion_rate = round(completed * 100 / total) if total else 0
+
+    today = timezone.localdate()
+    trend = []
+    for months_back in (2, 1, 0):
+        start = _month_start(today, months_back)
+        end = _month_start(today, months_back - 1)
+        month_jobs = Booking.objects.filter(
+            assigned_technician=user,
+            booking_status__in=COMPLETED_STATUSES,
+            service_date__gte=start,
+            service_date__lt=end,
+        )
+        month_rating = Review.objects.filter(
+            technician=user, is_visible=True, booking__service_date__gte=start, booking__service_date__lt=end
+        ).aggregate(average=Avg("rating"))["average"]
+        trend.append(
+            {
+                "month": start.strftime("%b"),
+                "jobs": month_jobs.count(),
+                "earnings": float(month_jobs.aggregate(total=Sum("total_amount"))["total"] or 0),
+                "rating": round(float(month_rating), 1) if month_rating is not None else None,
+            }
+        )
+
+    return {
+        "period": "Overall" if period == "overall" else start_label(period),
+        "completion_rate": completion_rate,
+        "completed": completed,
+        "total": total,
+        "cancelled": cancelled,
+        "open": total - completed - cancelled,
+        "gross_revenue": f"{gross_revenue or 0:.2f}",
+        "average_rating": round(float(rating["average"]), 1) if rating["average"] is not None else None,
+        "review_count": rating["count"],
+        # The penalty system does not exist yet; null tells the app to hide the tile.
+        "penalties": None,
+        "penalty_amount": None,
+        "needs_attention": total >= 3 and completion_rate < 50,
+        "trend": trend,
+    }
+
+
+def start_label(period):
+    return timezone.datetime.strptime(period, "%Y-%m").strftime("%b %Y")
+
+
+def get_technician_earnings(*, user, period="overall"):
+    """Completed jobs with what the customer paid online and what the technician collected on site.
+
+    Commission and payouts are not modelled yet, so amounts are job values, not take-home pay.
+    """
+    from apps.payments.models import Payment, PaymentProvider, PaymentType
+
+    jobs = (
+        Booking.objects.filter(assigned_technician=user, booking_status__in=COMPLETED_STATUSES)
+        .select_related("service")
+        .prefetch_related(
+            Prefetch(
+                "payments",
+                queryset=Payment.objects.filter(provider=PaymentProvider.OFFLINE, payment_type=PaymentType.BALANCE).order_by("-created_at"),
+                to_attr="offline_balance_payments",
+            )
+        )
+        .order_by("-completed_at", "-service_date")
+    )
+    if period != "overall":
+        try:
+            start = timezone.datetime.strptime(period, "%Y-%m").date()
+        except ValueError as exc:
+            raise serializers.ValidationError({"period": "Use 'overall' or YYYY-MM."}) from exc
+        jobs = jobs.filter(service_date__gte=start, service_date__lt=_month_start(start, -1))
+
+    rows = []
+    for job in jobs:
+        payment = job.offline_balance_payments[0] if job.offline_balance_payments else None
+        rows.append(
+            {
+                "id": str(job.id),
+                "booking_number": job.booking_number,
+                "service_name": job.service.name,
+                "service_date": job.service_date,
+                "completed_at": job.completed_at,
+                "total_amount": job.total_amount,
+                "paid_online": job.advance_paid,
+                "collected_by_you": job.balance_collected,
+                "collection_method": (payment.provider_payload or {}).get("method", "") if payment else "",
+            }
+        )
+    return {
+        "period": "Overall" if period == "overall" else start_label(period),
+        "job_count": len(rows),
+        "job_value_total": sum((row["total_amount"] for row in rows), Decimal("0.00")),
+        "collected_by_you_total": sum((row["collected_by_you"] for row in rows), Decimal("0.00")),
+        "paid_online_total": sum((row["paid_online"] for row in rows), Decimal("0.00")),
+        "jobs": rows,
+    }
+
+
+def create_partner_signup(user):
+    """Pending technician profile for a partner who signed up in the app; an admin verifies their KYC."""
+    while True:
+        code = f"PSP-{secrets.randbelow(10**6):06d}"
+        if not TechnicianProfile.objects.filter(employee_code=code).exists():
+            break
+    return TechnicianProfile.objects.create(
+        user=user,
+        employee_code=code,
+        display_name="",
+        phone=user.phone_number,
+        technician_type=TechnicianType.PARTNER,
+        background_verification_status=TechnicianVerificationStatus.PENDING,
+        availability_status=TechnicianAvailabilityStatus.OFFLINE,
+        is_available=False,
+        is_active=True,
+    )
+
+
+KYC_EDITABLE_STATUSES = {TechnicianVerificationStatus.PENDING, TechnicianVerificationStatus.REJECTED}
+
+
+def ensure_kyc_editable(profile):
+    if profile.background_verification_status not in KYC_EDITABLE_STATUSES:
+        raise serializers.ValidationError("Your KYC is under review or already verified. Contact Purple Squad to change it.")
+
+
+@transaction.atomic
+def submit_kyc(profile):
+    ensure_kyc_editable(profile)
+    missing = []
+    if not profile.display_name.strip():
+        missing.append("your full name")
+    if not profile.city or not profile.pincode:
+        missing.append("city and pincode")
+    if not profile.skills.exists():
+        missing.append("at least one service you offer")
+    uploaded = set(profile.documents.values_list("doc_type", flat=True))
+    missing += [TechnicianDocumentType(doc).label for doc in REQUIRED_KYC_DOCUMENTS if doc not in uploaded]
+    if missing:
+        raise serializers.ValidationError({"missing": missing})
+    profile.background_verification_status = TechnicianVerificationStatus.UNDER_REVIEW
+    profile.kyc_submitted_at = timezone.now()
+    profile.verification_note = ""
+    profile.save(update_fields=["background_verification_status", "kyc_submitted_at", "verification_note", "updated_at"])
+    return profile
+
+
+@transaction.atomic
+def decide_kyc(*, profile, approve, note=""):
+    if profile.background_verification_status != TechnicianVerificationStatus.UNDER_REVIEW:
+        raise serializers.ValidationError("Only submitted KYC can be approved or rejected.")
+    if approve:
+        profile.background_verification_status = TechnicianVerificationStatus.VERIFIED
+        profile.availability_status = TechnicianAvailabilityStatus.AVAILABLE
+        profile.is_available = True
+        profile.joined_at = profile.joined_at or timezone.localdate()
+        photo = profile.documents.filter(doc_type=TechnicianDocumentType.PHOTO).order_by("-created_at").first()
+        if photo and not profile.profile_photo:
+            profile.profile_photo.name = photo.file.name
+    else:
+        if not note.strip():
+            raise serializers.ValidationError({"note": "Tell the partner what to fix."})
+        profile.background_verification_status = TechnicianVerificationStatus.REJECTED
+    profile.verification_note = note
+    profile.save()
+    return profile

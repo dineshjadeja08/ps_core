@@ -1,3 +1,4 @@
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, extend_schema
 from django.db.models import Prefetch, Q
 from django.db import transaction
@@ -39,7 +40,7 @@ class AdminBookingViewSet(
 
     def get_queryset(self):
         queryset = (
-            Booking.objects.select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician")
+            Booking.objects.select_related("customer", "customer__customer_profile", "service", "time_slot", "assigned_technician__technician_profile")
             .prefetch_related("status_history")
             .order_by("-created_at")
         )
@@ -239,6 +240,16 @@ class BookingViewSet(
     )
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(
+        summary="Get my service-start OTP",
+        description="The 4-digit code the customer gives the technician to start the job. Only the booking's customer can read it.",
+        responses={status.HTTP_200_OK: OpenApiTypes.OBJECT},
+    )
+    @action(detail=True, methods=["get"], url_path="start-otp")
+    def start_otp(self, request, *args, **kwargs):
+        booking = self.get_object()
+        return Response({"otp": booking.start_otp, "verified": booking.start_otp_verified_at is not None, "verified_at": booking.start_otp_verified_at})
 
     @extend_schema(
         summary="Cancel customer booking",

@@ -90,6 +90,9 @@ def send_notification(notification, *, raise_on_failure=False):
 def get_notification_provider(notification=None):
     if notification is not None and notification.channel == NotificationChannel.WHATSAPP:
         provider_path = settings.WHATSAPP_NOTIFICATION_PROVIDER
+    elif notification is not None and notification.channel == NotificationChannel.PUSH:
+        # Push has its own provider so it never goes out through the SMS provider.
+        provider_path = settings.PUSH_NOTIFICATION_PROVIDER
     else:
         provider_path = getattr(settings, "NOTIFICATION_PROVIDER", "apps.notifications.providers.LocalNotificationProvider")
     return import_string(provider_path)()
@@ -115,11 +118,14 @@ def _title_for_event(event):
         NotificationEvent.REFUND_INITIATED: "Refund initiated",
         NotificationEvent.REFUND_COMPLETED: "Refund completed",
         NotificationEvent.REVIEW_REQUEST: "Review request",
+        NotificationEvent.JOB_ASSIGNED: "New job assigned",
     }
     return titles.get(event, "Purple Squad update")
 
 
 def _message_for_event(event, booking):
+    if event == NotificationEvent.JOB_ASSIGNED:
+        return _job_assigned_message(booking)
     booking_number = booking.booking_number if booking else "your booking"
     messages = {
         NotificationEvent.BOOKING_RECEIVED: "Your booking has been received. Our Purple Squad team will contact you within 10 minutes to confirm the service and technician details.",
@@ -142,3 +148,10 @@ def _message_for_event(event, booking):
         NotificationEvent.REVIEW_REQUEST: f"Thank you for choosing Purple Squad. Please share your service experience for {booking_number}.",
     }
     return messages.get(event, f"Update for {booking_number}.")
+
+
+def _job_assigned_message(booking):
+    if not booking:
+        return "A new job has been assigned to you."
+    when = f"{booking.service_date.strftime('%d %b')}, {booking.time_slot.start_time.strftime('%I:%M %p').lstrip('0')}"
+    return f"{booking.service.name} on {when} ({booking.booking_number}). Open PurplePartner to accept."

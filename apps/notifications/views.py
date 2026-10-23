@@ -34,6 +34,11 @@ class DeviceTokenRegisterView(APIView):
         )
         return Response(DeviceTokenSerializer(device).data)
 
+    @extend_schema(summary="Remove an FCM device token (on logout)", request=DeviceTokenSerializer, responses={status.HTTP_204_NO_CONTENT: None})
+    def delete(self, request):
+        DeviceToken.objects.filter(user=request.user, token=str(request.data.get("token", "")).strip()).delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 class AdminNotificationViewSet(
     mixins.CreateModelMixin,

@@ -95,6 +95,8 @@ class BookingSerializer(serializers.ModelSerializer):
     time_slot = serializers.SerializerMethodField()
     status_history = BookingStatusHistorySerializer(many=True, read_only=True)
     assigned_technician = serializers.SerializerMethodField()
+    start_otp_verified = serializers.SerializerMethodField()
+    technician = serializers.SerializerMethodField()
 
     class Meta:
         model = Booking
@@ -129,6 +131,10 @@ class BookingSerializer(serializers.ModelSerializer):
             "updated_at",
             "status_history",
             "assigned_technician",
+            "accepted_at",
+            "arrived_at",
+            "start_otp_verified",
+            "technician",
         )
 
     @extend_schema_field(OpenApiTypes.OBJECT)
@@ -137,6 +143,28 @@ class BookingSerializer(serializers.ModelSerializer):
             "id": str(obj.service_id),
             "name": obj.service.name,
             "slug": obj.service.slug,
+        }
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_start_otp_verified(self, obj):
+        return obj.start_otp_verified_at is not None
+
+    @extend_schema_field(OpenApiTypes.OBJECT)
+    def get_technician(self, obj):
+        """What the customer may see about the assigned technician."""
+        user = obj.assigned_technician
+        profile = getattr(user, "technician_profile", None) if user else None
+        if profile is None:
+            return None
+        request = self.context.get("request")
+        photo = profile.profile_photo.url if profile.profile_photo else ""
+        return {
+            "name": profile.display_name,
+            "phone": profile.phone,
+            "photo_url": request.build_absolute_uri(photo) if request and photo else photo,
+            "average_rating": str(profile.average_rating),
+            "completed_job_count": profile.completed_job_count,
+            "is_verified": profile.is_verified,
         }
 
     @extend_schema_field(OpenApiTypes.OBJECT)

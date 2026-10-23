@@ -14,14 +14,15 @@ def get_firebase_auth_provider():
 
 
 @transaction.atomic
-def authenticate_with_firebase(id_token: str):
+def authenticate_with_firebase(id_token: str, *, app="customer"):
     verified_token = get_firebase_auth_provider().verify_id_token(id_token)
     phone_number = normalize_phone_number(verified_token.phone_number)
-    return authenticate_verified_phone(phone_number, firebase_uid=verified_token.uid)
+    return authenticate_verified_phone(phone_number, firebase_uid=verified_token.uid, app=app)
 
 
 @transaction.atomic
-def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = ""):
+def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = "", app: str = "customer"):
+    """app="partner" (PurplePartner) signs new numbers up as pending technicians instead of customers."""
     phone_number = normalize_phone_number(phone_number)
     user = User.objects.select_for_update().filter(firebase_uid=firebase_uid).first() if firebase_uid else None
     if user is None:
@@ -31,7 +32,7 @@ def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = ""):
         user = User.objects.create(
             phone_number=phone_number,
             firebase_uid=firebase_uid or None,
-            role=UserRole.CUSTOMER,
+            role=UserRole.TECHNICIAN if app == "partner" else UserRole.CUSTOMER,
             is_verified=True,
             is_active=True,
         )
@@ -40,6 +41,8 @@ def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = ""):
         raise serializers.ValidationError("This account is disabled.")
     if user.role in {UserRole.ADMIN, UserRole.SUPER_ADMIN}:
         raise serializers.ValidationError("Administrator accounts must use the staff login portal.")
+    if app == "partner" and user.role != UserRole.TECHNICIAN:
+        raise serializers.ValidationError("This number is registered as a Purple Squad customer. Use a different number to join as a partner.")
 
     if firebase_uid:
         uid_owner = User.objects.filter(firebase_uid=firebase_uid).exclude(pk=user.pk).first()
@@ -63,6 +66,10 @@ def authenticate_verified_phone(phone_number: str, *, firebase_uid: str = ""):
 
     if user.role == UserRole.CUSTOMER:
         CustomerProfile.objects.get_or_create(user=user)
+    if app == "partner" and not hasattr(user, "technician_profile"):
+        from apps.technicians.services import create_partner_signup
+
+        create_partner_signup(user)
 
     return _login_result(user=user, created=created)
 

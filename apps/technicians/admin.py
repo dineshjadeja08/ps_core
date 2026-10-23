@@ -8,6 +8,7 @@ from apps.technicians.models import (
     TechnicianAssignment,
     TechnicianAvailabilityStatus,
     TechnicianLeave,
+    TechnicianDocument,
     TechnicianProfile,
     TechnicianSkill,
     TechnicianVerificationStatus,
@@ -23,8 +24,16 @@ class TechnicianSkillAdmin(admin.ModelAdmin):
     readonly_fields = ("created_at", "updated_at")
 
 
+class TechnicianDocumentInline(admin.TabularInline):
+    model = TechnicianDocument
+    extra = 0
+    fields = ("doc_type", "file", "created_at")
+    readonly_fields = ("created_at",)
+
+
 @admin.register(TechnicianProfile)
 class TechnicianProfileAdmin(admin.ModelAdmin):
+    inlines = (TechnicianDocumentInline,)
     list_display = (
         "employee_code",
         "display_name",

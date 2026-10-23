@@ -241,6 +241,7 @@ MSG91_WHATSAPP_PAYMENT_TEMPLATE = env("MSG91_WHATSAPP_PAYMENT_TEMPLATE", default
 MSG91_WHATSAPP_TEMPLATE_NAMESPACE = env("MSG91_WHATSAPP_TEMPLATE_NAMESPACE", default="")
 MSG91_WHATSAPP_TEMPLATE_LANGUAGE = env("MSG91_WHATSAPP_TEMPLATE_LANGUAGE", default="en")
 MSG91_WHATSAPP_FLOW_URL = env("MSG91_WHATSAPP_FLOW_URL", default="https://control.msg91.com/api/v5/whatsapp/whatsapp-outbound-message/bulk/")
+PUSH_NOTIFICATION_PROVIDER = env("PUSH_NOTIFICATION_PROVIDER", default="apps.notifications.fcm.FirebaseCloudMessagingProvider")
 WHATSAPP_NOTIFICATION_PROVIDER = env("WHATSAPP_NOTIFICATION_PROVIDER", default="apps.notifications.providers.Msg91WhatsAppNotificationProvider")
 MSG91_SMS_FLOW_URL = env("MSG91_SMS_FLOW_URL", default="https://control.msg91.com/api/v5/flow")
 MSG91_SMS_TEMPLATE_ID = env("MSG91_SMS_TEMPLATE_ID", default="")

@@ -1,3 +1,5 @@
+import secrets
+
 from django.conf import settings
 from django.db import models
 
@@ -69,6 +71,13 @@ class Booking(BaseModel):
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     is_manual_work_order = models.BooleanField(default=False)
+    # The customer reads this code to the technician, who must enter it to start the job.
+    # Database defaults keep inserts from the previous release working during deploys and rollbacks.
+    start_otp = models.CharField(max_length=4, blank=True, default="", db_default="")
+    start_otp_verified_at = models.DateTimeField(null=True, blank=True)
+    start_otp_attempts = models.PositiveSmallIntegerField(default=0, db_default=0)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    arrived_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ("-created_at",)
@@ -84,6 +93,17 @@ class Booking(BaseModel):
 
     def __str__(self):
         return self.booking_number
+
+    def save(self, *args, **kwargs):
+        if not self.start_otp:
+            self.start_otp = generate_start_otp()
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = [*kwargs["update_fields"], "start_otp"]
+        return super().save(*args, **kwargs)
+
+
+def generate_start_otp():
+    return f"{secrets.randbelow(10000):04d}"
 
 
 class BookingStatusHistory(BaseModel):
