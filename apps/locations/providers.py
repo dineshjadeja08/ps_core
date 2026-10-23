@@ -61,6 +61,8 @@ class OlaMapsLocationProvider:
     BASE_URL = "https://api.olamaps.io"
     REVERSE_GEOCODE_PATH = "/places/v1/reverse-geocode"
     AUTOCOMPLETE_PATH = "/places/v1/autocomplete"
+    API_KEY_PARAM = "api_key"
+    LOG_NAME = "ola_maps_failure"
 
     def __init__(self):
         self.api_key = str(settings.OLA_MAPS_API_KEY or "").strip()
@@ -127,7 +129,7 @@ class OlaMapsLocationProvider:
             try:
                 response = requests.get(
                     f"{self.BASE_URL}{path}",
-                    params={**params, "api_key": self.api_key},
+                    params={**params, self.API_KEY_PARAM: self.api_key},
                     headers={"Accept": "application/json", "X-Request-Id": provider_request_id},
                     timeout=self.timeout,
                 )
@@ -208,10 +210,11 @@ class OlaMapsLocationProvider:
             request_id=request_id,
         )
 
-    @staticmethod
-    def _log_failure(path, error, *, attempt=1):
+    @classmethod
+    def _log_failure(cls, path, error, *, attempt=1):
         logger.warning(
-            "ola_maps_failure endpoint=%s request_id=%s status=%s latency_ms=%s attempt=%s body=%s",
+            "%s endpoint=%s request_id=%s status=%s latency_ms=%s attempt=%s body=%s",
+            cls.LOG_NAME,
             path,
             error.request_id,
             error.status_code or "misconfigured",
@@ -219,6 +222,82 @@ class OlaMapsLocationProvider:
             attempt,
             error.response_snippet or "<empty>",
         )
+
+
+class GoogleMapsLocationProvider(OlaMapsLocationProvider):
+    """Google Geocoding API (reverse geocode) and Places Autocomplete, restricted to India."""
+
+    BASE_URL = "https://maps.googleapis.com"
+    REVERSE_GEOCODE_PATH = "/maps/api/geocode/json"
+    AUTOCOMPLETE_PATH = "/maps/api/place/autocomplete/json"
+    API_KEY_PARAM = "key"
+    LOG_NAME = "google_maps_failure"
+
+    def __init__(self):
+        super().__init__()
+        self.api_key = str(settings.GOOGLE_MAPS_API_KEY or "").strip()
+
+    def get_reverse_geocode(self, latitude: float, longitude: float, *, request_id: str = "") -> dict:
+        payload = self._get(
+            self.REVERSE_GEOCODE_PATH,
+            {"latlng": f"{latitude},{longitude}", "language": "en", "region": "in"},
+            request_id=request_id,
+        )
+        results = self._results(payload, "results", request_id)
+        if not results:
+            raise LocationProviderError(request_id=request_id)
+        # Prefer a result that carries a postal code (the first one sometimes does not).
+        best = next((item for item in results if isinstance(item, dict) and "postal_code" in json.dumps(item.get("address_components") or [])), results[0])
+        try:
+            return _normalise_place(best, fallback_latitude=latitude, fallback_longitude=longitude)
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise self._malformed_error(request_id) from exc
+
+    def get_autocomplete(
+        self,
+        query: str,
+        *,
+        latitude: float | None = None,
+        longitude: float | None = None,
+        city: str = "",
+        request_id: str = "",
+    ) -> list[dict]:
+        params = {"input": query, "language": "en", "components": "country:in"}
+        if latitude is not None and longitude is not None:
+            params["location"] = f"{latitude},{longitude}"
+            params["radius"] = "50000"
+        elif city and city.casefold() not in query.casefold():
+            params["input"] = f"{query}, {city}"
+        payload = self._get(self.AUTOCOMPLETE_PATH, params, request_id=request_id)
+        predictions = self._results(payload, "predictions", request_id)
+        try:
+            return [_normalise_suggestion(item) for item in predictions[:8] if isinstance(item, dict)]
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise self._malformed_error(request_id) from exc
+
+    def _results(self, payload: dict, key: str, request_id: str) -> list:
+        # Google answers HTTP 200 and reports problems in "status".
+        status = str(payload.get("status") or "")
+        if status in {"REQUEST_DENIED", "INVALID_REQUEST"}:
+            error = LocationProviderError(
+                "Address lookup is not configured.",
+                reason="misconfigured",
+                status_code=status,
+                response_snippet=_safe_body_snippet(str(payload.get("error_message") or "")),
+                request_id=_safe_request_id(request_id),
+            )
+            self._log_failure(key, error)
+            raise error
+        if status in {"OVER_QUERY_LIMIT", "OVER_DAILY_LIMIT", "UNKNOWN_ERROR"}:
+            error = LocationProviderError(status_code=status, request_id=_safe_request_id(request_id))
+            self._log_failure(key, error)
+            raise error
+        if status == "ZERO_RESULTS":
+            return []
+        results = payload.get(key)
+        if not isinstance(results, list):
+            raise self._malformed_error(request_id)
+        return results
 
 
 def get_location_provider(provider_path=None) -> LocationProvider:

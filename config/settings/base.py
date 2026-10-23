@@ -196,8 +196,14 @@ REST_FRAMEWORK = {
     "NUM_PROXIES": env.int("DRF_NUM_PROXIES", default=0),
 }
 
-LOCATION_PROVIDER = env("LOCATION_PROVIDER", default="apps.locations.providers.OlaMapsLocationProvider")
 OLA_MAPS_API_KEY = env("OLA_MAPS_API_KEY", default="")
+GOOGLE_MAPS_API_KEY = env("GOOGLE_MAPS_API_KEY", default="")
+# Google Maps when its key is set, otherwise Ola Maps; LOCATION_PROVIDER overrides either.
+LOCATION_PROVIDER = env("LOCATION_PROVIDER", default="") or (
+    "apps.locations.providers.GoogleMapsLocationProvider"
+    if GOOGLE_MAPS_API_KEY
+    else "apps.locations.providers.OlaMapsLocationProvider"
+)
 LOCATION_PROVIDER_TIMEOUT_SECONDS = env.int("LOCATION_PROVIDER_TIMEOUT_SECONDS", default=8)
 LOCATION_REVERSE_CACHE_SECONDS = env.int("LOCATION_REVERSE_CACHE_SECONDS", default=86400)
 LOCATION_AUTOCOMPLETE_CACHE_SECONDS = env.int("LOCATION_AUTOCOMPLETE_CACHE_SECONDS", default=300)

@@ -7,7 +7,7 @@ from django.test import override_settings
 from rest_framework.test import APIClient
 
 from apps.locations.models import ServiceArea
-from apps.locations.providers import LocationProviderError, OlaMapsLocationProvider, autocomplete, reverse_geocode
+from apps.locations.providers import GoogleMapsLocationProvider, LocationProviderError, OlaMapsLocationProvider, autocomplete, reverse_geocode
 from common.throttles import LocationIPThrottle
 
 
@@ -262,3 +262,67 @@ class CachedProvider:
     def get_reverse_geocode(self, latitude, longitude, **kwargs):
         self.__class__.reverse_calls += 1
         return normalized_address(latitude, longitude)
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="google-key")
+def test_google_reverse_geocode_prefers_result_with_pincode(monkeypatch):
+    ServiceArea.objects.create(name="Chennai Central", city="Chennai", state="Tamil Nadu", postal_code="600002")
+    get = Mock(return_value=ola_response(200, {
+        "status": "OK",
+        "results": [
+            {"formatted_address": "Mount Road, Chennai", "address_components": [{"long_name": "Chennai", "types": ["locality"]}]},
+            {
+                "formatted_address": "12 Mount Road, Anna Salai, Chennai, Tamil Nadu 600002, India",
+                "geometry": {"location": {"lat": 13.0827, "lng": 80.2707}},
+                "address_components": [
+                    {"long_name": "Chennai", "types": ["locality"]},
+                    {"long_name": "Tamil Nadu", "types": ["administrative_area_level_1"]},
+                    {"long_name": "600002", "types": ["postal_code"]},
+                ],
+            },
+        ],
+    }))
+    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+
+    result = GoogleMapsLocationProvider().get_reverse_geocode(13.0827, 80.2707)
+
+    assert get.call_args.args[0] == "https://maps.googleapis.com/maps/api/geocode/json"
+    assert get.call_args.kwargs["params"]["key"] == "google-key"
+    assert result["pincode"] == "600002"
+    assert result["serviceable"] is True
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="google-key")
+def test_google_autocomplete_is_limited_to_india(monkeypatch):
+    get = Mock(return_value=ola_response(200, {
+        "status": "OK",
+        "predictions": [{"place_id": "abc", "description": "Anna Nagar, Chennai, Tamil Nadu, India", "structured_formatting": {"main_text": "Anna Nagar", "secondary_text": "Chennai, Tamil Nadu, India"}}],
+    }))
+    monkeypatch.setattr("apps.locations.providers.requests.get", get)
+
+    result = GoogleMapsLocationProvider().get_autocomplete("Anna Nagar")
+
+    assert get.call_args.kwargs["params"]["components"] == "country:in"
+    assert result[0]["main_text"] == "Anna Nagar"
+    assert result[0]["city"] == "Chennai"
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="google-key")
+def test_google_request_denied_is_misconfigured(monkeypatch):
+    monkeypatch.setattr("apps.locations.providers.requests.get", Mock(return_value=ola_response(200, {"status": "REQUEST_DENIED", "error_message": "API not enabled"})))
+
+    with pytest.raises(LocationProviderError) as error:
+        GoogleMapsLocationProvider().get_reverse_geocode(13.08, 80.27)
+
+    assert error.value.reason == "misconfigured"
+
+
+@pytest.mark.django_db
+@override_settings(GOOGLE_MAPS_API_KEY="google-key")
+def test_google_zero_results_autocomplete_is_empty(monkeypatch):
+    monkeypatch.setattr("apps.locations.providers.requests.get", Mock(return_value=ola_response(200, {"status": "ZERO_RESULTS", "predictions": []})))
+
+    assert GoogleMapsLocationProvider().get_autocomplete("zzzz") == []
