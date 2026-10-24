@@ -461,13 +461,17 @@ def _lock_booking(booking_id):
 
 def _ensure_active_assigned_technician(booking, user):
     """Only the active, verified technician assigned to this booking may update it."""
-    from apps.technicians.models import TechnicianProfile, TechnicianVerificationStatus
+    from apps.technicians.models import TechnicianCompanyUser, TechnicianProfile, TechnicianVerificationStatus
 
-    active = TechnicianProfile.objects.select_for_update().filter(
-        user=user, is_active=True, employment_status="ACTIVE",
+    assigned_profile = TechnicianProfile.objects.select_for_update().filter(
+        user_id=booking.assigned_technician_id, is_active=True, employment_status="ACTIVE",
         background_verification_status=TechnicianVerificationStatus.VERIFIED,
-    ).exclude(availability_status="SUSPENDED").exists()
-    if not user.is_active or not active or booking.assigned_technician_id != user.id:
+    ).exclude(availability_status="SUSPENDED").first()
+    is_assigned_user = booking.assigned_technician_id == user.id
+    is_active_member = bool(assigned_profile and TechnicianCompanyUser.objects.filter(
+        technician=assigned_profile, user=user, is_active=True,
+    ).exists())
+    if not user.is_active or not assigned_profile or not (is_assigned_user or is_active_member):
         raise PermissionDenied("Only the active assigned technician can update this job.")
 
 

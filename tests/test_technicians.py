@@ -16,6 +16,7 @@ from apps.scheduling.models import TimeSlot
 from apps.technicians.models import (
     TechnicianAssignment,
     TechnicianAvailabilityStatus,
+    TechnicianCompanyUser,
     TechnicianLeave,
     TechnicianProfile,
     TechnicianSkill,
@@ -911,7 +912,7 @@ def test_admin_can_upload_preview_verify_replace_and_remove_private_documents(ad
 def test_company_user_membership_is_scoped_to_technician(admin_client):
     technician = create_technician(code="USER-001", phone="+919876540061")
     other = create_technician(code="USER-002", phone="+919876540062")
-    account = User.objects.create_user("+919876540063", role=UserRole.CUSTOMER, first_name="Company", last_name="Owner")
+    account = User.objects.create_user("+919876540063", role=UserRole.TECHNICIAN, first_name="Company", last_name="Owner")
     url = f"/api/v1/admin/technicians/{technician.id}/company-users/"
 
     added = admin_client.post(url, {"phone_number": account.phone_number, "role": "OWNER"}, format="json")
@@ -934,3 +935,17 @@ def test_company_user_membership_is_scoped_to_technician(admin_client):
     assert updated.status_code == 200, updated.data
     assert updated.data["role"] == "MANAGER"
     assert not updated.data["is_active"]
+
+
+@pytest.mark.django_db
+def test_admin_can_invite_new_partner_app_user(admin_client):
+    technician = create_technician(code="INVITE-001", phone="+919876540071")
+    url = f"/api/v1/admin/technicians/{technician.id}/company-users/"
+
+    response = admin_client.post(url, {"phone_number": "+919876540072", "role": "STAFF"}, format="json")
+
+    assert response.status_code == 201, response.data
+    account = User.objects.get(phone_number="+919876540072")
+    assert account.role == UserRole.TECHNICIAN
+    assert not account.is_verified
+    assert TechnicianCompanyUser.objects.filter(technician=technician, user=account, is_active=True).exists()

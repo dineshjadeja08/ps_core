@@ -406,10 +406,15 @@ class TechnicianCompanyUserCreateSerializer(serializers.Serializer):
 
     def validate_phone_number(self, value):
         value = normalize_phone_number(value)
-        try:
-            self._user = User.objects.get(phone_number=value)
-        except User.DoesNotExist as exc:
-            raise serializers.ValidationError("No account exists for this phone number. Create the account first.") from exc
+        self._user, _ = User.objects.get_or_create(
+            phone_number=value,
+            defaults={"role": UserRole.TECHNICIAN, "is_active": True, "is_verified": False},
+        )
+        if self._user.role in {UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN}:
+            raise serializers.ValidationError("This phone number belongs to a non-partner account and cannot be added as a company user.")
+        target = self.context["technician"]
+        if TechnicianProfile.objects.filter(user=self._user).exclude(pk=target.pk).exists() or TechnicianCompanyUser.objects.filter(user=self._user).exclude(technician=target).exists():
+            raise serializers.ValidationError("This account is already linked to another company.")
         if self._user.role == UserRole.SUPER_ADMIN:
             raise serializers.ValidationError("Super-admin accounts cannot be assigned as company users.")
         return value

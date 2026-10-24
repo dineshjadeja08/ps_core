@@ -91,9 +91,10 @@ class TechnicianJobViewSet(
     lookup_value_regex = "[0-9a-f-]{36}"
 
     def get_queryset(self):
+        profile = _own_technician_profile(self.request.user)
         queryset = (
             Booking.objects.filter(
-                assigned_technician=self.request.user,
+                assigned_technician=profile.user,
                 assigned_technician__technician_profile__is_active=True,
                 assigned_technician__technician_profile__employment_status="ACTIVE",
                 assigned_technician__technician_profile__background_verification_status="VERIFIED",
@@ -219,6 +220,11 @@ class TechnicianJobViewSet(
 def _own_technician_profile(user):
     profile = TechnicianProfile.objects.filter(user=user).prefetch_related("skills", "service_areas", "supported_services__category").first()
     if profile is None:
+        membership = TechnicianCompanyUser.objects.filter(
+            user=user, is_active=True, technician__is_active=True,
+        ).select_related("technician__user").first()
+        profile = membership.technician if membership else None
+    if profile is None:
         raise NotFound("No technician profile is linked to this account.")
     return profile
 
@@ -239,6 +245,8 @@ class TechnicianSelfProfileView(APIView):
     )
     def patch(self, request):
         profile = _own_technician_profile(request.user)
+        if profile.user_id != request.user.id:
+            raise ValidationError("Only the primary partner account can edit company KYC details.")
         ensure_kyc_editable(profile)
         serializer = TechnicianProfileUpdateSerializer(profile, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -276,6 +284,8 @@ class TechnicianDocumentListView(APIView):
     )
     def post(self, request):
         profile = _own_technician_profile(request.user)
+        if profile.user_id != request.user.id:
+            raise ValidationError("Only the primary partner account can upload company KYC documents.")
         ensure_kyc_editable(profile)
         serializer = TechnicianDocumentUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -298,6 +308,8 @@ class TechnicianDocumentDetailView(APIView):
     @extend_schema(summary="Remove a KYC document", responses={status.HTTP_204_NO_CONTENT: None})
     def delete(self, request, document_id):
         profile = _own_technician_profile(request.user)
+        if profile.user_id != request.user.id:
+            raise ValidationError("Only the primary partner account can manage company KYC documents.")
         ensure_kyc_editable(profile)
         deleted, _ = profile.documents.filter(id=document_id).delete()
         if not deleted:
@@ -316,7 +328,10 @@ class TechnicianKycSubmitView(APIView):
         responses={status.HTTP_200_OK: TechnicianProfileSerializer},
     )
     def post(self, request):
-        profile = submit_kyc(_own_technician_profile(request.user))
+        profile = _own_technician_profile(request.user)
+        if profile.user_id != request.user.id:
+            raise ValidationError("Only the primary partner account can submit company KYC.")
+        profile = submit_kyc(profile)
         return Response(TechnicianProfileSerializer(profile, context={"request": request}).data)
 
 
@@ -358,8 +373,9 @@ class TechnicianSelfReviewListView(generics.ListAPIView):
     serializer_class = TechnicianReviewSerializer
 
     def get_queryset(self):
+        profile = _own_technician_profile(self.request.user)
         return (
-            Review.objects.filter(technician=self.request.user, is_visible=True)
+            Review.objects.filter(technician=profile.user, is_visible=True)
             .select_related("booking__service", "customer__customer_profile")
             .order_by("-created_at")
         )
@@ -375,7 +391,8 @@ class TechnicianSelfLeaveViewSet(mixins.ListModelMixin, viewsets.GenericViewSet)
     serializer_class = TechnicianLeaveSerializer
 
     def get_queryset(self):
-        return TechnicianLeave.objects.filter(technician__user=self.request.user).select_related("technician", "approved_by").order_by("-start_at")
+        profile = _own_technician_profile(self.request.user)
+        return TechnicianLeave.objects.filter(technician=profile).select_related("technician", "approved_by").order_by("-start_at")
 
     @extend_schema(summary="List my leave requests")
     def list(self, request, *args, **kwargs):
@@ -419,7 +436,8 @@ class TechnicianSelfPerformanceView(APIView):
         responses={status.HTTP_200_OK: TechnicianPerformanceSerializer},
     )
     def get(self, request):
-        report = get_technician_performance(user=request.user, period=request.query_params.get("period", "overall"))
+        profile = _own_technician_profile(request.user)
+        report = get_technician_performance(user=profile.user, period=request.query_params.get("period", "overall"))
         return Response(TechnicianPerformanceSerializer(report).data)
 
 
@@ -434,7 +452,8 @@ class TechnicianSelfEarningsView(APIView):
         responses={status.HTTP_200_OK: TechnicianEarningsSerializer},
     )
     def get(self, request):
-        report = get_technician_earnings(user=request.user, period=request.query_params.get("period", "overall"))
+        profile = _own_technician_profile(request.user)
+        report = get_technician_earnings(user=profile.user, period=request.query_params.get("period", "overall"))
         return Response(TechnicianEarningsSerializer(report).data)
 
 

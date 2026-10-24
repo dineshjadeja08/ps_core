@@ -5,7 +5,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User, UserRole
-from apps.technicians.models import TechnicianProfile, TechnicianSkill, TechnicianVerificationStatus
+from apps.technicians.models import TechnicianCompanyUser, TechnicianProfile, TechnicianSkill, TechnicianVerificationStatus
 from tests.factories import user_factory
 
 pytestmark = pytest.mark.django_db
@@ -35,14 +35,28 @@ def _file(name="doc.png"):
     return SimpleUploadedFile(name, b"\x89PNG\r\n\x1a\n" + b"0" * 64, content_type="image/png")
 
 
-def test_partner_app_signup_creates_pending_technician(firebase_phone):
+def test_partner_app_requires_company_invitation(firebase_phone):
+    denied = _signup()
+    assert denied.status_code == 400
+    assert "not invited" in str(denied.json()).lower()
+
+    vendor_user = user_factory(firebase_phone.value, role=UserRole.TECHNICIAN)
+    vendor = TechnicianProfile.objects.create(
+        user=vendor_user, employee_code="PSP-INVITED", display_name="Invited vendor",
+        phone=vendor_user.phone_number, technician_type="PARTNER",
+        background_verification_status=TechnicianVerificationStatus.PENDING,
+        is_available=False,
+    )
+    invited_user = user_factory("+919811112223", role=UserRole.TECHNICIAN, is_verified=False)
+    TechnicianCompanyUser.objects.create(technician=vendor, user=invited_user)
+    firebase_phone.value = invited_user.phone_number
+
     response = _signup()
 
     assert response.status_code == 200
     assert response.json()["user"]["role"] == UserRole.TECHNICIAN
-    profile = TechnicianProfile.objects.get(user__phone_number=firebase_phone.value)
-    assert profile.background_verification_status == TechnicianVerificationStatus.PENDING
-    assert profile.employee_code.startswith("PSP-") and not profile.is_available
+    assert TechnicianProfile.objects.filter(user__phone_number=invited_user.phone_number).count() == 0
+    assert _client_for(invited_user.phone_number).get("/api/v1/technician/profile/").json()["id"] == str(vendor.id)
 
 
 def test_customer_app_login_still_creates_customers(firebase_phone):
@@ -60,6 +74,9 @@ def test_customer_number_cannot_sign_up_as_partner(firebase_phone):
 
 def test_full_kyc_flow_submit_then_admin_approves(firebase_phone, settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
+    from apps.technicians.services import create_partner_signup
+
+    create_partner_signup(user_factory(firebase_phone.value, role=UserRole.TECHNICIAN, is_verified=False))
     _signup()
     client = _client_for(firebase_phone.value)
     skill = TechnicianSkill.objects.create(name="AC repair")
@@ -99,6 +116,9 @@ def test_full_kyc_flow_submit_then_admin_approves(firebase_phone, settings, tmp_
 
 def test_admin_rejection_needs_note_and_lets_partner_fix(firebase_phone, settings, tmp_path):
     settings.MEDIA_ROOT = tmp_path
+    from apps.technicians.services import create_partner_signup
+
+    create_partner_signup(user_factory(firebase_phone.value, role=UserRole.TECHNICIAN, is_verified=False))
     _signup()
     profile = TechnicianProfile.objects.get(user__phone_number=firebase_phone.value)
     profile.background_verification_status = TechnicianVerificationStatus.UNDER_REVIEW
