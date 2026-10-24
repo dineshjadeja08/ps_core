@@ -822,6 +822,56 @@ def test_assignment_rejects_overlapping_booking(admin_client, booking, service_a
 
 
 @pytest.mark.django_db
+def test_assignment_allows_overlapping_jobs_up_to_team_member_capacity(admin_client, booking, customer):
+    technician = create_technician(service_area=booking.time_slot.service_area, service=booking.service)
+    technician.no_of_teams = 2
+    technician.save(update_fields=["no_of_teams"])
+
+    first = admin_client.post(
+        f"/api/v1/admin/bookings/{booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+    assert first.status_code == 200
+
+    def make_overlapping_booking(number):
+        return Booking.objects.create(
+            booking_number=number,
+            customer=customer,
+            service=booking.service,
+            address=booking.address,
+            address_snapshot=booking.address_snapshot,
+            service_date=booking.service_date,
+            time_slot=booking.time_slot,
+            problem_description="Another visit at the same time.",
+            subtotal=Decimal("1499.00"),
+            total_amount=Decimal("1499.00"),
+            advance_required=Decimal("299.00"),
+            advance_paid=Decimal("299.00"),
+            balance_due=Decimal("1200.00"),
+            booking_status=BookingStatus.CONFIRMED,
+            payment_status=PaymentStatus.PARTIALLY_PAID,
+        )
+
+    second_booking = make_overlapping_booking("PS-TEAM02")
+    second = admin_client.post(
+        f"/api/v1/admin/bookings/{second_booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+    assert second.status_code == 200
+
+    third_booking = make_overlapping_booking("PS-TEAM03")
+    third = admin_client.post(
+        f"/api/v1/admin/bookings/{third_booking.id}/assign-technician/",
+        {"technician_id": str(technician.id)},
+        format="json",
+    )
+    assert third.status_code == 400
+    assert "team members" in str(third.json())
+
+
+@pytest.mark.django_db
 def test_admin_technician_list_can_filter_eligible_by_booking(admin_client, booking, service_area):
     eligible = create_technician(code="TECH-ELIG", phone="+919876543303", service_area=service_area, service=booking.service)
     other_area = ServiceArea.objects.create(

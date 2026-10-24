@@ -72,8 +72,11 @@ def get_technician_eligibility_errors(technician, booking):
         errors.append("Technician is not working during this slot.")
     if technician.leaves.filter(is_active=True, start_at__lt=slot_end, end_at__gt=slot_start).exists():
         errors.append("Technician is on leave during this slot.")
-    if has_overlapping_booking(technician, booking):
-        errors.append("Technician already has an overlapping booking.")
+    team_capacity = max(0, int(technician.no_of_teams or 0))
+    if team_capacity == 0:
+        errors.append("Technician has no team members configured for assignments.")
+    elif count_overlapping_bookings(technician, booking) >= team_capacity:
+        errors.append("All technician team members are assigned to overlapping bookings.")
     return errors
 
 
@@ -91,7 +94,7 @@ def get_eligible_technicians(booking):
     return [technician for technician in technicians if not get_technician_eligibility_errors(technician, booking)]
 
 
-def has_overlapping_booking(technician, booking):
+def count_overlapping_bookings(technician, booking):
     slot = booking.time_slot
     return (
         Booking.objects.select_related("time_slot")
@@ -103,7 +106,7 @@ def has_overlapping_booking(technician, booking):
             time_slot__end_time__gt=slot.start_time,
         )
         .exclude(id=booking.id)
-        .exists()
+        .count()
     )
 
 
