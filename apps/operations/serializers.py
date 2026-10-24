@@ -351,6 +351,7 @@ class AdminDashboardSummarySerializer(serializers.Serializer):
     leads_today = serializers.IntegerField()
     follow_ups_due = serializers.IntegerField()
     bookings_today = serializers.IntegerField()
+    bookings_this_month = serializers.IntegerField()
     confirmed_bookings = serializers.IntegerField()
     payment_pending_bookings = serializers.IntegerField()
     revenue_today = serializers.DecimalField(max_digits=12, decimal_places=2)

@@ -492,6 +492,7 @@ class AdminDashboardSummaryView(APIView):
     @extend_schema(summary="Get admin dashboard summary", responses={status.HTTP_200_OK: AdminDashboardSummarySerializer})
     def get(self, request):
         today = timezone.localdate()
+        current_month_start_at = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
         cache_key = f"admin-dashboard-summary:v2:{today.isoformat()}"
         cached = cache.get(cache_key)
         if cached is not None:
@@ -522,6 +523,7 @@ class AdminDashboardSummaryView(APIView):
         booking_stats = Booking.objects.aggregate(
             active_bookings_count=Count("id", filter=Q(booking_status__in=active_booking_statuses)),
             bookings_today=Count("id", filter=Q(created_at__date=today)),
+            bookings_this_month=Count("id", filter=Q(created_at__gte=current_month_start_at)),
             confirmed_bookings=Count("id", filter=Q(booking_status=BookingStatus.CONFIRMED)),
             payment_pending_bookings=Count("id", filter=Q(payment_status=PaymentStatus.UNPAID)),
             unassigned_bookings=Count(
@@ -567,6 +569,7 @@ class AdminDashboardSummaryView(APIView):
             "leads_today": lead_stats["leads_today"],
             "follow_ups_due": lead_stats["follow_ups_due"],
             "bookings_today": booking_stats["bookings_today"],
+            "bookings_this_month": booking_stats["bookings_this_month"],
             "confirmed_bookings": booking_stats["confirmed_bookings"],
             "payment_pending_bookings": booking_stats["payment_pending_bookings"],
             "revenue_today": daily_gmv,

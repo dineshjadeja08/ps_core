@@ -246,6 +246,7 @@ def test_dashboard_summary_uses_database_aggregates_beyond_first_page(admin_clie
     assert response.status_code == 200
     payload = response.json()
     assert payload["leads_today"] == 55
+    assert payload["bookings_this_month"] == 1
     assert payload["open_unassigned_leads_count"] == 55
     assert payload["active_bookings_count"] == 1
     assert payload["available_technicians_count"] == 1
